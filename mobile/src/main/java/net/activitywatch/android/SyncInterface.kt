@@ -98,7 +98,8 @@ class SyncInterface(context: Context) {
         
         // Fallback: build fingerprint hash as deviceId
         val fingerprint = android.os.Build.FINGERPRINT ?: "unknown_fingerprint"
-        return "android_${fingerprint.hashCode().take(12)}"
+        val fingerprintHash = fingerprint.hashCode().toString()
+        return "android_${fingerprintHash.take(12)}"
     }
     
     private fun getDeviceName(): String {

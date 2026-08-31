@@ -81,16 +81,25 @@ let db = dbs.max_by_key(|entry| entry.metadata().map(|m| m.len()).unwrap_or(0)).
 2. **Syncthing does the file transfer** — we only solve the merge/conflict problem at the app level
 3. **User decisions persist and sync** — conflict choices stored in a `.json` file that Syncthing propagates to all devices
 4. **Minimal Rust changes** — work primarily with the existing `aw-sync` engine, add merge logic rather than replacing it
+5. **Equal device status** — no "primary" device; both devices are treated identically, each displays data from all devices equally
 
 ### 3.2 Directory Structure (in the Syncthing shared folder)
 ```
 <sync_root>/
   <hostname>/
-    device1_test.db          ← Device A's raw datastore
-    device2_test.db          ← Device B's raw datastore (written alongside, never overwritten!)
+    deviceA_test.db          ← Device A's raw datastore
+    deviceB_test.db          ← Device B's raw datastore (written alongside, never overwritten!)
     user_decisions.json       ← Conflict resolution choices (syncs to all devices)
     _metadata.toml            ← Server config (port, api_key, device_id) per existing aw-sync
 ```
+
+**Key change**: Each device writes to its own named file (`<device_id>_test.db`) instead of all writing to the same `test.db`. Syncthing merges these files. Our app then reads ALL `.db` files and combines them at query time.
+
+> [!WARNING] SQLite Safety Requirement
+> When Syncthing replaces a `.db` file, it first writes to a `.tmp` file then atomically renames it.
+> If aw-server-rust is actively writing or holding locks on that DB during the swap, it can crash or corrupt data.
+> **Mitigation**: Before each pull phase, close all aw-datastore connections. Reopen after pull completes.
+> Alternative: enable WAL mode on the Android datastore (more complex but less disruptive).
 
 **Key change**: Each device writes to its own named file (`<device_id>_test.db`) instead of all writing to the same `test.db`. Syncthing merges these files. Our app then reads ALL `.db` files and combines them at query time.
 
@@ -106,18 +115,22 @@ Device A                          Sync Folder (Syncthing)              Device B
   │                                     │                                  │   <hostname>/deviceB_test.db
   │                                     │                                  │
   │ READ PHASE (merge layer):          │                                  │
-  │ 1. Scan all *.db in sync folder    │                                  │
-  │ 2. For each bucket, collect events │                                  │
+  │ 1. Close aw-datastore connections  │                                  │
+  │    ← prevent SQLite lock conflicts  │                                  │
+  │ 2. Scan all *.db in sync folder    │                                  │
+  │ 3. Reopen connections after scan     │                                  │
+  │ 4. For each bucket, collect events │                                  │
   │    from ALL devices                │                                  │
-  │ 3. Check user_decisions.json for   │                                  │
+  │ 5. Check user_decisions.json for   │                                  │
   │    pre-existing conflict choices   │                                  │
-  │ 4. Merge: combine all events,       │                                  │
+  │ 6. Merge: combine all events,       │                                  │
   │    deduplicate by timestamp+content │                                  │
-  │ 5. Show conflicts if detected      │                                  │
-  │ 6. Present conflict UI to user     │                                  │
-  │ 7. Save decision → user_decisions.json → syncs to B
+  │ 7. Show conflicts if detected      │                                  │
+  │ 8. Present conflict UI to user     │                                  │
+  │ 9. Save decision → user_decisions.json → syncs to B
   │                                    │
-  Result: Unified timeline from both devices on BOTH phones
+  Result: Unified timeline from both devices displayed on BOTH phones,
+          with per-device sub-views AND a combined "merged" view
 ```
 
 ### 3.4 Conflict Detection Logic
@@ -202,7 +215,10 @@ Conflict detected: "Device A and Device B both recorded activity at 2026-01-15 1
 2. Update `push_with_hostname()` to include the local device_id in the filename
 3. Each device reads ALL `.db` files from the sync folder (not just its own)
 
-### Phase 2: Multi-DB Merge Engine
+### Phase 2: Multi-DB Merge Engine + Unified Timeline (Combined)
+> **Updated per user requirement**: Both phases merged since unified display requires the same merge infrastructure.
+> The app will natively display multiple buckets — one per device PLUS a combined/merged timeline view.
+
 **New Rust files:**
 - `aw-server-rust/aw-sync/src/multi_sync.rs` — merge logic (Rust library)
 - `aw-server-rust/aw-sync/src/conflict_detector.rs` — conflict detection algorithm
@@ -211,6 +227,30 @@ Conflict detected: "Device A and Device B both recorded activity at 2026-01-15 1
 **Kotlin additions:**
 - `ConflictResolver.kt` — bridge between Rust merge engine and Android UI
 - `MultiDeviceTimelineQuery.kt` — query all DBs, return merged timeline with origin_device tags
+
+> [!CAUTION] SQLite Safety — Phase 2 Critical Path
+> **Problem**: Syncthing replaces `.db` files via `.tmp` rename. If aw-datastore holds locks during this swap → crash/corruption.
+> **Fix in Rust** (`aw-sync/src/android.rs`): Before calling `syncPullAllFromAllHostnames()`, close all open aw-datastore handles.
+> After pull completes, reopen connections.
+> ```rust
+> // Pseudocode for what needs to happen in android.rs syncPullAllFromAllHostnames
+> extern "C" fn syncPullAllFromAllHostnames(port: c_int) -> *mut c_char {
+>     // 1. Close all datastore connections first
+>     aw_datastore::close_all_connections();  // NEW function needed
+>     
+>     // 2. Now it's safe for Syncthing to swap .db files
+>     let result = sync_wrapper::pull_all_from_all_hostnames(port);
+>     
+>     // 3. Reopen connections after pull is complete
+>     aw_datastore::reopen_connections();  // NEW function needed (or auto-on-next-use)
+>     
+>     // 4. Return result JSON
+>     ...
+> }
+> ```
+> **Alternative approach**: Enable WAL mode on the Android SQLite database.
+> WAL (Write-Ahead Logging) allows readers to proceed while Syncthing swaps files.
+> This is less disruptive but more complex — requires changing aw-datastore's SQLite config.
 
 **Merge logic (`multi_sync.rs`):**
 ```rust
@@ -224,6 +264,20 @@ pub fn merge_all_databases(
     remote_paths: &[PathBuf],
     user_decisions: &HashMap<String, Decision>,
 ) -> MergeResult;
+```
+
+**Display Architecture:**
+```
+Timeline View (aw-webui / Android)
+├── 📱 device_A (per-device bucket — auto-synced from syncthing)
+│   └── Events recorded on Device A only
+├── 📱 device_B (per-device bucket — auto-synced from syncthing)  
+│   └── Events recorded on Device B only
+├── 🔄 All / Merged (combined timeline with origin tags)
+│   └── Events from both devices, interleaved by timestamp
+│   └── Conflicts highlighted for review
+└── ⚠ Conflicts (pending user decisions)
+    └── Time windows where both devices have different data
 ```
 
 ### Phase 3: Conflict Resolution UI (Android)
@@ -240,7 +294,10 @@ pub fn merge_all_databases(
 5. User picks resolution → save to `user_decisions.json` via JNI
 6. Decision syncs back to other device via Syncthing
 
-### Phase 4: Unified Timeline Display
+### Phase 4: Per-Device Buckets + Merged View Integration
+> **Updated per user requirement**: Both devices display both devices' data natively.
+> The merged view lets the user decide what goes from where and when conflicts happen.
+
 **Changes:**
 - `Data/SessionModels.kt`: Add `origin_device: String?` field to `AppSession`
 - `parser/SessionParser.kt`: Tag events with their source device ID
@@ -250,6 +307,10 @@ pub fn merge_all_databases(
 1. When merging events from multiple DBs, store the originating device_id in each event's `data.origin_device` field (AW data format allows arbitrary JSON fields)
 2. Modify `androidQuery()` FFI to return merged timeline with origin tags
 3. Pass origin info to aw-webui for display (or add a native overlay showing per-device breakdown)
+4. Display structure:
+   - Per-device buckets shown individually (expandable/collapsible)
+   - "All" view as the default combined timeline
+   - Conflicts highlighted inline with tap-to-review action
 
 ---
 
@@ -268,11 +329,14 @@ pub fn merge_all_databases(
 
 ## 6. Open Questions & Decisions Needed
 
-1. **What devices should be trusted equally?** Should there be a "primary device" (e.g., home phone) that acts as the source of truth, or is every device equal?
+1. **What devices should be trusted equally?** ✅ RESOLVED: Equal status — no primary device. Each device displays data from all others.
 2. **Timeline granularity for conflict detection.** Currently grouping by 1-minute windows — is that fine-grained enough? What about minute-long gaps between devices?
-3. **How to display "merged timeline" in aw-webui?** The web UI (Vue.js) renders the timeline but doesn't currently show source device info. Would need either: a) pass origin_device in event data, b) add a native overlay, or c) modify aw-webui.
+3. **How to display "merged timeline" in aw-webui?** The web UI (Vue.js) renders the timeline but doesn't currently show source device info. Options: a) pass origin_device in event data, b) add a native overlay, or c) modify aw-webui.
 4. **Battery impact of more frequent sync.** Currently every 15 min. Could increase to every 5 min once Syncthing is handling file-level deduplication (Syncthing won't trigger full transfers if files haven't changed).
 5. **What about deletions?** If you uninstall ActivityWatch on one device, should its data be removed from synced timeline? Probably not — but worth deciding now.
+6. **SQLite WAL mode vs explicit close/reopen** — Which approach for SQLite safety during Syncthing file swaps?
+   - Option A: Explicit close before pull, reopen after (simpler, tested)
+   - Option B: Enable WAL on aw-datastore (less disruptive but more complex, requires deeper aw-datastore changes)
 
 ---
 
@@ -316,10 +380,15 @@ pub fn merge_all_databases(
 | `lib.rs` | Exported new functions | `push_with_hostname_and_device_id`, `pull_all_from_all_hostnames` |
 | `android.rs` | Added `syncPushWithDeviceId()` JNI | Receives `device_id` from Kotlin, passes to Rust staging function |
 | `android.rs` | Added `syncPullAllFromAllHostnames()` JNI | Pulls from all discovered hostnames (not just one) |
-| `SyncInterface.kt` | New `getDeviceId()` | Stable device identifier using installer hash or build fingerprint |
+| `SyncInterface.kt` | New `getDeviceId()` + **FIXED** | Stable device identifier using installer hash or build fingerprint. **Bug fixed**: `hashCode().toString()` before `.take(12)` on line 101. |
 | `SyncInterface.kt` | New `syncBothMultiDeviceAsync()` | Replaces `syncBothAsync`: calls pull-from-all + push-with-device-id |
 | `SyncInterface.kt` | New external JNI declarations | `syncPushWithDeviceId`, `syncPullAllFromAllHostnames` |
 | `SyncScheduler.kt` | Calls `syncBothMultiDeviceAsync()` | Switches scheduler from old broken sync to Phase 1 |
+
+### Build Bug Fix
+- **Issue**: `SyncInterface.kt` line 101 called `.take(12)` on an `Int` (hash code), but Kotlin's `.take(n)` only works on CharSequence/String, Iterable, etc.
+- **Fix**: Added intermediate variable `val fingerprintHash = fingerprint.hashCode().toString()` then used `.take(12)` on the String
+- **Status**: ✅ Fixed — ready for build
 
 ### What Phase 1 Fixes
 - **No more silent data loss**: Each device writes to its own `{hostname}/{device_id}_staging/test.db` path → Syncthing sees them as separate files → no overwrite
@@ -335,11 +404,31 @@ pub fn merge_all_databases(
 
 ## 10. Priority Order
 
-1. **Phase 1** — Per-device DB writes (safest, most foundational, no merge logic yet)
-2. **Phase 2** — Multi-DB merge engine (the core new capability)
-3. **Phase 4** — Unified timeline display (can use Phase 2's output, simple integration)
-4. **Phase 3** — Conflict resolution UI (depends on Phase 2 conflicts existing)
+1. **Build & verify Phase 1** — Compile APK with the Kotlin bug fix, install on two devices, confirm per-device DBs exist in Syncthing folder
+2. **SQLite safety (Phase 2a)** — Add close/reopen of aw-datastore connections before/after pull phase to prevent corruption during Syncthing file swaps
+3. **Multi-DB merge engine (Phase 2b)** — `multi_sync.rs` + conflict detection logic in Rust
+4. **Unified display (Phase 4)** — Both devices show both devices' data; per-device buckets + merged view
+5. **Conflict resolution UI (Phase 3)** — Side-by-side comparison, user decisions persist and sync
+6. **Polish** — Conflict notification, battery optimization, per-device naming in UI
 
 ---
 
-*Last updated: 2026-08-30*
+*Last updated: 2026-08-31*
+
+---
+
+## Status Log
+
+| Date | Milestone |
+|------|-----------|
+| 2026-08-31 | ✅ Kotlin `.take(12)` bug fixed — both hashCode paths now convert to String first |
+| 2026-08-31 | 📝 Design updated: merged timeline + per-device buckets, equal device status, SQLite safety requirements |
+| 2026-08-30 | Phase 1 code written across 5 files (untested build) |
+
+### Upcoming
+- [ ] Build APK with fix → `./gradlew assembleDebug` → install on two devices
+- [ ] Verify per-device `.db` files appear in Syncthing folder
+- [ ] Phase 2a: SQLite close/reopen before pull phase
+- [ ] Phase 2b: multi_sync.rs merge engine + conflict detector
+- [ ] Phase 4: Unified display (both devices show both devices' data)
+- [ ] Phase 3: Conflict resolution UI
