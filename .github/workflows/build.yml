@@ -117,7 +117,7 @@ jobs:
 
   build-apk:
     name: Build ${{ matrix.type }}
-    runs-on: ubicloud-standard-4
+    runs-on: ubuntu-latest
     needs: [build-rust, get-versionCode]
     # Skip on fork PRs: signing secrets are not available and upload would fail anyway.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
