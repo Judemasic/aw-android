@@ -1,6 +1,7 @@
 [submodule "aw-server-rust"]
 	path = aw-server-rust
 	url = https://github.com/Judemasic/aw-server-rust.git
+	branch = beta
 [submodule "mobile/src/main/res/drawable/media"]
 	path = mobile/src/main/res/drawable/media
 	url = https://github.com/ActivityWatch/media.git
