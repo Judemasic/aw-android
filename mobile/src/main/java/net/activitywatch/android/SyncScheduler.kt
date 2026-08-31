@@ -92,7 +92,8 @@ class SyncScheduler(private val context: Context) {
     private fun performSync() {
         Log.i(TAG, "Performing automatic sync...")
 
-        syncInterface.syncBothAsync { success, message ->
+        // Phase 1: Use multi-device sync (pulls from all hostnames, pushes to per-device staging)
+        syncInterface.syncBothMultiDeviceAsync { success, message ->
             if (success) {
                 Log.i(TAG, "Automatic sync completed successfully: $message")
             } else {

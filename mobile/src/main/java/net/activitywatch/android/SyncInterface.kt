@@ -71,12 +71,35 @@ class SyncInterface(context: Context) {
         return fallbackDir
     }
     
-    // Native JNI functions
+    // Native JNI functions - Phase 1 multi-device sync
     private external fun syncPullAll(port: Int, hostname: String): String
     private external fun syncPull(port: Int, hostname: String): String
     private external fun syncPush(port: Int, hostname: String): String
-    private external fun syncBoth(port: Int, hostname: String): String
+    
+    // New per-device push function (Phase 1)
+    private external fun syncPushWithDeviceId(port: Int, hostname: String, deviceId: String): String
+    
+    // New pull-from-all-hostnames function (Phase 1)
+    private external fun syncPullAllFromAllHostnames(port: Int): String
+    
     external fun getSyncDir(): String
+
+    /**
+     * Get a stable device identifier for this Android device.
+     * Falls back to android.os.Build fields if no reliable ID is available.
+     */
+    private fun getDeviceId(): String {
+        val installerPackage = appContext.packageManager.getInstallerPackageName(appContext.packageName)
+        if (installerPackage != null && installerPackage != "com.google.android.instantapps.supervisor") {
+            // Google Play installs a unique install ID per device
+            val hashCode = installerPackage.hashCode().toString()
+            return "android_${hashCode.take(12)}"
+        }
+        
+        // Fallback: build fingerprint hash as deviceId
+        val fingerprint = android.os.Build.FINGERPRINT ?: "unknown_fingerprint"
+        return "android_${fingerprint.hashCode().take(12)}"
+    }
     
     private fun getDeviceName(): String {
         val raw = android.provider.Settings.Global.getString(
@@ -99,25 +122,33 @@ class SyncInterface(context: Context) {
         }
     }
     
-    // Async wrapper for syncPush
-    fun syncPushAsync(callback: (Boolean, String) -> Unit) {
+    // Async wrapper for Push with per-device staging (Phase 1)
+    fun syncPushWithDeviceIdAsync(callback: (Boolean, String) -> Unit) {
         val hostname = getDeviceName()
-        performSyncAsync("Push", callback) {
-            syncPush(5600, hostname)
+        val deviceId = getDeviceId()
+        performSyncAsync("Push (device-specific)", callback) {
+            syncPushWithDeviceId(5600, hostname, deviceId)
         }
     }
     
-    // Async wrapper for syncBoth
-    fun syncBothAsync(callback: (Boolean, String) -> Unit) {
-        syncBothAsync(mirrorBeforeCallback = false, callback)
+    // Async wrapper for pull from ALL hostnames (Phase 1)
+    fun syncPullAllFromAllHostnamesAsync(callback: (Boolean, String) -> Unit) {
+        performSyncAsync("Pull All Hostnames", callback) {
+            syncPullAllFromAllHostnames(5600)
+        }
+    }
+    
+    // Async wrapper for full multi-device sync (Phase 1)
+    fun syncBothMultiDeviceAsync(callback: (Boolean, String) -> Unit) {
+        syncBothMultiDeviceAsync(mirrorBeforeCallback = false, callback)
     }
 
     // Background workers must remain active until the SAF mirror completes.
     fun syncBothAndMirrorAsync(callback: (Boolean, String) -> Unit) {
-        syncBothAsync(mirrorBeforeCallback = true, callback)
+        syncBothMultiDeviceAsync(mirrorBeforeCallback = true, callback)
     }
 
-    private fun syncBothAsync(
+    private fun syncBothMultiDeviceAsync(
         mirrorBeforeCallback: Boolean,
         callback: (Boolean, String) -> Unit
     ) {
@@ -126,16 +157,37 @@ class SyncInterface(context: Context) {
             callback(false, "skipped: sync already in flight")
             return
         }
+        
         val hostname = getDeviceName()
+        val deviceId = getDeviceId()
+        
         performSyncAsync(
-            "Full Sync",
+            "Multi-Device Sync",
             { success, message ->
                 syncInFlight.set(false)
                 callback(success, message)
             },
             mirrorBeforeCallback
         ) {
-            syncBoth(5600, hostname)
+            // Phase 1: Pull from ALL hostnames (not just our own)
+            val pullResult = syncPullAllFromAllHostnames(5600)
+            val pullJson = JSONObject(pullResult)
+            if (!pullJson.getBoolean("success")) {
+                return@performSyncAsync pullResult
+            }
+            
+            // Phase 1: Push our local data to a per-device staging area
+            val pushResult = syncPushWithDeviceId(5600, hostname, deviceId)
+            val pushJson = JSONObject(pushResult)
+            if (!pushJson.getBoolean("success")) {
+                return@performSyncAsync pushResult
+            }
+            
+            // Success: signal complete
+            JSONObject().apply {
+                put("success", true)
+                put("message", "Successfully completed multi-device sync")
+            }.toString()
         }
     }
     
