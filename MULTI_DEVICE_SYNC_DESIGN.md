@@ -441,6 +441,8 @@ Timeline View (aw-webui / Android)
 |------|-----------|
 | 2026-08-31 | ✅ Kotlin `.take(12)` bug fixed — both hashCode paths now convert to String first |
 | 2026-08-31 | 📝 Design updated: merged timeline + per-device buckets, equal device status, SQLite safety requirements |
+| 2026-09-01 | 🔴 Crash persisted (SIGABRT in `syncPushWithDeviceId+460`) — root cause: Rust panics not caught at JNI boundary |
+| 2026-09-01 | ✅ **JNI panic-catching fix applied** — `catch_unwind` + `android_logger` init for aw-sync |
 | 2026-08-30 | Phase 1 code written across 5 files (untested build) |
 | 2026-08-31 | 🔍 Debugged crash: `UnsatisfiedLinkError` on `syncPullAllFromAllHostnames` |
 
@@ -462,6 +464,23 @@ Timeline View (aw-webui / Android)
 2. Even if it didn't crash, the first sync cycle would write staging `.db` files (not synced `.db` until next pull)
 
 **WebView ERR_CONNECTION_REFUSED**: `aw-server-rust` likely hasn't started yet or port 5600 isn't listening when WebView loads. This is a separate issue from the JNI crash.
+
+### SIGABRT Crash Fix (2026-09-01)
+
+**Crash**: `SIGABRT (signal 6)` at `Java_net_activitywatch_android_SyncInterface_syncPushWithDeviceId+460` on thread `pool-9-thread-1`
+
+**Root cause**: A Rust panic deep in the aw-sync → aw-datastore → aw-server dependency chain hit the JNI boundary without being caught. Because:
+1. No `catch_unwind` wrapping on JNI functions
+2. `aw-sync` does NOT use `log-panics` (unlike `aw-server`) — so panics go to stderr which Android discards
+3. Result: silent SIGABRT, zero error info in logcat
+
+**Fix applied**:
+- Added `std::panic::catch_unwind` wrapper around `syncPushWithDeviceId` and `syncPullAllFromAllHostnames` JNI functions
+- Added `aw_sync_init_logging()` JNI function to initialize `android_logger` for aw-sync's log output
+- Kotlin now calls `awSyncInitLogging(2)` after loading the native library
+- If a panic occurs, it will now return `{"success": false, "error": "RUST PANIC in ...: ..."}` to Kotlin instead of killing the process
+
+**Next**: After new APK build — check logcat for `tag=aw-sync` entries. Any remaining errors will be proper error messages (not crashes).
 
 ### Upcoming
 - [x] **2026-08-31**: Push `beta` to GitHub — both repos done:
