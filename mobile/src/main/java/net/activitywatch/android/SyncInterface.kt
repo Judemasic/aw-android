@@ -55,6 +55,9 @@ class SyncInterface(context: Context) {
         Os.setenv("XDG_DATA_HOME", "$filesDir/data", true)
         
         System.loadLibrary("aw_sync")
+        
+        // Initialize logging for aw-sync native library after loading
+        awSyncInitLogging(2) // Info level
         Log.i(TAG, "aw-sync initialized with sync dir: $syncDir")
     }
 
@@ -83,6 +86,9 @@ class SyncInterface(context: Context) {
     private external fun syncPullAllFromAllHostnames(port: Int): String
     
     external fun getSyncDir(): String
+    
+    // Initialize logging for aw-sync native library
+    private external fun awSyncInitLogging(verbosity: Int)
 
     /**
      * Get a stable device identifier for this Android device.

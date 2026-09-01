@@ -4,6 +4,12 @@
 > **Goal**: Enable sync across multiple Android devices showing a unified timeline, with user-controlled conflict resolution and no data loss.
 > **Approach**: Leverage Syncthing for file transfer + intelligent merge + per-conflict UI decisions stored in the sync folder so they propagate to all devices.
 
+> **⚠️ BUILD METHOD: GitHub Actions only**
+> All APK builds are done via `aw-android/.github/workflows/build.yml` on GitHub's CI runners — NOT locally on Windows.
+> This avoids needing Rust + NDK + Android SDK installed on the user's machine.
+> To rebuild: push commits to the `beta` branch, then go to https://github.com/<user>/aw-android/actions → click "Run workflow" on **Build**.
+> The compiled APK artifact will be available at the bottom of the workflow run (download `aw-android-apk`).
+
 ---
 
 ## 1. Current Architecture (what we have)
@@ -383,6 +389,18 @@ Timeline View (aw-webui / Android)
 | `SyncInterface.kt` | New `getDeviceId()` + **FIXED** | Stable device identifier using installer hash or build fingerprint. **Bug fixed**: `hashCode().toString()` before `.take(12)` on line 101. |
 | `SyncInterface.kt` | New `syncBothMultiDeviceAsync()` | Replaces `syncBothAsync`: calls pull-from-all + push-with-device-id |
 | `SyncInterface.kt` | New external JNI declarations | `syncPushWithDeviceId`, `syncPullAllFromAllHostnames` |
+
+### Build Bug Fix — Critical 🔴
+
+**Problem**: GitHub Actions cache key uses `.git/modules/aw-server-rust/HEAD` (line 40 of `build.yml`). When I pushed aw-android `beta` with uncommitted Rust changes in the working tree, Git didn't include them in the commit. CI got a **cache hit** on old JNI libs → skipped Rust build → APK had stale `.so` files without `syncPullAllFromAllHostnames` symbol.
+
+**Root cause**: `aw-server-rust` is a git submodule (`url = https://github.com/ActivityWatch/aw-server-rust.git`). My Rust changes were local working-tree modifications, never committed or pushed.
+
+**Fix implemented**:
+1. Fork aw-server-rust to user's GitHub account
+2. Commit all Phase 1 changes to the fork
+3. Update submodule pointer in aw-android `beta` to point to the fork
+4. This ensures CI rebuilds Rust with our code
 | `SyncScheduler.kt` | Calls `syncBothMultiDeviceAsync()` | Switches scheduler from old broken sync to Phase 1 |
 
 ### Build Bug Fix
@@ -424,11 +442,108 @@ Timeline View (aw-webui / Android)
 | 2026-08-31 | ✅ Kotlin `.take(12)` bug fixed — both hashCode paths now convert to String first |
 | 2026-08-31 | 📝 Design updated: merged timeline + per-device buckets, equal device status, SQLite safety requirements |
 | 2026-08-30 | Phase 1 code written across 5 files (untested build) |
+| 2026-08-31 | 🔍 Debugged crash: `UnsatisfiedLinkError` on `syncPullAllFromAllHostnames` |
+
+### Root Cause Analysis (2026-08-31)
+
+**Crash**: `java.lang.UnsatisfiedLinkError: No implementation found for java.lang.String net.activitywatch.android.SyncInterface.syncPullAllFromAllHostnames(int)`
+
+**Root cause confirmed**: The APK currently installed on both phones was built **before** the `sync_pull_all_from_all_hostnames` JNI function was added to Rust code. The `.so` library inside that APK does not contain this symbol.
+
+**Code verification (all correct)**:
+- `aw-server-rust/aw-sync/src/sync_wrapper.rs` — `pub fn pull_all_from_all_hostnames(client)` ✅
+- `lib.rs` — `pub use sync_wrapper::pull_all_from_all_hostnames;` ✅
+- `android.rs` line 306 — `Java_net_activitywatch_android_SyncInterface_syncPullAllFromAllHostnames` JNI ✅
+- `SyncInterface.kt` line 83 — `private external fun syncPullAllFromAllHostnames(port: Int): String` ✅
+- Kotlin calls it at line 174 inside `syncBothMultiDeviceAsync()` ✅
+
+**Syncthing folders empty**: The `/stfolder/` only contains `.stversions/`, `.nomedia/`, and `do not delete.txt`. No `.db` files because:
+1. Sync is triggered on app open/crash → crashes before writing
+2. Even if it didn't crash, the first sync cycle would write staging `.db` files (not synced `.db` until next pull)
+
+**WebView ERR_CONNECTION_REFUSED**: `aw-server-rust` likely hasn't started yet or port 5600 isn't listening when WebView loads. This is a separate issue from the JNI crash.
 
 ### Upcoming
-- [ ] Build APK with fix → `./gradlew assembleDebug` → install on two devices
-- [ ] Verify per-device `.db` files appear in Syncthing folder
-- [ ] Phase 2a: SQLite close/reopen before pull phase
+- [x] **2026-08-31**: Push `beta` to GitHub — both repos done:
+  - ✅ `Judemasic/aw-server-rust@beta` — Rust code with per-device staging + multi-hostname sync
+  - ✅ `Judemasic/aw-android@beta` — Kotlin code + submodule pointing to fork
+- [ ] **Next**: Run "Build" workflow on aw-android beta branch (GitHub Actions only)
+  - Go to: https://github.com/Judemasic/aw-android/actions/workflows/build.yml → Run workflow
+  - Download APK artifact from workflow run
+  - Install on both phones
+- [ ] Verify no more `UnsatisfiedLinkError` crashes
+- [ ] Verify `.db` files appear in Syncthing shared folder within 5 min
+- [ ] Phase 2a: SQLite close/reopen before pull phase (prevent corruption during Syncthing file swaps)
 - [ ] Phase 2b: multi_sync.rs merge engine + conflict detector
-- [ ] Phase 4: Unified display (both devices show both devices' data)
+- [ ] Phase 4: Unified display — both devices show both devices' data + per-device sub-sections + combined view
 - [ ] Phase 3: Conflict resolution UI
+- [ ] Add permanent Sync button to navigation dock (swipe drawer doesn't work on modern Android)
+
+---
+
+## 11. Fork Maintenance — Handling Upstream PRs from ActivityWatch Devs
+
+Since we forked **two** repos that the original devs may still contribute to:
+
+### When upstream (ActivityWatch) opens a PR or pushes a commit:
+
+#### Step 1 — Check what changed
+```powershell
+git fetch ActivityWatch master
+git diff beta..ActivityWatch/master --stat          # aw-android fork
+git diff beta..ActivityWatch/master --stat aw-sync/ aw-server/   # aw-server-rust fork
+```
+
+#### Step 2 — Decision tree
+| What upstream changed | Action |
+|----------------------|--------|
+| Changes to files we **don't touch** (CI, widget, notify, etc.) | ✅ Merge automatically — no conflict risk |
+| Changes to aw-sync / aw-server-rust that **conflict** with our code | 🔶 Manual merge — keep both ours + theirs |
+| Changes to aw-android **submodule pointer** in aw-server-rust | ⚠️ Update pointer in our fork first, then merge |
+| New sync-related features (their own sync impl) | 🔶 Review carefully — may replace our work or need combining |
+| Kotlin / aw-android changes touching SyncInterface.kt or build.yml | 🔶 Manual merge — verify our Kotlin functions survive intact |
+
+#### Step 3 — Merge safely (always on a feature branch first)
+```powershell
+# For aw-server-rust fork:
+cd "C:\dev\New folder\aw-server-rust"
+git checkout -b sync-upstream-DATE
+git fetch ActivityWatch master
+git merge ActivityWatch/master --no-edit   # fix conflicts if any
+git push origin sync-upstream-DATE
+
+# For aw-android fork:
+cd "C:\dev\New folder\aw-android"
+git checkout beta
+git merge beta-from-your-upstream-branch-name   # from above
+```
+
+#### Step 4 — Rebuild after any aw-server-rust change
+```powershell
+# After merging server changes into our fork:
+cd "C:\dev\New folder\aw-android"
+git submodule update --remote --merge
+git add aw-server-rust
+```
+Then **re-run the GitHub Actions Build** (beta branch).
+
+#### Step 5 — Verify APK still works
+Install on phones, check Logcat for:
+- No `UnsatisfiedLinkError` (JNI symbols still present)
+- No build break in Kotlin code
+- Syncthing `.db` files still being written
+
+---
+
+### Monitoring Checklist (do weekly)
+- [ ] Check https://github.com/ActivityWatch/aw-android/pulls — any open PRs?
+- [ ] Check https://github.com/ActivityWatch/aw-server-rust/pulls — any sync-related PRs?
+- [ ] Check https://github.com/ActivityWatch/aw-android/issues — any reports relevant to our work?
+- [ ] If PR touches aw-sync or SyncInterface.kt → evaluate per Step 2 above
+
+---
+
+### Rule of Thumb
+> **If upstream code does the same thing we already do → consider merging theirs if better.**
+> **If upstream adds something orthogonal (unrelated feature) → merge freely.**
+> **If upstream breaks our working tree → merge on a feature branch, test before landing on beta.**
