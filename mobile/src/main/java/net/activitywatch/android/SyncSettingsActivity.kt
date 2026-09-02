@@ -14,6 +14,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "SyncSettingsActivity"
 
@@ -24,9 +28,16 @@ class SyncSettingsActivity : AppCompatActivity() {
     private lateinit var switchSyncEnabled: SwitchCompat
     private lateinit var tvSyncDirStatus: TextView
     private lateinit var btnChooseDir: Button
+    private lateinit var btnSyncNow: Button
+    private lateinit var tvSyncStatus: TextView
 
     // Guards against the switch listener firing when we set isChecked programmatically
     private var isUpdatingSwitch = false
+
+    // Guards against a second tap while a manual sync is still running. SyncInterface also
+    // refuses concurrent syncs, but that arrives as a "skipped" result rather than as nothing
+    // happening, which reads like a failure.
+    private var isSyncing = false
 
     private val openDocumentTree =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -92,6 +103,8 @@ class SyncSettingsActivity : AppCompatActivity() {
         switchSyncEnabled = findViewById(R.id.switch_sync_enabled)
         tvSyncDirStatus = findViewById(R.id.tv_sync_dir_status)
         btnChooseDir = findViewById(R.id.btn_choose_sync_dir)
+        btnSyncNow = findViewById(R.id.btn_sync_now)
+        tvSyncStatus = findViewById(R.id.tv_sync_status)
 
         refreshUI()
 
@@ -112,6 +125,61 @@ class SyncSettingsActivity : AppCompatActivity() {
             }
             openDocumentTree.launch(intent)
         }
+
+        btnSyncNow.setOnClickListener { syncNow() }
+    }
+
+    /**
+     * Run one sync immediately and report what it did.
+     *
+     * Sync is otherwise purely time-driven, so verifying a change meant toggling the switch off
+     * and on and waiting out a 60-second timer with no in-app feedback - a cost paid on every
+     * iteration of the multi-device work (roadmap 1.4/1.5).
+     *
+     * This deliberately does not require the sync switch to be on: an explicit tap is explicit
+     * intent, and it makes a single sync testable without also arming the 15-minute scheduler.
+     * A configured directory *is* required, because without one a sync would report success
+     * while sharing nothing.
+     */
+    private fun syncNow() {
+        if (isSyncing) return
+        if (prefs.getSyncDirUri() == null) {
+            tvSyncStatus.text = "Choose a sync directory first."
+            return
+        }
+
+        isSyncing = true
+        btnSyncNow.isEnabled = false
+        tvSyncStatus.text = "Syncing\u2026"
+
+        lifecycleScope.launch {
+            try {
+                // Both halves have to stay off the main thread: the constructor loads the native
+                // library and initialises JNI logging, and the sync entry point reads this
+                // device's id over HTTP before it returns. SyncScheduler starts on IO for the
+                // same reason. The sync itself runs on SyncInterface's own executor, and the
+                // result callback is posted back to the main looper from there.
+                withContext(Dispatchers.IO) {
+                    SyncInterface(this@SyncSettingsActivity)
+                        .syncBothMultiDeviceAsync { success, message ->
+                            onSyncFinished(success, message)
+                        }
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "aw-sync native library unavailable", e)
+                onSyncFinished(false, "aw-sync native library unavailable")
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not start sync", e)
+                onSyncFinished(false, e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    private fun onSyncFinished(success: Boolean, message: String) {
+        isSyncing = false
+        btnSyncNow.isEnabled = true
+        tvSyncStatus.text = if (success) "Sync complete: $message" else "Sync failed: $message"
+        Log.i(TAG, "Manual sync finished: success=$success, message=$message")
     }
 
     override fun onResume() {

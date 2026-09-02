@@ -7,7 +7,11 @@
         android:layout_height="match_parent"
         tools:context=".MainActivity">
 
-    <!--com.google.android.material.appbar.AppBarLayout
+    <!-- The toolbar carries the drawer's hamburger button and the overflow menu. It was
+         commented out, which left the navigation drawer reachable only by an edge swipe that
+         current Android hands to the system back gesture instead - making Sync Settings
+         effectively unreachable on a stock device (R30). -->
+    <com.google.android.material.appbar.AppBarLayout
             android:layout_height="wrap_content"
             android:layout_width="match_parent"
             android:theme="@style/AppTheme.AppBarOverlay">
@@ -19,7 +23,7 @@
             android:background="#FFFFFF"
             app:popupTheme="@style/AppTheme.PopupOverlay" />
 
-    </com.google.android.material.appbar.AppBarLayout-->
+    </com.google.android.material.appbar.AppBarLayout>
 
     <include layout="@layout/content_main"/>
 

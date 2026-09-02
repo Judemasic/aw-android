@@ -51,6 +51,27 @@
             android:text="Choose Directory"
             style="@style/Widget.AppCompat.Button.Borderless" />
 
+        <!-- Manual trigger. Sync is otherwise purely time-driven (first run ~1 minute after
+             being enabled, then every 15 minutes), which leaves no way to make a sync happen
+             and no feedback about whether one ran. -->
+        <Button
+            android:id="@+id/btn_sync_now"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="Sync Now"
+            style="@style/Widget.AppCompat.Button.Colored" />
+
+        <TextView
+            android:id="@+id/tv_sync_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="?android:attr/textColorSecondary"
+            android:text="" />
+
         <!-- Help text -->
         <TextView
             android:layout_width="match_parent"

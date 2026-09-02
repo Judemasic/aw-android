@@ -12,6 +12,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
@@ -95,6 +96,20 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         // Set up alarm to send heartbeats
         val usw = UsageStatsWatcher(this)
         usw.setupAlarm()
+
+        // Without an action bar there is no hamburger button, and the drawer's edge swipe is
+        // consumed by the system back gesture on current Android - so every screen behind the
+        // drawer, Sync Settings included, was unreachable on a stock device (R30).
+        setSupportActionBar(binding.appBarMain.toolbar)
+        val drawerToggle = ActionBarDrawerToggle(
+            this,
+            binding.drawerLayout,
+            binding.appBarMain.toolbar,
+            R.string.navigation_drawer_open,
+            R.string.navigation_drawer_close
+        )
+        binding.drawerLayout.addDrawerListener(drawerToggle)
+        drawerToggle.syncState()
 
         binding.navView.setNavigationItemSelectedListener(this)
 
