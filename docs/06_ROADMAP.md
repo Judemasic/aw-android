@@ -223,9 +223,22 @@ instead. *(R31)*
 **Check:** no screen scrolls the page horizontally in portrait.
 
 ### 5.4 — Touch targets and navigation ⬜
-Controls sized for a thumb, not a mouse. Includes the long-standing gap that there is **no reliable
-way to reach Sync settings** — the navigation drawer is unreliable on modern Android.
-**Check:** every action reachable one-handed in portrait.
+Controls sized for a thumb, not a mouse.
+
+> **Confirmed on device (owner, 2026-09-02):** the navigation drawer **cannot be opened normally on
+> current Android** — edge-swipe is consumed by the system back gesture. The owner reached Sync
+> settings only by changing an OS-level setting to restore edge swipe. Sync settings are therefore
+> **effectively unreachable on a stock device**, which makes this a functional defect (**R30**),
+> not a polish item.
+>
+> Worth pulling forward: Phase 1 needs Sync settings repeatedly, so every device iteration
+> currently depends on an OS workaround the owner had to discover.
+
+> **Also missing: a manual "Sync now" control.** `SyncSettingsActivity` offers only a directory
+> picker and an on/off switch. Sync is time-driven — `SyncScheduler` runs the first sync ~1 minute
+> after being enabled, then every 15 minutes — so there is no way to *make* a sync happen, and no
+> feedback about whether one ran or what it did. Tolerable in normal use; a real drag on device
+> verification (1.5), where every check means waiting out a timer and guessing.
 
 > **New screens are exempt from this phase — they must be born mobile-first (R33).** The combined
 > timeline (Phase 3.4) and resolution sheet (Phase 4.1) are designed at phone width from the start,
