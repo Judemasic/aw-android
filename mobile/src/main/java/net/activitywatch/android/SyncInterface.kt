@@ -334,8 +334,18 @@ class SyncInterface(context: Context) {
      * named in its path (R20) -- and writing another device's file is precisely how Syncthing is
      * made to produce `.sync-conflict-*` copies.
      *
-     * Every hostname directory is scanned, not just the current one: a device rename leaves this
-     * device's id sitting under its old hostname, and that data is still ours to export.
+     * **Only the current hostname's copy is exported**, not every `<any hostname>/<our id>/` in
+     * the tree. Pulling from a peer has a side effect: `sync_run` calls
+     * `setup_local_remote(<peer hostname>, our_device_id)`, which creates
+     * `<peer hostname>/<our device id>/test.db` locally. An export that scanned every hostname
+     * directory therefore published our database into *the peer's* hostname folder too --
+     * observed on device 2026-09-02, where two devices produced four directories instead of two.
+     * Harmless for R20 (each file still has exactly one writer, the id in its path), but it grows
+     * as the square of the device count and makes every device pull the same data twice.
+     *
+     * A device rename leaves our id under the old hostname, which this no longer exports. That is
+     * correct: after a rename the old directory is a stale snapshot either way, and the current
+     * hostname gets a complete push on the very next sync.
      *
      * The copy is recursive and structure-preserving, which is required for it to be usable at
      * all. aw-sync never writes a regular file at the root of the sync directory:
@@ -364,21 +374,22 @@ class SyncInterface(context: Context) {
         }
 
         val counts = intArrayOf(0, 0) // [copied, skipped]
-        val hostDirs = File(syncDir).listFiles()?.filter { it.isDirectory } ?: emptyList()
-        for (hostDir in hostDirs) {
-            if (cancelRequested) {
-                Log.i(TAG, "SAF export cancelled; stopping before ${hostDir.name}")
-                break
-            }
-            // Anything under this hostname that is not our own id was imported from a peer.
-            val ourDir = File(hostDir, ourDeviceId)
-            if (!ourDir.isDirectory) continue
-
-            val safHostDir = findOrCreateSafDirectory(safDir, hostDir.name, counts) ?: continue
-            val safDeviceDir = findOrCreateSafDirectory(safHostDir, ourDeviceId, counts) ?: continue
-            mirrorDirectory(ourDir, safDeviceDir, counts)
+        val hostname = getDeviceName()
+        val ourDir = File(File(syncDir, hostname), ourDeviceId)
+        if (!ourDir.isDirectory) {
+            // Nothing has been pushed under this hostname yet; the next push creates it.
+            Log.i(TAG, "SAF export: nothing to export at $hostname/$ourDeviceId")
+            return
         }
-        Log.i(TAG, "SAF export: copied=${counts[0]} skipped=${counts[1]} → $uriStr")
+        if (!cancelRequested) {
+            val safHostDir = findOrCreateSafDirectory(safDir, hostname, counts)
+            val safDeviceDir = safHostDir?.let { findOrCreateSafDirectory(it, ourDeviceId, counts) }
+            if (safDeviceDir != null) mirrorDirectory(ourDir, safDeviceDir, counts)
+        }
+        Log.i(
+            TAG,
+            "SAF export: $hostname/$ourDeviceId copied=${counts[0]} skipped=${counts[1]} → $uriStr"
+        )
     }
 
     /**
