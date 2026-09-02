@@ -16,8 +16,9 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> **Sync does not work at all**, for four independent reasons documented in
-> [`03_SYNC.md`](03_SYNC.md). Nothing else can be built or tested until Phase 1 closes them.
+> **Sync does not work at all**, for **five** independent reasons documented in
+> [`03_SYNC.md`](03_SYNC.md). Fixes for four of them are **written but never compiled** — CI is the
+> next action. Nothing else can be built or tested until Phase 1 closes them.
 
 ---
 
@@ -73,6 +74,11 @@ take it from here.**
 | **D15** | Contention under **60 seconds** is ignored, not shaded | Walking between devices makes seconds-long overlaps; shading them all would train the owner to ignore shading entirely. Owner's call, exposed as a setting | [`07`](07_OPEN_QUESTIONS.md) Q1 |
 | **D16** | A usable phone UI is a **correctness requirement**, not polish | Content is currently cut off *and* unreachable (zoom is disabled) — an unusable UI makes a correct merge worthless | [`01`](01_REQUIREMENTS_AND_RULES.md) R30–R34 |
 | **D17** | The WebView viewport fix is sequenced **early (1.6)**, not in the UI phase | Handful of lines, independent of sync, makes two-device verification easier — and measures how much of the UI problem is anything else | [`02`](02_ARCHITECTURE.md) §7.1 |
+| **D18** | Device identity is **aw-server's existing UUID**, read over JNI — not a second one minted in Kotlin | `setup_local_remote` already names the device directory from `info.device_id`, and `aw-server/src/device_id.rs` already persists a UUID v4. **Supersedes the Kotlin half of D8**, whose intent it satisfies. A locally minted UUID would have needed a permanent mapping to the server's, and Phase 2's `devices/<uuid>/` would key on a different value than the `.db` directory beside it | [`03`](03_SYNC.md) §2.3 |
+| **D19** | Upstream fixes are **ported by hand, never cherry-picked**, when they touch `aw-sync/` or `SyncInterface.kt` | `aw-android#249` fixes a bug we have, but its Kotlin declares a `setDataDir` JNI symbol this fork does not export → `UnsatisfiedLinkError`. Their call sites do not always exist here | [`06`](06_ROADMAP.md) Upstream maintenance |
+| **D20** | The blocker list is **open until 1.5 is green**, not closed at five | Four were found by reading source; the fifth — and the most decisive — was found only by reading *upstream's* commits. Reasoning from source has already missed one | [`03`](03_SYNC.md) §2.5 |
+| **D21** | **Type-check locally, build in CI.** Kotlin + host-target Rust run on this machine; APKs stay in Actions | The compile-error round-trip was the estimate's dominant cost and it is now ~95s instead of ~30min. Building the APK locally is a different proposition — cross-compiling OpenSSL for Android from Windows fails, as upstream's own `build.gradle` note says. **Qualifies R4/D14 rather than overturning it** | [`02`](02_ARCHITECTURE.md) §5.1 |
+| **D22** | `android.rs` is **CI-verified only**, and a green local check must never be read as covering it | It is `#[cfg(target_os = "android")]`, so the host check skips it *silently* — the dangerous kind of gap. The JNI layer is where 1.0 and 1.1 live | [`02`](02_ARCHITECTURE.md) §5.1 |
 
 ---
 

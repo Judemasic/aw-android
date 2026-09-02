@@ -352,6 +352,15 @@ class WebUIFragment : Fragment() {
 
         myWebView.settings.javaScriptEnabled = true
         myWebView.settings.domStorageEnabled = true
+        // aw-webui declares <meta name="viewport" content="width=device-width">, but the WebView
+        // ignores it unless useWideViewPort is on -- it defaults to false. Without these the page
+        // is laid out at desktop width and cut off, and because zoom is also disabled the cut-off
+        // content is unreachable rather than merely awkward (R30-R32).
+        myWebView.settings.useWideViewPort = true
+        myWebView.settings.loadWithOverviewMode = true
+        myWebView.settings.setSupportZoom(true)
+        myWebView.settings.builtInZoomControls = true
+        myWebView.settings.displayZoomControls = false
         myWebView.addJavascriptInterface(WebAppInterface(::queueExport), "Android")
         arguments?.let {
             it.getString(ARG_URL)?.let { it1 -> myWebView.loadUrl(it1) }

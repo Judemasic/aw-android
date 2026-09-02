@@ -1,8 +1,13 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** Phase 1, Step 1.1. Sync is dead and nothing else can be built or even tested
-> until it works. Do not start the combined timeline first — it has no multi-device data to operate
-> on and no way to prove it is right.
+> **👉 START HERE:** **Run a CI build.** Steps 1.0–1.3 and 1.6 are written but have never been
+> compiled, let alone run — a local build is not possible (R4), so CI is the first check any of
+> them get. Push `aw-server-rust@beta` **first** ([`02`](02_ARCHITECTURE.md) §5, cache trap), then
+> the submodule pointer, then build. After that: **1.4**, then **1.5**.
+>
+> Sync is dead and nothing else can be built or even tested until it works. Do not start the
+> combined timeline first — it has no multi-device data to operate on and no way to prove it is
+> right.
 
 **How to work this document:** do one step, run its check, stop. Then update the step in place —
 mark it `✅ DONE (date)`, write a **Result** saying what is *actually true now*, and flag with ⚠️
@@ -12,28 +17,79 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 
 ## Phase 1 — Make sync work *(blocking everything)*
 
-Fixes the four blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is
-what has to be true before any feature exists.
+Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
+has to be true before any feature exists.
 
-### 1.1 — Unique device identity ⬜
-Replace `SyncInterface.getDeviceId()` with a `UUID.randomUUID()` minted once and persisted in
-`AWPreferences` (`device_uuid`). Add the restore guard from [`05`](05_DATA_MODEL.md) §7.
-**Check:** two devices report two different UUIDs in logcat. *(R22)*
+> **Status 2026-09-02:** 1.0–1.3 and 1.6 are written and now **compile-checked locally**, except
+> `android.rs` — see [`02`](02_ARCHITECTURE.md) §5.1 and **D22**. Nothing has run on a device.
+> Next: a CI build (which is the only check `android.rs` gets), then 1.4, then 1.5.
+>
+> | Step | Compiles | How |
+> |---|---|---|
+> | 1.0 | ❌ not checked | `android.rs` — CI only |
+> | 1.1 | ⚠️ Kotlin only | `resolveDeviceId()` ✅; its JNI counterpart in `android.rs` ❌ |
+> | 1.2 | ✅ | `cargo check` host |
+> | 1.3 | ✅ | `cargo check` host |
+> | 1.6 | ✅ | `compileDebugKotlin` |
 
-### 1.2 — Fix the push/pull depth mismatch ⬜
-In `sync_wrapper.rs`, drop the `_staging` level — push to `<sync>/<hostname>/` and let
-`setup_local_remote` create `<device_id>/`. Delete the unused `device_id` local in
-`pull_from_hostname`.
-**Check:** after a sync, `<sync>/<host>/<uuid>/test.db` exists at exactly that depth, and
-`get_remotes()` returns a non-empty list.
+### 1.0 — Forward the API key from the JNI client ✅ DONE 2026-09-02 ⚠️ *unverified*
+Blocker 5, found while checking upstream drift and **upstream of all the others** — without it push
+obtains no bucket data at all, so no `.db` can appear whatever the layout is.
 
-### 1.3 — Pull every database, never the largest ⬜
-Remove the `max_by_key(len)` selection; iterate all discovered dbs.
+In `aw-sync/src/android.rs::get_client()`: call `apply_android_data_dir_from_env()` (ported from
+upstream, recovers filesDir from `XDG_DATA_HOME`; no new JNI symbol), then build the client with
+`AwClient::new_with_api_key()` using `util::get_server_config()`.
+
+**Result:** `get_client` now sets the android data dir and forwards `[auth].api_key`.
+⚠️ **Not compile-checked** — `android.rs` needs the android target (D22); CI is its first check. **Check:** no `401` from `GET /api/0/buckets` in logcat during a sync, and
+`using API key from config.toml for local client` appears at info level.
+
+> **Do not cherry-pick `aw-android#249`** to get this — see the warning in
+> [`03_SYNC.md` §2.5](03_SYNC.md).
+
+### 1.1 — Unique device identity ✅ DONE 2026-09-02 ⚠️ *unverified*
+**Rewritten from the original step** — see the correction box in
+[`03_SYNC.md` §2.3](03_SYNC.md). `aw-server` already mints a persisted `Uuid::new_v4()`, and it is
+that id — not Kotlin's — that names the device directory. So rather than minting a second one:
+
+- `aw-sync/src/android.rs` exports `SyncInterface.getDeviceId(port)`, returning
+  `client.get_info().device_id`.
+- `SyncInterface.kt` replaces the old installer-package/`Build.FINGERPRINT` hash with
+  `resolveDeviceId()`, which calls that and caches the result. Null means *not known yet*, never
+  *mint a new one*.
+
+**Result:** one identity across Kotlin and Rust, matching the `.db` path already on disk.
+⚠️ Kotlin side compiles; the `android.rs` JNI export is **not compile-checked** (D22). Not run. **Check:** two devices log two different UUIDs, and each matches its own
+directory name under `<sync>/<hostname>/`. *(R22)*
+
+> **Still owed:** the restore guard from [`05`](05_DATA_MODEL.md) §7. It now applies to
+> aw-server's `device_id` file, which an app backup clones just as readily. Do it in Phase 2 with
+> `meta.json`, which is what the guard compares against.
+
+### 1.2 — Fix the push/pull depth mismatch ✅ DONE 2026-09-02 ⚠️ *unverified*
+Dropped the `_staging` level in `push_with_hostname_and_device_id`; it now pushes to
+`<sync>/<hostname>/` and lets `setup_local_remote` create `<device_id>/`. The `device_id` argument
+is now log-only (documented in place).
+
+**Result:** push and `get_remotes()` agree on `./{host}/{device_id}/*.db`.
+✅ Compiles (`cargo check` host). Not run. **Check:** after a sync, `<sync>/<host>/<uuid>/test.db` exists at exactly that
+depth, and `get_remotes()` returns a non-empty list.
+
+### 1.3 — Pull every database, never the largest ✅ DONE 2026-09-02 ⚠️ *unverified*
+Replaced `max_by_key(len)` in `sync_wrapper.rs::pull()` with iteration over all discovered dbs, and
+deleted the unused `device_id` local in `pull_from_hostname`.
+
+**Result:** no path selects a single db by size.
+✅ Compiles (`cargo check` host); `sync_wrapper.rs` is now warning-free. Not run. **Note:** this was **half-satisfied already** — Android's multi-device path is
+`pull_all_from_all_hostnames` → `pull_from_hostname`, which already iterated every db. The
+`max_by_key` was only on the legacy `pull()` path reached via `syncPullAll`. Blocker 4 was
+therefore real but not on the live path, which lowers its share of the original symptom.
 **Check:** no `"choosing largest db"` in logs with three dbs present. *(R19)*
 
 ### 1.4 — Bidirectional SAF mirror ⬜ ← *the important one*
 Add the import pass: SAF `devices/<other>/` → app-private staging, for **every directory except
 our own**. Keep export restricted to our own directory. Copy before opening. *(R21, R24)*
+Use `resolveDeviceId()` from 1.1 to decide which directory is ours.
 **Check:** peer `.db` files appear in app-private storage after a sync.
 
 ### 1.5 — Two-device end-to-end verification ⬜
@@ -41,32 +97,21 @@ Run the full procedure in [`03_SYNC.md` §5](03_SYNC.md).
 **Check:** device A displays a bucket only device B could have produced.
 
 > **Phase 1 is not done until 1.5 passes on real hardware.** Everything downstream assumes
-> cross-device data actually arrives; a green build proves nothing here.
+> cross-device data actually arrives; a green build proves nothing here. Five blockers have now
+> been found by reading source, and the fifth was found only because upstream had already hit it —
+> so do not treat the list as closed until 1.5 is green.
 
-### 1.6 — WebView viewport quick fix ⬜ *(independent of the rest of Phase 1)*
-In `WebUIFragment.onCreateView`, alongside the existing two settings:
-
-```kotlin
-settings.useWideViewPort = true        // honour the page's <meta viewport> — currently ignored
-settings.loadWithOverviewMode = true   // fit the page to the screen on load
-settings.setSupportZoom(true)          // escape hatch for anything still cut off
-settings.builtInZoomControls = true
-settings.displayZoomControls = false   // pinch-zoom, but no ugly on-screen +/− buttons
-```
+### 1.6 — WebView viewport quick fix ✅ DONE 2026-09-02 ⚠️ *unverified*
+Added to `WebUIFragment.onCreateView`: `useWideViewPort`, `loadWithOverviewMode`, `setSupportZoom`,
+`builtInZoomControls`, and `displayZoomControls = false`.
 
 Rationale in [`02_ARCHITECTURE.md` §7.1](02_ARCHITECTURE.md) — `useWideViewPort` defaults to
-`false`, so `aw-webui`'s perfectly good mobile viewport tag is being discarded today.
-*(R32)*
+`false`, so `aw-webui`'s perfectly good mobile viewport tag was being discarded. *(R32)*
 
-**Check:** the dashboard fits the screen width on load, and anything still oversized can at least be
-reached by pinch-zooming.
-
-> **Sequenced here deliberately.** It is a handful of lines, it is independent of the sync work, and
-> step 1.5 requires *reading data off the screen on two phones* — which is materially easier if the
-> UI is not cut off. It also measures how much of the UI problem is Layer 1 versus Layer 2 before
-> committing effort to Phase 5.
-
----
+**Result:** the WebView now honours the page's viewport and permits pinch-zoom.
+✅ Compiles (`compileDebugKotlin`). Not run. **Check:** the dashboard fits the screen width on load, and anything still
+oversized can at least be reached by pinch-zooming. **Record what remains** — that list is the
+input to Q8 and decides how large Phase 5 is.
 
 ## Phase 2 — Shared state
 
@@ -172,7 +217,30 @@ way to reach Sync settings** — the navigation drawer is unreliable on modern A
 
 ## Upstream maintenance
 
-Both repos are forks of active projects.
+Both repos are forks of active projects. **This is not optional overhead — it found Blocker 5.**
+Upstream had already hit the same 401 and fixed it; reading their commits was cheaper than another
+device-debug cycle would have been.
+
+> **One-time setup (done 2026-09-02).** Neither clone had an `ActivityWatch` remote, so the
+> commands below could not run as written. Added in both repos:
+> ```bash
+> git remote add ActivityWatch https://github.com/ActivityWatch/aw-android.git      # in aw-android
+> git remote add ActivityWatch https://github.com/ActivityWatch/aw-server-rust.git  # in the submodule
+> ```
+
+**Drift as of 2026-09-02:** `aw-android` is **7 behind / 13 ahead**; `aw-server-rust` is
+**1 behind / 4 ahead** (the one commit is an `aw-webui` bump — relevant to Phase 5, not Phase 1).
+The collision surface is small and surgical: `SyncInterface.kt`, `SyncScheduler.kt`, `build.yml`,
+`.gitmodules`, and `aw-sync/`. Docs collide with nothing.
+
+> ⚠️ **`aw-android#249` is a trap, not a gift.** It fixes the same 401 as step 1.0, but its Kotlin
+> half declares `private external fun setDataDir(path: String)`, requiring a JNI symbol this fork
+> does not export → `UnsatisfiedLinkError` at load. Step 1.0 takes the fix by the `XDG_DATA_HOME`
+> route instead, which needs no new symbol. **Skip `#249` when merging; do not cherry-pick it.**
+
+**Cost:** budget **2–6 sessions across the project**. This tax scales with *calendar* time, not
+with session count — an idle month still drifts a month — which is a real argument for working in
+concentrated stretches rather than spreading them out.
 
 **Weekly:** check upstream PRs/issues on `ActivityWatch/aw-android` and
 `ActivityWatch/aw-server-rust` for anything touching `aw-sync/` or `SyncInterface.kt`.
@@ -192,15 +260,69 @@ git merge ActivityWatch/master
 | `aw-sync/` internals | Manual review — our fixes must survive |
 | Their own sync/conflict work | Read carefully; may supersede ours |
 | `SyncInterface.kt` / `build.yml` | Manual — verify JNI symbols still line up |
+| A fix for a bug we also have | **Read the diagnosis, port the fix by hand.** Their call sites may not exist here |
 
 After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ([`02`](02_ARCHITECTURE.md) §5).
-
 ---
 
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (later still) — Local type-checking set up; 1.2/1.3/1.6 now compile-verified
+**R4's premise was partly wrong.** The machine already had JDK 21, the Android SDK with platform
+36, MSVC 14.44, and **NDK `28.2.13676358` — the exact version `build.yml` pins**. Only Rust was
+missing (~400 MB). Details and the full table in [`02`](02_ARCHITECTURE.md) §5.1;
+`scripts/check-local.sh` runs both checks.
+
+- **Kotlin** — `./gradlew :mobile:compileDebugKotlin` → BUILD SUCCESSFUL in 1m 12s. **1.1 and 1.6
+  compile.** Needs no Rust: `cargoBuild` is not wired into the Gradle build.
+- **Rust (host)** — `cargo check -p aw-sync --lib` → 24.75s. **1.2 and 1.3 compile.** It also found
+  a stale `sync_datastores` import in `sync_wrapper.rs` (pre-existing), now removed;
+  `sync_wrapper.rs` is warning-free. The 5 remaining warnings are host-only dead code in `util.rs`
+  for functions `android.rs` and `main.rs` use.
+
+⚠️ **`android.rs` is still unchecked, so steps 1.0 and 1.1's JNI half remain unverified** — it is
+`#[cfg(target_os = "android")]`, which the host check skips **silently**. Checking it needs the
+android target, which needs a from-source OpenSSL build, which does not work on Windows: OpenSSL's
+`Configure` rejects Strawberry perl for emitting Windows paths, while Git Bash's perl emits Unix
+paths but is missing core modules. Supplying the missing modules got `Configure` to pass fully;
+`make` then failed on `$(CROSS_COMPILE)$(CC)` joining without a separator (`binclang.exe`).
+Stopped there on purpose — `mobile/build.gradle` has upstream's own note, *"chokes on building
+openssl-sys"*, and CI must run before device testing anyway.
+
+**Net effect on the estimate:** the compile-error class of CI round-trip is now mostly gone for
+Kotlin and for non-JNI Rust. JNI errors still cost a full CI cycle.
+
+### 2026-09-02 (later) — Blocker 5 found; Blocker 3 corrected; 1.0–1.3 and 1.6 written
+Prompted by the question *"does the estimate account for upstream maintenance?"* — it did not, and
+checking produced two findings that mattered more than the number.
+
+**Configured the `ActivityWatch` remote in both repos.** It did not exist, so this document's own
+maintenance procedure had never been runnable. Drift: `aw-android` 7 behind, `aw-server-rust` 1.
+
+**Blocker 5 — the JNI client never sent the API key.** `android.rs::get_client()` used plain
+`AwClient::new()`, so every sync 401'd on `GET /api/0/buckets`, reported success, and moved
+nothing. This is **upstream of Blockers 1–4**: push never obtains bucket data, so no `.db` appears
+whatever the directory layout is. It is a regression this fork introduced — the multi-device
+rewrite of `android.rs` dropped the call sites while keeping the supporting helpers. Upstream hit
+the identical bug (`aw-android#247`) and fixed it in `#666`/`#249`. Fix ported by hand, not
+cherry-picked: `#249`'s Kotlin needs a `setDataDir` JNI symbol this fork does not export, which
+would have produced `UnsatisfiedLinkError` — the same failure as 2026-08-31.
+
+**Blocker 3 was misdiagnosed.** `getDeviceId()` is genuinely non-unique, but its value never named
+the device directory: `setup_local_remote` uses the *server's* `info.device_id`, and
+`aw-server/src/device_id.rs` already persists a `Uuid::new_v4()`. D8 was already satisfied one
+layer down. The Kotlin value's only consumer was the `_staging` directory that step 1.2 deletes.
+Rather than mint a competing second identity, Kotlin now reads the server's over JNI (**D18**).
+
+**Written, unbuilt:** 1.0, 1.1, 1.2, 1.3, 1.6. ⚠️ **None has been compiled or run.** No local
+toolchain exists by design (R4), so CI is the first check any of them get — that is the next action.
+
+Also worth recording: Blocker 4's `max_by_key` was only on the legacy `pull()` path; Android's
+multi-device path already iterated every db. Fixed anyway, but it explains less of the original
+symptom than the write-up implied.
 
 ### 2026-09-02 — Mobile UI added to scope; Q1 and Q5 settled
 Owner reported the UI is built for a PC — it scrolls sideways and content is cut off. Added as

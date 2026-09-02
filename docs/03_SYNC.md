@@ -18,7 +18,7 @@ independent blockers**. Fixing any three of them still yields nothing working.
 
 ---
 
-## 2. The four blockers
+## 2. The blockers
 
 ### 2.1 Blocker 1 — the mirror is one-way *(the architectural one)*
 
@@ -81,6 +81,29 @@ in the codebase already expects: `<host>/<device_id>/test.db`.
 
 ### 2.3 Blocker 3 — device IDs are not unique
 
+> ## ⚠️ CORRECTED 2026-09-02 — this blocker was misdiagnosed
+>
+> `getDeviceId()` really is non-unique, and everything below about *why* is accurate. But its
+> return value **never named the device directory**, so it was not causing data loss.
+>
+> `sync_run` → `setup_local_remote(path, device_id)` takes `device_id` from
+> **`client.get_info().device_id`** — the *server's* id, not the one Kotlin passes in. And
+> `aw-server/src/device_id.rs` already mints a persisted `Uuid::new_v4()` on first run and stores
+> it beside the datastore. **D8 was therefore already satisfied, one layer down.**
+>
+> The Kotlin value was consumed by exactly one thing: naming the `<device_id>_staging` directory
+> in §2.2 — the level Blocker 2's fix deletes. After that fix it had **no consumers at all**.
+>
+> **What was done instead of the fix below:** Kotlin now *reads* the server's UUID over JNI
+> (`SyncInterface.getDeviceId(port)` → `aw-sync/src/android.rs`) and caches it, rather than
+> minting a competing second identity. One device, one id, and it is the id the `.db` path on
+> disk already commits to. A locally minted UUID would have had to be mapped to the server's
+> forever, and Phase 2's `devices/<uuid>/` would have keyed on a *different* value than the
+> database directory beside it.
+>
+> **The restore hazard survives and still needs the guard from [`05`](05_DATA_MODEL.md) §7** — it
+> just applies to the server's `device_id` file, which an app backup would clone just as readily.
+
 `SyncInterface.getDeviceId()`:
 
 ```kotlin
@@ -133,7 +156,43 @@ When several devices share a hostname, everything but the largest file is **sile
 
 ---
 
-### 2.5 Also noted
+### 2.5 Blocker 5 — the JNI client never sent the API key *(found 2026-09-02; upstream of all the others)*
+
+`aw-sync/src/android.rs::get_client()` built its client with plain `AwClient::new()`:
+
+```rust
+fn get_client(port: i32) -> Result<AwClient, String> {
+    let host = "127.0.0.1";
+    AwClient::new(host, port as u16, "aw-sync-android")   // no API key
+}
+```
+
+The embedded server enables API-key auth whenever `config.toml` carries `[auth].api_key`, and
+`AWPreferences.isDashboardAuthEnabled()` **defaults to `true`** — so a key exists from first run.
+Every JNI sync call therefore hit `GET /api/0/buckets` unauthenticated and got **401**.
+
+> **Consequence:** sync ran, reported success, and transferred **nothing**. This happens *before*
+> Blockers 1–4 can matter — push never obtains any bucket data to write, so no `.db` is produced
+> regardless of what the directory layout looks like. This, not hostname migration, is the most
+> direct explanation of the original symptom in §1.
+
+**This is a regression this fork introduced.** Upstream fixed it in `aw-server-rust#666` /
+`aw-android#249`, and this fork *has* the supporting pieces — `util::get_server_config()` reads
+`[auth].api_key`, and `dirs::files_dir_from_xdg_data_home()` recovers the app's filesDir. The
+rewrite of `android.rs` for multi-device sync simply dropped the **call sites**.
+
+**Fix:** restore both in `get_client()` — call `apply_android_data_dir_from_env()` so the config is
+read from the right directory, then pass the key via `AwClient::new_with_api_key()`.
+
+> ⚠️ **Do not cherry-pick `aw-android#249` to get this.** Its Kotlin half declares
+> `private external fun setDataDir(path: String)`, which requires a JNI symbol this fork's
+> `android.rs` does not export — an `UnsatisfiedLinkError` at load, the same failure class as
+> 2026-08-31. The `XDG_DATA_HOME` route used here needs no new symbol, and upstream's own comment
+> says it is the intended fallback for Kotlin that does not call `setDataDir`.
+
+---
+
+### 2.6 Also noted
 
 - `pull_from_hostname()` computes a `device_id` local and never uses it — dead code, remove.
 - `fix_hostname_migration.md` (now deleted) chased hostname migration as the cause of the missing

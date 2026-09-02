@@ -40,6 +40,9 @@ class SyncInterface(context: Context) {
      * window to at most the file currently being written when cancellation is requested.
      */
     @Volatile private var cancelRequested = false
+
+    /** Cached result of [resolveDeviceId]; reading it costs an HTTP round-trip to the server. */
+    @Volatile private var cachedDeviceId: String? = null
     
     init {
         syncDir = resolveSyncDirectory(context).absolutePath
@@ -85,27 +88,48 @@ class SyncInterface(context: Context) {
     // New pull-from-all-hostnames function (Phase 1)
     private external fun syncPullAllFromAllHostnames(port: Int): String
     
+    // This device's identity, read from the running server rather than minted locally.
+    // Returns {"success": true, "device_id": ..., "hostname": ...}.
+    private external fun getDeviceId(port: Int): String
+    
     external fun getSyncDir(): String
     
     // Initialize logging for aw-sync native library
     private external fun awSyncInitLogging(verbosity: Int)
 
     /**
-     * Get a stable device identifier for this Android device.
-     * Falls back to android.os.Build fields if no reliable ID is available.
+     * This device's identity, as the embedded server sees it, or null if the server has not
+     * answered yet.
+     *
+     * `aw-server` mints a persisted UUID v4 on first run and `setup_local_remote` names this
+     * device's directory in the shared sync folder from that value -- so it is the identity the
+     * on-disk sync layout already commits to. Reading it here keeps Kotlin and Rust on a single
+     * identity rather than two that would have to be kept in correspondence forever.
+     *
+     * The previous implementation hashed the installer package name, which is null for every
+     * sideloaded install, and then fell back to `Build.FINGERPRINT` -- which identifies a *build*,
+     * not a device. Two same-model phones on the same OS version produced the same id.
+     *
+     * Null means "not known yet", never "mint a new one": a second identity for this device would
+     * split its history across two directories in the shared folder.
      */
-    private fun getDeviceId(): String {
-        val installerPackage = appContext.packageManager.getInstallerPackageName(appContext.packageName)
-        if (installerPackage != null && installerPackage != "com.google.android.instantapps.supervisor") {
-            // Google Play installs a unique install ID per device
-            val hashCode = installerPackage.hashCode().toString()
-            return "android_${hashCode.take(12)}"
+    private fun resolveDeviceId(): String? {
+        cachedDeviceId?.let { return it }
+        return try {
+            val json = JSONObject(getDeviceId(5600))
+            if (json.getBoolean("success")) {
+                json.getString("device_id").also {
+                    cachedDeviceId = it
+                    Log.i(TAG, "Device id: $it")
+                }
+            } else {
+                Log.w(TAG, "Could not read device id: ${json.optString("error")}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read device id: ${e.message}")
+            null
         }
-        
-        // Fallback: build fingerprint hash as deviceId
-        val fingerprint = android.os.Build.FINGERPRINT ?: "unknown_fingerprint"
-        val fingerprintHash = fingerprint.hashCode().toString()
-        return "android_${fingerprintHash.take(12)}"
     }
     
     private fun getDeviceName(): String {
@@ -132,7 +156,7 @@ class SyncInterface(context: Context) {
     // Async wrapper for Push with per-device staging (Phase 1)
     fun syncPushWithDeviceIdAsync(callback: (Boolean, String) -> Unit) {
         val hostname = getDeviceName()
-        val deviceId = getDeviceId()
+        val deviceId = resolveDeviceId() ?: "unknown"
         performSyncAsync("Push (device-specific)", callback) {
             syncPushWithDeviceId(5600, hostname, deviceId)
         }
@@ -166,7 +190,7 @@ class SyncInterface(context: Context) {
         }
         
         val hostname = getDeviceName()
-        val deviceId = getDeviceId()
+        val deviceId = resolveDeviceId() ?: "unknown"
         
         performSyncAsync(
             "Multi-Device Sync",

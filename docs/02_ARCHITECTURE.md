@@ -129,8 +129,43 @@ distinct cdylibs and **do not share process state**, which is why environment va
 > **stale `.so` files**. The symptom is `UnsatisfiedLinkError` for a function you can plainly see in
 > the source. **Always commit and push the Rust side before building.**
 
----
+### 5.1 Local type-checks *(added 2026-09-02)*
 
+**R4 said "do not attempt a local build" because no toolchain was set up. That premise was
+partly wrong** — the machine already had Android Studio's JDK 21, the SDK with platform 36, MSVC
+14.44, and **NDK `28.2.13676358`, the exact version `build.yml` pins**. Only Rust was missing.
+
+R4 still holds for **building an APK**. It does *not* hold for **type-checking**, which needs no
+NDK and no linking. Run `scripts/check-local.sh`:
+
+| Check | Command | Time | Covers |
+|---|---|---|---|
+| Kotlin | `./gradlew :mobile:compileDebugKotlin` | ~70s | all Kotlin |
+| Rust | `cargo check -p aw-sync --lib` | ~25s | `sync_wrapper.rs`, `dirs.rs`, `util.rs`, `sync.rs` |
+
+Kotlin needs no Rust at all: `cargoBuild` is deliberately **not** wired into the Gradle build
+(`mobile/build.gradle`), so Kotlin compiles without any `.so` present.
+
+> ⚠️ **`android.rs` is NOT covered.** It sits behind `#[cfg(target_os = "android")]`
+> (`aw-sync/src/lib.rs`), so the host check **skips it silently** — a green local run says nothing
+> about the JNI layer, which is where steps 1.0 and 1.1 live.
+>
+> Checking it needs `--target aarch64-linux-android`, which is currently **not possible on
+> Windows**. `aw-server/Cargo.toml` pulls `openssl-sys` with `vendored` for the android target, so
+> the check must build OpenSSL 3.5.1 from source, and that needs a Unix-shaped perl:
+> Strawberry perl has the modules but `Configure` rejects it (*"doesn't produce Unix like paths"*);
+> Git Bash's perl produces Unix paths but is a stripped build missing core modules. Supplying the
+> missing pure-perl modules gets `Configure` to pass completely; `make` then dies on OpenSSL's
+> `$(CROSS_COMPILE)$(CC)` joining without a separator (`.../bin` + `clang.exe` → `binclang.exe`).
+>
+> Investigated 2026-09-02 and **stopped there deliberately** — `mobile/build.gradle` carries the
+> upstream maintainers' own note, *"Doesn't work, chokes on building openssl-sys."* CI covers
+> `android.rs`, and CI has to run before device testing regardless.
+
+**These checks prove compilation, nothing more.** They do not link, produce `.so` files, build an
+APK, or show that sync works. Only two real devices do that (roadmap 1.5).
+
+---
 ## 7. The mobile UI problem
 
 > **Symptom:** the UI is laid out for a PC. It scrolls left and right, and a lot of it is cut off
