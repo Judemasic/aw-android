@@ -16,10 +16,14 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> **Sync does not work at all**, for **six** independent reasons in [`03_SYNC.md`](03_SYNC.md).
-> **Blocker 6 sat underneath them all** — `SyncInterface`'s constructor threw
-> `UnsatisfiedLinkError`, so the sync scheduler disabled itself and *no sync code ever ran*, making
-> Blockers 1–5 unobservable. Fixes for five are written; only 1.6 is verified on a device.
+> **Sync works one-way, for the first time.** Six blockers were found
+> ([`03_SYNC.md`](03_SYNC.md)); **five are fixed and verified on hardware**. A device now writes
+> `<sync>/<hostname>/<device_id>/test.db` and the SAF mirror copies it into the Syncthing folder —
+> the original symptom is gone.
+>
+> **What remains is Blocker 1, the architectural one:** the mirror is **export-only**, so a device
+> still cannot *read* another device's data. That is step **1.4**, and it is now the single thing
+> between here and real multi-device sync.
 
 ---
 

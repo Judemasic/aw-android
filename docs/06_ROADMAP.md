@@ -32,7 +32,7 @@ has to be true before any feature exists.
 > | 1.3 | ✅ | `cargo check` host |
 > | 1.6 | ✅ | `compileDebugKotlin` |
 
-### 1.0a — Export the logging init under its JNI name ✅ DONE 2026-09-02 ⚠️ *awaiting rebuild*
+### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
 before any sync code could run, which is why Blockers 1–5 were never observable.
 
@@ -46,7 +46,7 @@ signature `(JNIEnv, JClass, i32)`.
 ⚠️ Not yet rebuilt or run. **Check:** no `aw-sync native library unavailable` in logcat, and
 `SyncInterface` initialises.
 
-### 1.0b — Forward the API key from the JNI client ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.0b — Forward the API key from the JNI client ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 5, found while checking upstream drift and **upstream of all the others** — without it push
 obtains no bucket data at all, so no `.db` can appear whatever the layout is.
 
@@ -55,13 +55,13 @@ upstream, recovers filesDir from `XDG_DATA_HOME`; no new JNI symbol), then build
 `AwClient::new_with_api_key()` using `util::get_server_config()`.
 
 **Result:** `get_client` now sets the android data dir and forwards `[auth].api_key`.
-⚠️ **Not compile-checked** — `android.rs` needs the android target (D22); CI is its first check. **Check:** no `401` from `GET /api/0/buckets` in logcat during a sync, and
+✅ **Verified on device 2026-09-02:** `using API key from config.toml for local client` and `android data dir from XDG_DATA_HOME: /data/user/0/.../files`. No 401; the sync moved 475 events. **Check:** no `401` from `GET /api/0/buckets` in logcat during a sync, and
 `using API key from config.toml for local client` appears at info level.
 
 > **Do not cherry-pick `aw-android#249`** to get this — see the warning in
 > [`03_SYNC.md` §2.5](03_SYNC.md).
 
-### 1.1 — Unique device identity ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.1 — Unique device identity ✅ VERIFIED ON DEVICE 2026-09-02
 **Rewritten from the original step** — see the correction box in
 [`03_SYNC.md` §2.3](03_SYNC.md). `aw-server` already mints a persisted `Uuid::new_v4()`, and it is
 that id — not Kotlin's — that names the device directory. So rather than minting a second one:
@@ -73,20 +73,20 @@ that id — not Kotlin's — that names the device directory. So rather than min
   *mint a new one*.
 
 **Result:** one identity across Kotlin and Rust, matching the `.db` path already on disk.
-⚠️ Kotlin side compiles; the `android.rs` JNI export is **not compile-checked** (D22). Not run. **Check:** two devices log two different UUIDs, and each matches its own
+✅ **Verified on device 2026-09-02:** the tablet reported `7b54cfe9-ec39-4ec3-934c-67c81111d8e7`, a server-minted UUID v4, and it named the device directory in the shared folder. **Check:** two devices log two different UUIDs, and each matches its own
 directory name under `<sync>/<hostname>/`. *(R22)*
 
 > **Still owed:** the restore guard from [`05`](05_DATA_MODEL.md) §7. It now applies to
 > aw-server's `device_id` file, which an app backup clones just as readily. Do it in Phase 2 with
 > `meta.json`, which is what the guard compares against.
 
-### 1.2 — Fix the push/pull depth mismatch ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.2 — Fix the push/pull depth mismatch ✅ VERIFIED ON DEVICE 2026-09-02
 Dropped the `_staging` level in `push_with_hostname_and_device_id`; it now pushes to
 `<sync>/<hostname>/` and lets `setup_local_remote` create `<device_id>/`. The `device_id` argument
 is now log-only (documented in place).
 
 **Result:** push and `get_remotes()` agree on `./{host}/{device_id}/*.db`.
-✅ Compiles (`cargo check` host). Not run. **Check:** after a sync, `<sync>/<host>/<uuid>/test.db` exists at exactly that
+✅ **Verified on device 2026-09-02:** `Creating new database file: .../sync/jude_s_tab_s10_fe/7b54cfe9-.../test.db` — exactly `<hostname>/<device_id>/test.db`, no `_staging`. **Check:** after a sync, `<sync>/<host>/<uuid>/test.db` exists at exactly that
 depth, and `get_remotes()` returns a non-empty list.
 
 ### 1.3 — Pull every database, never the largest ✅ DONE 2026-09-02 ⚠️ *unverified*
@@ -330,6 +330,40 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (late) — Sync runs for the first time; five of six blockers verified on hardware
+The Blocker 6 fix landed and `SyncInterface` constructed successfully for the first time. The very
+next scheduled sync produced, in one run:
+
+```
+android data dir from XDG_DATA_HOME: /data/user/0/net.activitywatch.android.debug/files
+using API key from config.toml for local client
+Creating new database file: .../sync/jude_s_tab_s10_fe/7b54cfe9-.../test.db
+= Synced 431 new events        (aw-watcher-android)
+= Synced 44 new events         (aw-watcher-android-unlock)
+Multi-Device Sync completed: success=true
+SAF mirror: copied=1 skipped=0 → content://.../primary%3AActivityWatch-sync
+```
+
+**The original symptom is gone.** `/storage/emulated/0/ActivityWatch-sync/jude_s_tab_s10_fe/
+7b54cfe9-ec39-4ec3-934c-67c81111d8e7/test.db`, 114,688 bytes, 475 real events.
+
+Verified on device: **1.0a** (scheduler starts, no `UnsatisfiedLinkError`), **1.0b** (API key
+forwarded, data dir resolved — no 401), **1.1** (`7b54cfe9-…`, a server-minted UUID v4, naming the
+device directory exactly as **D18** predicted), **1.2** (`<hostname>/<device_id>/test.db`, no
+`_staging`). **1.6** was verified earlier on the phone.
+
+Every fix that was reasoned from source turned out to be correct. What made them invisible for two
+days was Blocker 6 — a JNI symbol name — sitting underneath all of them.
+
+⚠️ **Not yet proven: 1.3.** Pulling every database needs more than one database present, which needs
+1.4. ⚠️ **Blocker 1 remains and is now the only architectural gap:** the SAF mirror is
+**export-only**, so a device still cannot read a peer's data. That is **1.4**, and it is the one
+thing standing between here and real multi-device sync.
+
+Also this session: debug signing fixed (the in-place upgrade preserved `syncEnabled` and the SAF
+`syncDirUri`, proving it), and the `Co-Authored-By` trailers were stripped from `beta` in both
+repos at the owner's request — `master` and the upstream commit `928814f` deliberately untouched.
 
 ### 2026-09-02 (night) — Blocker 6 found on device: sync never ran at all
 The tablet's logcat, on the first install of a working build:
