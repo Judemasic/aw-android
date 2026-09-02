@@ -26,6 +26,25 @@ android {
         //    doNotStrip '**/*.so'
         //}
     }
+    signingConfigs {
+        // A FIXED debug keystore, committed on purpose.
+        //
+        // Without this, Gradle signs debug builds with the auto-generated
+        // ~/.android/debug.keystore of whatever machine built them. GitHub Actions runners
+        // are ephemeral, so every CI build got a DIFFERENT key, and installing a new build
+        // over an old one failed with INSTALL_FAILED_UPDATE_INCOMPATIBLE — meaning every
+        // device test cost an uninstall and wiped the app's collected history.
+        //
+        // A debug keystore is not a secret: the password is the Android-wide default, the
+        // cert is self-signed, and debug-signed APKs carry the `.debug` applicationId suffix
+        // so they can never be published or upgrade the release app.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -36,6 +55,7 @@ android {
         }
         debug {
             applicationIdSuffix ".debug"
+            signingConfig signingConfigs.debug
             jniDebuggable true
             renderscriptDebuggable true
             // Limit debug APK to modern ABIs used by CI emulators and physical devices.

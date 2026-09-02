@@ -270,6 +270,31 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 
 *Newest first.*
 
+### 2026-09-02 (evening) — First green build; debug signing fixed
+Build [33665149124](https://github.com/Judemasic/aw-android/actions/runs/33665149124) is **green** —
+all jobs, including `Test` and `Test E2E`. The first attempt failed on a stray `}` in `android.rs`
+from an unbalanced edit, in exactly the file local checks cannot reach; now guarded by a rustfmt
+parse pass (`scripts/check-local.sh syntax`), which reproduces CI's message in under a second.
+
+**Installing it revealed a bigger problem than the build.** `INSTALL_FAILED_UPDATE_INCOMPATIBLE` —
+`mobile/build.gradle`'s `debug` block had no `signingConfig`, so every ephemeral CI runner signed
+with its own generated key. Every device test therefore required an uninstall, wiping collected
+history. Fixed with a committed debug keystore ([`02`](02_ARCHITECTURE.md) §5.2, **D23**). The
+failed install was **non-destructive** — nothing was removed.
+
+**Two design assumptions confirmed on real hardware**, read out of the tablet's app-private storage
+via `run-as`:
+- `files/device_id` = `f64bb5bb-…` — a genuine `Uuid::new_v4()`, exactly as **D18** assumed. The
+  server-owned identity is real, and minting a second one in Kotlin would have been wrong.
+- `files/config.toml` carries `[auth].api_key`. **Blocker 5 is confirmed live**: an API key is set,
+  and the old `get_client` sent none, so it was certainly 401ing. Diagnosed from source, now proven
+  from the device.
+
+Tablet data backed up to `C:/dev/aw-backups/` (774 KB) before any of this. ⚠️ Note the WAL held
+**725 KB against a 4 KB `sqlite.db`** — a backup that copies only `sqlite.db` loses almost everything.
+
+⚠️ Still nothing verified *running*: the new APK is not yet installed on any device.
+
 ### 2026-09-02 (later still) — Local type-checking set up; 1.2/1.3/1.6 now compile-verified
 **R4's premise was partly wrong.** The machine already had JDK 21, the Android SDK with platform
 36, MSVC 14.44, and **NDK `28.2.13676358` — the exact version `build.yml` pins**. Only Rust was

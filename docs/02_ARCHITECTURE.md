@@ -166,6 +166,49 @@ Kotlin needs no Rust at all: `cargoBuild` is deliberately **not** wired into the
 APK, or show that sync works. Only two real devices do that (roadmap 1.5).
 
 ---
+
+### 5.2 Debug signing *(fixed 2026-09-02)*
+
+`mobile/build.gradle` commits a **fixed debug keystore** (`mobile/debug.keystore`) and points the
+`debug` build type at it.
+
+Before this, the `debug` block set `applicationIdSuffix` but **no `signingConfig`**, so Gradle fell
+back to the auto-generated `~/.android/debug.keystore` of whichever machine built the APK. GitHub
+Actions runners are ephemeral, so **every CI build was signed with a different key**, and every
+install over a previous build failed:
+
+```
+INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package
+net.activitywatch.android.debug signatures do not match newer version
+```
+
+The only way through was uninstall — which **wipes the app's collected history**. On a project whose
+entire purpose is preserving and merging that history, paying it once per device test was untenable.
+
+**Stable debug fingerprint** — a mismatch against this means the keystore changed, not the device:
+
+```
+SHA-256  07:34:CE:0A:81:15:6D:23:CE:96:42:F5:AB:A1:E9:D8:60:58:A6:A9:9C:05:39:F6:40:B8:95:9B:89:97:0C:DA
+SHA-1    96:13:B1:81:1B:54:48:D9:0E:3B:0E:D6:04:3E:81:81:A9:A1:9C:53
+```
+
+Committing it is deliberate and safe: the password is the Android-wide default (`android`), the cert
+is self-signed, and debug APKs carry the `.debug` `applicationId` suffix, so they can never be
+published or upgrade the release app. Release signing is unchanged — still `android.jks.age`,
+decrypted in CI from a secret.
+
+> **Rescuing app data without root.** The debug variant is debuggable, so `run-as` works:
+> ```bash
+> adb shell am force-stop net.activitywatch.android.debug   # consistent snapshot
+> adb exec-out "run-as net.activitywatch.android.debug tar -c \
+>   -C /data/data/net.activitywatch.android.debug files shared_prefs" > backup.tar
+> ```
+> Take **`sqlite.db`, `-wal` and `-shm` together** — the WAL held 725 KB against a 4 KB main db, so
+> copying `sqlite.db` alone loses essentially everything. `files/device_id` is the identity from
+> **D18**; restoring it keeps the device's history under one directory in the shared folder.
+> A SAF permission grant does **not** survive uninstall — the sync folder must be re-picked.
+
+---
 ## 7. The mobile UI problem
 
 > **Symptom:** the UI is laid out for a PC. It scrolls left and right, and a lot of it is cut off
