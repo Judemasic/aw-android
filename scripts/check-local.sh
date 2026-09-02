@@ -42,6 +42,7 @@
 #   scripts/check-local.sh            # both      (~95s)
 #   scripts/check-local.sh kotlin     # Kotlin    (~70s)
 #   scripts/check-local.sh rust       # Rust host (~25s)
+#   scripts/check-local.sh syntax     # parse-check cfg-gated files, incl. android.rs (~1s)
 
 set -euo pipefail
 
@@ -57,6 +58,26 @@ check_kotlin() {
         ./gradlew --no-daemon :mobile:compileDebugKotlin
 }
 
+
+check_syntax() {
+    echo "=== Rust syntax (cfg-gated files) ========================="
+    # rustfmt parses a file regardless of #[cfg], so it reaches android.rs where
+    # `cargo check` cannot. It catches SYNTAX errors only -- not type errors, not wrong
+    # JNI signatures. Added 2026-09-02 after a stray `}` in android.rs, introduced by a
+    # sed edit, cost a full ~25min CI cycle. rustfmt reproduces CI's exact message in <1s.
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cd "$REPO_ROOT/aw-server-rust"
+    local rc=0
+    for f in aw-sync/src/android.rs aw-sync/src/sync_wrapper.rs aw-sync/src/dirs.rs aw-sync/src/util.rs; do
+        printf '  %-30s ' "$f"
+        if rustfmt --edition 2021 --emit stdout "$f" >/dev/null 2>/tmp/aw-rustfmt.err; then
+            echo "ok"
+        else
+            echo "PARSE ERROR"; sed -n '1,4p' /tmp/aw-rustfmt.err; rc=1
+        fi
+    done
+    return $rc
+}
 check_rust() {
     echo "=== Rust (host target) ==================================="
     echo "NOTE: does not cover android.rs — see THE ANDROID GAP in this file."
@@ -68,8 +89,9 @@ check_rust() {
 case "${1:-all}" in
     kotlin) check_kotlin ;;
     rust)   check_rust ;;
-    all)    check_kotlin; check_rust ;;
-    *)      echo "usage: $0 [all|kotlin|rust]" >&2; exit 2 ;;
+    syntax) check_syntax ;;
+    all)    check_syntax; check_kotlin; check_rust ;;
+    *)      echo "usage: $0 [all|kotlin|rust|syntax]" >&2; exit 2 ;;
 esac
 
 echo

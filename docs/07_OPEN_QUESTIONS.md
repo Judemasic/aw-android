@@ -91,6 +91,13 @@ Revisit once Phase 1 shows what a cycle actually costs. Not worth deciding on sp
 
 **Blocks:** Phase 5.2.
 
+> **Data point (owner, 2026-09-02): the UI is already fine on the tablet.** So the problem is
+> **width-specific, not `aw-webui`-wide** — the layout works once there is enough of it. That
+> materially lowers the ceiling on this question: it points at narrow-viewport CSS (**A** or **B**)
+> and makes **C** very hard to justify, since the same Vue screens demonstrably render correctly at
+> tablet width. It also means 5.1's audit only needs to cover **phone portrait**.
+
+
 `aw-webui` is desktop-first ([`02`](02_ARCHITECTURE.md) §7.2). Once the cheap WebView viewport fix
 (Roadmap 1.6) has landed and the actual breakages are listed (5.1), pick a route:
 
