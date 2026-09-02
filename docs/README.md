@@ -16,14 +16,15 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> **Sync works one-way, for the first time.** Six blockers were found
-> ([`03_SYNC.md`](03_SYNC.md)); **five are fixed and verified on hardware**. A device now writes
+> **Sync works one-way on hardware; the other way is written but unproven.** Six blockers were
+> found ([`03_SYNC.md`](03_SYNC.md)); **five are fixed and verified on hardware**. A device writes
 > `<sync>/<hostname>/<device_id>/test.db` and the SAF mirror copies it into the Syncthing folder —
 > the original symptom is gone.
 >
-> **What remains is Blocker 1, the architectural one:** the mirror is **export-only**, so a device
-> still cannot *read* another device's data. That is step **1.4**, and it is now the single thing
-> between here and real multi-device sync.
+> **Blocker 1, the architectural one, is now fixed in code (step 1.4, 2026-09-02):** the mirror
+> imports every *other* device's directory back into app-private storage before each pull, and
+> exports only our own. ⚠️ **It has never run.** The next thing that matters is a CI build and then
+> **1.5** — two real devices — which is also the only way 1.3 and 1.4 can be proven at all.
 
 ---
 

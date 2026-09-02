@@ -22,6 +22,21 @@ independent blockers**. Fixing any three of them still yields nothing working.
 
 ### 2.1 Blocker 1 — the mirror is one-way *(the architectural one)*
 
+> ## ✅ FIXED 2026-09-02 — in code, not yet on a device
+> `SyncInterface.importPeerFilesFromSafDir()` adds the missing direction, and export is now
+> restricted to this device's own directory. Details in [`06` step 1.4](06_ROADMAP.md).
+> Two departures from the sketch below, both deliberate:
+>
+> - **No separate staging directory.** Peers are imported into `syncDir` itself, at the same
+>   `<hostname>/<device_id>/` path they occupy in the shared folder, because that is the tree
+>   `pull_all_from_all_hostnames` already walks. A copy anywhere else would be invisible to the
+>   engine, which only ever scans `AW_SYNC_DIR`.
+> - **The `devices/` layout of §3.1 is not used yet** — it arrives with `meta.json` in Phase 2.1.
+>   Today's shared folder is `<hostname>/<device_id>/`, and the import mirrors what is actually
+>   there.
+>
+> ⚠️ Unverified: no peer database has yet been imported on real hardware. That is roadmap 1.5.
+
 `SyncInterface.kt` sets `AW_SYNC_DIR` to the **app-private** directory
 (`getExternalFilesDir(null)/sync`). The Rust engine reads *and* writes there. After each sync,
 `copySyncFilesToSafDir()` copies **app-private → shared folder**.
@@ -315,14 +330,14 @@ the old plan.
 
 ## 4. Fix checklist
 
-| # | Fix | Where | Rule |
-|---|---|---|---|
-| 1 | Bidirectional SAF mirror — add the peer-import pass | `SyncInterface.kt` | R21 |
-| 2 | Drop the `_staging` level; push to `<host>/<device_id>/` | `sync_wrapper.rs` | — |
-| 3 | Persisted `UUID` device ID | `SyncInterface.kt`, `AWPreferences.kt` | R22 |
-| 4 | Pull from **every** db, never the largest | `sync_wrapper.rs` | R19 |
-| 5 | Import to app-private before opening | `SyncInterface.kt` | R24 |
-| 6 | Remove dead `device_id` local | `sync_wrapper.rs` | — |
+| # | Fix | Where | Rule | State |
+|---|---|---|---|---|
+| 1 | Bidirectional SAF mirror — add the peer-import pass | `SyncInterface.kt` | R21 | ✅ code, unverified |
+| 2 | Drop the `_staging` level; push to `<host>/<device_id>/` | `sync_wrapper.rs` | — | ✅ on device |
+| 3 | Persisted `UUID` device ID | `SyncInterface.kt`, `AWPreferences.kt` | R22 | ✅ on device *(as the server's UUID — see §2.3)* |
+| 4 | Pull from **every** db, never the largest | `sync_wrapper.rs` | R19 | ✅ code, unverified |
+| 5 | Import to app-private before opening | `SyncInterface.kt` | R24 | ✅ code, unverified |
+| 6 | Remove dead `device_id` local | `sync_wrapper.rs` | — | ✅ |
 
 Sequenced as Phase 1 in [`06_ROADMAP.md`](06_ROADMAP.md).
 

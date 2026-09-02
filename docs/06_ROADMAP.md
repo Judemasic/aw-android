@@ -1,12 +1,14 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** **Run a CI build.** Steps 1.0–1.3 and 1.6 are written but have never been
-> compiled, let alone run — a local build is not possible (R4), so CI is the first check any of
-> them get. Push `aw-server-rust@beta` **first** ([`02`](02_ARCHITECTURE.md) §5, cache trap), then
-> the submodule pointer, then build. After that: **1.4**, then **1.5**.
+> **👉 START HERE:** **Run a CI build, then 1.5** — two devices, real hardware.
+> Phase 1 is now written end to end. 1.0a, 1.0b, 1.1, 1.2 and 1.6 are verified on device; **1.3,
+> 1.4 and 1.7 are written and Kotlin-compile-checked but have never run** — a local build is not
+> possible (R4), so CI is the first real check they get. 1.4 and 1.7 are Kotlin-only, so no
+> submodule push is needed for them; if the submodule *has* changed, push `aw-server-rust@beta`
+> **first** ([`02`](02_ARCHITECTURE.md) §5, cache trap), then the pointer, then build.
 >
-> Sync is dead and nothing else can be built or even tested until it works. Do not start the
-> combined timeline first — it has no multi-device data to operate on and no way to prove it is
+> Data now moves in both directions **in code**. Nothing proves it until 1.5 is green. Do not start
+> the combined timeline first — it has no multi-device data to operate on and no way to prove it is
 > right.
 
 **How to work this document:** do one step, run its check, stop. Then update the step in place —
@@ -20,17 +22,20 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-02:** 1.0–1.3 and 1.6 are written and now **compile-checked locally**, except
-> `android.rs` — see [`02`](02_ARCHITECTURE.md) §5.1 and **D22**. Nothing has run on a device.
-> Next: a CI build (which is the only check `android.rs` gets), then 1.4, then 1.5.
+> **Status 2026-09-02 (end of day):** everything in Phase 1 except 1.5 is now written. 1.0a, 1.0b,
+> 1.1, 1.2 and 1.6 are **verified on device**; 1.3, 1.4 and 1.7 are **compile-checked only**.
+> Next: a CI build, then 1.5.
 >
-> | Step | Compiles | How |
+> | Step | State | How checked |
 > |---|---|---|
-> | 1.0 | ❌ not checked | `android.rs` — CI only |
-> | 1.1 | ⚠️ Kotlin only | `resolveDeviceId()` ✅; its JNI counterpart in `android.rs` ❌ |
-> | 1.2 | ✅ | `cargo check` host |
-> | 1.3 | ✅ | `cargo check` host |
-> | 1.6 | ✅ | `compileDebugKotlin` |
+> | 1.0a | ✅ on device | scheduler starts, no `UnsatisfiedLinkError` |
+> | 1.0b | ✅ on device | API key forwarded, no 401 |
+> | 1.1 | ✅ on device | server-minted UUID names the device directory |
+> | 1.2 | ✅ on device | `<hostname>/<device_id>/test.db`, no `_staging` |
+> | 1.3 | ⚠️ compiles | `cargo check` host — needs two dbs present, so needs 1.4 |
+> | 1.4 | ⚠️ compiles | `compileDebugKotlin` — never run |
+> | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
+> | 1.7 | ⚠️ compiles | `compileDebugKotlin` — never run |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -100,11 +105,34 @@ deleted the unused `device_id` local in `pull_from_hostname`.
 therefore real but not on the live path, which lowers its share of the original symptom.
 **Check:** no `"choosing largest db"` in logs with three dbs present. *(R19)*
 
-### 1.4 — Bidirectional SAF mirror ⬜ ← *the important one*
-Add the import pass: SAF `devices/<other>/` → app-private staging, for **every directory except
-our own**. Keep export restricted to our own directory. Copy before opening. *(R21, R24)*
-Use `resolveDeviceId()` from 1.1 to decide which directory is ours.
-**Check:** peer `.db` files appear in app-private storage after a sync.
+### 1.4 — Bidirectional SAF mirror ✅ DONE 2026-09-02 ⚠️ *unverified*
+The import pass exists. `SyncInterface.importPeerFilesFromSafDir()` walks the SAF tree and copies
+`<hostname>/<device_id>/` into the app-private `syncDir` for **every device id except our own**,
+reproducing the layout verbatim. There is deliberately **no separate staging directory**: the
+engine only ever scans `AW_SYNC_DIR`, so a copy anywhere else would be invisible to it, and
+`pull_all_from_all_hostnames` already walks exactly this tree. It runs at the top of the
+multi-device cycle, before the pull.
+
+Each file is copied to a `.aw-import-tmp` name and renamed into place, so the pull that follows can
+never open a half-written database (**R24**); an interrupted copy is parked under a name the Rust
+side's `.db` extension filter ignores. Unchanged files are skipped on size + mtime, with an unknown
+timestamp counted as *changed* — a wrong skip loses peer data silently, which is the failure this
+step exists to remove.
+
+**Export is now restricted to our own `<hostname>/<device_id>/`**, and that is required rather than
+tidy: with peers' databases living in `syncDir`, the old whole-tree mirror would have written every
+peer's file back out under our own hand — which is precisely how Syncthing is made to produce
+`.sync-conflict-*` copies (**R20**). Every hostname directory is scanned, not just the current one,
+because a device rename leaves our id under the old hostname.
+
+Both directions key off `resolveDeviceId()` from 1.1; if it returns null, both passes skip rather
+than guess. SAF entry names are treated as untrusted input — dot-entries (`.stfolder`,
+`.stversions`), anything containing a path separator, and `*.sync-conflict-*` are ignored.
+
+**Result:** the mirror is bidirectional and Blocker 1 is closed in code.
+✅ Compiles (`compileDebugKotlin`). Not run. **Check:** peer `.db` files appear in app-private
+storage after a sync — `SAF import: peers=1 copied=1 …` in logcat, and
+`<syncDir>/<their hostname>/<their uuid>/test.db` present on this device. *(R21, R24)*
 
 ### 1.5 — Two-device end-to-end verification ⬜
 Run the full procedure in [`03_SYNC.md` §5](03_SYNC.md).
@@ -127,24 +155,29 @@ Rationale in [`02_ARCHITECTURE.md` §7.1](02_ARCHITECTURE.md) — `useWideViewPo
 oversized can at least be reached by pinch-zooming. **Record what remains** — that list is the
 input to Q8 and decides how large Phase 5 is.
 
-### 1.7 — Sync settings: reachability and a manual trigger ⬜ *(ride along on the next build)*
-Two device-confirmed gaps ([`06` Phase 5.4](06_ROADMAP.md)). Neither is worth a build of its own —
-**fold them into the next build that happens for another reason** (most likely 1.4).
+### 1.7 — Sync settings: reachability and a manual trigger ✅ DONE 2026-09-02 ⚠️ *unverified*
+Rode along on 1.4's build, as planned.
 
-- **"Sync now" button** in `SyncSettingsActivity`, calling `syncBothMultiDeviceAsync` and showing
-  the returned success/error inline. Today sync is purely time-driven, so verification means
-  toggling the switch off and on and waiting 60s with no in-app feedback — that cost is paid on
-  every iteration of 1.4 and 1.5.
-- **Reach Sync settings without the drawer** — a toolbar action or an entry on the main screen. The
-  drawer's edge-swipe is consumed by the system back gesture on current Android; the owner could
-  only reach it after changing an OS-level setting. On a stock device these settings are
-  unreachable, which is an **R30** defect.
+- **"Sync now"** in `SyncSettingsActivity` runs one `syncBothMultiDeviceAsync` and writes the
+  result into a status line under the button. The `SyncInterface` is constructed on
+  `Dispatchers.IO`, as `SyncScheduler` does — the constructor loads the `.so` and calls into JNI,
+  which can block on a cold start. It deliberately does **not** require the sync switch to be on
+  (an explicit tap is explicit intent, and it makes one sync testable without arming the 15-minute
+  scheduler), but it does require a configured directory, since without one a sync reports success
+  while sharing nothing.
+- **The toolbar is back, and that was the whole bug.** The cause was in the layout, not in
+  navigation: `app_bar_main.xml` had its entire `AppBarLayout` **commented out**, so `MainActivity`
+  had no action bar at all — no hamburger button, and `R.menu.main` (which has carried a
+  `Sync Settings` item and a working handler all along) was being inflated into nothing. That left
+  the drawer's edge swipe as the only route, and current Android gives that gesture to system back.
+  Uncommented it, and added `setSupportActionBar` + an `ActionBarDrawerToggle` in `MainActivity`.
 
-**Workaround until then:** toggling sync off and on restarts the scheduler and fires a sync ~60s
-later — `stop()` clears `isRunning`, so `start()`'s guard passes and it re-arms cleanly.
-
-**Check:** a sync can be triggered on demand, its outcome is visible in the app, and Sync settings
-are reachable on a stock device with default gesture settings.
+**Result:** two routes to Sync settings on a stock device — hamburger → drawer, or overflow →
+Sync Settings — and a sync can be triggered on demand with its outcome visible in the app.
+✅ Compiles (`compileDebugKotlin`). Not run. ⚠️ The toolbar takes ~56dp of height off the WebView;
+re-check the 5.1 audit once this is on a device. **Check:** on a stock device with default gesture
+navigation and no OS-level settings changed, reach Sync settings, tap **Sync Now**, and see a
+result line appear.
 
 ## Phase 2 — Shared state
 
@@ -252,12 +285,18 @@ Controls sized for a thumb, not a mouse.
 >
 > Worth pulling forward: Phase 1 needs Sync settings repeatedly, so every device iteration
 > currently depends on an OS workaround the owner had to discover.
+>
+> ✅ **Addressed in 1.7 (2026-09-02, unverified):** the action bar was commented out of
+> `app_bar_main.xml`, so there was no hamburger button and no overflow menu. Restoring it gives
+> back both routes. Re-test this item on a device before considering it closed.
 
 > **Also missing: a manual "Sync now" control.** `SyncSettingsActivity` offers only a directory
 > picker and an on/off switch. Sync is time-driven — `SyncScheduler` runs the first sync ~1 minute
 > after being enabled, then every 15 minutes — so there is no way to *make* a sync happen, and no
 > feedback about whether one ran or what it did. Tolerable in normal use; a real drag on device
 > verification (1.5), where every check means waiting out a timer and guessing.
+>
+> ✅ **Added in 1.7 (2026-09-02, unverified).**
 
 > **New screens are exempt from this phase — they must be born mobile-first (R33).** The combined
 > timeline (Phase 3.4) and resolution sheet (Phase 4.1) are designed at phone width from the start,
@@ -330,6 +369,29 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (end of day) — Blocker 1 closed in code: the mirror finally goes both ways
+**1.4** and **1.7** written together, in one build, as 1.7 planned.
+
+The import pass is the whole of 1.4: peers' `<hostname>/<device_id>/` directories are copied out of
+the SAF folder into the app-private `syncDir` before every pull, and export is now narrowed to our
+own directory. That narrowing is not tidiness — without it the very next export would have copied
+every peer's database back out under our own hand, breaking the single-writer rule (R20) that keeps
+Syncthing from producing conflict files. Files land via `.aw-import-tmp` + rename so the pull can
+never open a partial database (R24).
+
+1.7 turned out to be smaller than written down. The drawer was not fighting the back gesture in any
+interesting way: `app_bar_main.xml` had its `AppBarLayout` **commented out**, so `MainActivity` had
+no action bar at all. `R.menu.main` has carried a `Sync Settings` item, and `onOptionsItemSelected`
+a working handler for it, the entire time — inflated into nothing. Uncommenting the toolbar
+restores the hamburger *and* the overflow route in one move. "Sync Now" sits under the directory
+picker and reports its result inline.
+
+Everything here is **Kotlin and XML only** — no submodule change, so the next CI build needs only
+the app. `compileDebugKotlin` passes (resources included, which is what proves the restored layout
+and the new view ids resolve). ⚠️ **Nothing has run.** 1.4's import path, the restored toolbar and
+the Sync Now button have never executed on a device, and **1.3 is still unproven** — it needs two
+databases present, which is exactly what 1.4 is supposed to produce. That is 1.5.
 
 ### 2026-09-02 (late) — Sync runs for the first time; five of six blockers verified on hardware
 The Blocker 6 fix landed and `SyncInterface` constructed successfully for the first time. The very
