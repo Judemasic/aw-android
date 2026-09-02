@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.system.Os
 import android.util.Log
 import java.util.concurrent.Executors
@@ -80,6 +79,7 @@ class RustInterface(context: Context? = null) {
     external fun androidQuery(timeperiods: String): String
     external fun getSetting(key: String): String
     external fun migrateHostname(hostname: String): String
+    external fun migrateWatcherAndroidBucketNames(): String
 
     fun sayHello(to: String): String {
         return greeting(to)
@@ -200,17 +200,6 @@ class RustInterface(context: Context? = null) {
         }
     }
 
-    fun getDeviceName(context: Context): String {
-        val raw = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: android.os.Build.DEVICE
-            ?: "unknown"
-        return raw.trim()
-            .lowercase(java.util.Locale.ROOT)
-            .replace(Regex("[^a-z0-9_-]+"), "_")
-            .trim('_')
-            .ifEmpty { "unknown" }
-    }
+    fun getDeviceName(context: Context): String = deviceHostname(context)
 
 }
