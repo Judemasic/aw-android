@@ -87,7 +87,7 @@ Revisit once Phase 1 shows what a cycle actually costs. Not worth deciding on sp
 
 ---
 
-## Q8 — How far does the mobile UI work go? ⬜ *decide after Roadmap 1.6 + 5.1*
+## Q8 — How far does the mobile UI work go? ✅ MOSTLY RESOLVED (2026-09-02) — **A or B, not C**
 
 **Blocks:** Phase 5.2.
 
@@ -96,6 +96,23 @@ Revisit once Phase 1 shows what a cycle actually costs. Not worth deciding on sp
 > materially lowers the ceiling on this question: it points at narrow-viewport CSS (**A** or **B**)
 > and makes **C** very hard to justify, since the same Vue screens demonstrably render correctly at
 > tablet width. It also means 5.1's audit only needs to cover **phone portrait**.
+>
+> **Answered on device (owner, 2026-09-02, phone, after the 1.6 viewport fix).** The fix recovered
+> most of the layout. What still overflows is a **short, specific list** — not the whole UI:
+>
+> | Screen | State |
+> |---|---|
+> | Activity | ✅ fine |
+> | Timeline — the **range and mode controls** in the top bar | ❌ overflows; needs pan or zoom |
+> | Settings — **some fields** | ❌ overflow |
+>
+> So **R31 is still violated**, but narrowly. This is a handful of control rows, not a desktop-first
+> app that needs rebuilding — and the same Vue screens render correctly at tablet width.
+>
+> **This effectively decides Q8: option A or B.** Option **C (native screens) is not justifiable** —
+> it would rewrite screens that are already correct everywhere except a few control rows. Phase 5
+> collapses from "make the UI usable" to "stop three or four component groups overflowing", which is
+> a fraction of the 3–6 sessions previously budgeted.
 
 
 `aw-webui` is desktop-first ([`02`](02_ARCHITECTURE.md) §7.2). Once the cheap WebView viewport fix

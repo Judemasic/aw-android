@@ -101,7 +101,7 @@ Run the full procedure in [`03_SYNC.md` §5](03_SYNC.md).
 > been found by reading source, and the fifth was found only because upstream had already hit it —
 > so do not treat the list as closed until 1.5 is green.
 
-### 1.6 — WebView viewport quick fix ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.6 — WebView viewport quick fix ✅ DONE 2026-09-02 — ✅ VERIFIED ON DEVICE
 Added to `WebUIFragment.onCreateView`: `useWideViewPort`, `loadWithOverviewMode`, `setSupportZoom`,
 `builtInZoomControls`, and `displayZoomControls = false`.
 
@@ -109,7 +109,7 @@ Rationale in [`02_ARCHITECTURE.md` §7.1](02_ARCHITECTURE.md) — `useWideViewPo
 `false`, so `aw-webui`'s perfectly good mobile viewport tag was being discarded. *(R32)*
 
 **Result:** the WebView now honours the page's viewport and permits pinch-zoom.
-✅ Compiles (`compileDebugKotlin`). Not run. **Check:** the dashboard fits the screen width on load, and anything still
+✅ **Verified on the phone (owner, 2026-09-02):** zoom works and cut-off content can be reached by panning. **R30 and R32 are satisfied** — content is no longer unreachable, which was the correctness issue. ⚠️ **R31 (no horizontal page scroll) is not yet confirmed** — see Q8. **Check:** the dashboard fits the screen width on load, and anything still
 oversized can at least be reached by pinch-zooming. **Record what remains** — that list is the
 input to Q8 and decides how large Phase 5 is.
 
@@ -179,14 +179,29 @@ control tappable in portrait with one thumb.
 > **Do 1.6 first and re-assess.** How much remains after the viewport fix determines how much of
 > this phase is actually needed, and answers **Q8**. Do not scope this phase before that is known.
 
-### 5.1 — Audit what actually breaks ⬜
-On a real phone in portrait, list every screen that overflows, with the offending element. Charts,
-tables and the navbar are the expected culprits.
-**Check:** a written list of concrete breakages, not an impression. This is the input to Q8.
+### 5.1 — Audit what actually breaks ✅ MOSTLY DONE 2026-09-02
+On a real phone in portrait, list every screen that overflows, with the offending element.
 
-### 5.2 — Decide Q8 ⬜
-Patch `aw-webui`'s CSS, inject a mobile stylesheet from the WebView, or build native screens for the
-views that matter. Decide with 5.1's list in hand.
+**Result (owner, on the phone, after 1.6):**
+
+| Screen | State |
+|---|---|
+| Activity | ✅ fine |
+| Timeline — **range and mode controls**, top bar | ❌ overflows |
+| Settings — **some fields** | ❌ overflow |
+
+Tablet is fine throughout, so this is **narrow-width only**. ⚠️ Still owed: the *specific* offending
+elements (which CSS rule, which component) — the list above is at screen granularity, which is
+enough to decide Q8 but not enough to fix. Pin them down with WebView remote debugging
+(`chrome://inspect`), which works because `WebView.setWebContentsDebuggingEnabled(true)` is already
+set in testing builds.
+### 5.2 — Decide Q8 ✅ RESOLVED 2026-09-02 — CSS, not native
+Patch `aw-webui`'s CSS (**B**), or inject a mobile stylesheet from the WebView (**A**).
+
+**Decided:** the phone audit (5.1) found only a few overflowing control groups while the tablet is
+fine throughout, so **C (native screens) is ruled out** — it would rewrite screens that already work
+everywhere except a handful of rows. Prefer **B** where the fix is a genuine responsive improvement
+worth carrying upstream; fall back to **A** for anything too fork-specific to upstream.
 
 ### 5.3 — Kill horizontal page scroll ⬜
 The page must not scroll sideways; wide tables and charts scroll inside their own containers
