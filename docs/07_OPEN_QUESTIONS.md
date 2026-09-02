@@ -43,16 +43,22 @@ detectable; the threshold is a product call.
 
 ---
 
-## Q4 — Native view or aw-webui for the combined timeline? ⬜ *leaning native for v1*
+## Q4 — Native view or aw-webui for the combined timeline? ✅ RESOLVED 2026-09-02 — *both, in order*
 
-**Blocks:** Phase 3.4 — decide before starting it.
+**Decided by the owner:** **Rust pipeline + native mobile-first view first, aw-webui view later.**
+Not an either/or — the question was wrong as posed.
+
+- **The pipeline stays in Rust (Phase 3.2), and that is now load-bearing rather than precautionary.**
+  The owner's stated end state is *every* device — phone, tablet, and PC — answering "what was I
+  actually doing in this window of time". A Kotlin pipeline would strand that answer on Android.
+- **The first view is native and phone-first (R33).** It is the screen the owner opens daily, and
+  aw-webui's existing screens are the ones that do not fit a phone (Phase 5).
+- **An aw-webui view follows**, for desktop analysis and as the natural upstream contribution.
 
 Full comparison in [`04_COMBINED_TIMELINE.md` §5](04_COMBINED_TIMELINE.md).
 
-Leaning **native for v1, aw-webui for v2**. The cost of being wrong is contained *provided* the
-computation pipeline lives in Rust (Phase 3.2) — then switching renderers rewrites only the view. If
-the pipeline is written in Kotlin instead, this decision becomes expensive to reverse, which is why
-3.2 specifies Rust.
+> **Consequence for Phase 5:** it shrinks. See the scope note there — the effort that would have
+> gone into making desktop screens pleasant on a phone goes into the native combined view instead.
 
 ---
 

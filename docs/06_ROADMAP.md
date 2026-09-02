@@ -245,6 +245,39 @@ proved 1.4. The button paid for itself on its first use: the alternative was wai
 ⚠️ Still owed: the same walk on the **phone**, which is the device where the drawer was actually
 unreachable, and where the toolbar's ~56dp will matter to the 5.1 audit.
 
+### 1.8 — Emit a `title` so the Activity view works ✅ DONE 2026-09-02 ⚠️ *unverified*
+Not a sync step, but it sits in Phase 1 because until it is true the app shows the owner nothing,
+and 1.5's "device A *displays* B's data" check cannot pass.
+
+`aw-watcher-android` events carry `{app, package, classname}`. aw-webui's Android query runs
+`merge_events_by_keys(events, ["app", "title"])`, and that helper drops every event missing any
+requested key — so a full day evaluates to zero and the Activity view reads **"Time active: 0s"**
+next to a Timeline full of events.
+
+Measured on the tablet, same bucket, same day:
+
+| Query | Result |
+|---|---|
+| `flood(query_bucket("aw-watcher-android"))` | **4878.8s** |
+| … `+ merge_events_by_keys(events, ["app", "title"])` | **0.0s** |
+| … `+ merge_events_by_keys(events, ["app"])` | **4878.8s** |
+
+**Upstream regression:** aw-webui `bf0fc84` (2026-07-24), an iOS ScreenTime patch that changed the
+shared Android branch from `["app"]` to `["app", "title"]`. Unfixed on master at 2026-08-31 and
+reported nowhere — first Android release carrying it was **v0.14.0b2 (2026-08-24)**, so the
+exposure is nine days, not six weeks.
+
+`title` is set to the app label in `Event.kt` and `SessionModels.kt`. Emitting the field beats
+patching aw-webui: two forks instead of three, and it survives the query changing again. The
+specific screen stays in `classname`, which `title_events` groups by.
+
+⚠️ **Only new events get a title.** Everything recorded before this build stays invisible to that
+query — the Activity view will fill in going forward, not retroactively.
+✅ Compiles. **Check:** Activity shows a non-zero **Time active** and a populated **Top
+Applications** for a day recorded after this build.
+
+---
+
 ## Phase 2 — Shared state
 
 ### 2.1 — Shared folder layout + `VERSION` ⬜
@@ -279,9 +312,11 @@ Pipeline steps ⑤–⑥ with the deterministic tiebreak. *(R17, R18)*
 **Check:** the same input yields identical output across repeated runs and across devices; totals
 equal wall-clock (**R6**) — assert this directly, it is the invariant everything else rests on.
 
-### 3.4 — Combined view with shading ⬜
+### 3.4 — Combined view with shading ⬜ ← *the screen the owner actually wants*
 Render the combined track above per-device tracks; shade unresolved contention. *(R8)*
-Decide Q4 (native vs aw-webui) before starting.
+**Q4 is resolved (2026-09-02): native, phone-first, on top of the Rust pipeline from 3.2.** An
+aw-webui view comes later for desktop. Born mobile-first per **R33** — it never joins Phase 5's
+backlog.
 
 ---
 
@@ -307,6 +342,21 @@ Tombstones; segment returns to shaded. *(R12)*
 Layer 2 from [`02_ARCHITECTURE.md` §7.2](02_ARCHITECTURE.md) — the part 1.6 cannot fix.
 Target is **functional, not beautiful** (**R34**): nothing cut off, nothing unreachable, every
 control tappable in portrait with one thumb.
+
+> ## ✂️ Scope cut 2026-09-02 — this phase shrinks to "reachable and not broken"
+> The owner, on seeing aw-webui on the phone: *"the UI is not usable on the phone at all … I do
+> think the intended way to use it is with a browser."*
+>
+> **Do:** 5.3 (kill horizontal scroll) and what 1.7 already landed. **Do not:** a general pass to
+> make aw-webui's desktop screens pleasant on a phone. That effort goes to **3.4** instead, which
+> is native, phone-first, and the screen actually opened every day (Q4).
+>
+> ⚠️ **"Just use a browser" is not free.** The embedded server binds `127.0.0.1`, so a desktop
+> browser cannot reach a phone's data without changing what it listens on — a security decision,
+> not a convenience one. Do not assume this route exists until someone has decided that.
+>
+> aw-webui stays the deep-analysis tool at a desktop. That is a fair division of labour, not a
+> retreat.
 
 > **Do 1.6 first and re-assess.** How much remains after the viewport fix determines how much of
 > this phase is actually needed, and answers **Q8**. Do not scope this phase before that is known.
@@ -372,10 +422,21 @@ Controls sized for a thumb, not a mouse.
 
 ## Phase 6 — Later
 
+- **Upstream what this fork fixed.** Not charity — several of these are bugs upstream has *already
+  received reports about* and would otherwise fix twice:
+  | Ours | Upstream evidence |
+  |---|---|
+  | `title` on window events (1.8) | aw-webui `bf0fc84` regression, unreported, still on master |
+  | Sync Now + inline result (1.7) | **#247**: *"sync has no feedback, no 'last date synced' or failed/success indicator"* |
+  | Restored toolbar (1.7) | **#247**: *"I only found out with Qwen that there is a left-swipe menu"*; **#218** closed as unreachable |
+  | Bidirectional SAF mirror (1.4) | **#247**: *"sync seems to not work. No change in the chosen folder"* |
+  | Push/pull depth, pull-every-db (1.2, 1.3) | no upstream report — Android-only paths |
+  The `title` fix is the cheapest and most valuable to send first: one field, and it un-breaks the
+  Activity view for every Android user on v0.14.0b2 or later.
+- An aw-webui combined view (Q4's second half) is the other natural contribution.
 - Rules engine proper — generalise accumulated signatures (**R15**; the data is already there).
 - Device role priors (screen-off is never foreground).
 - Desktop client (**R2**).
-- aw-webui combined view (Q4 option B).
 - Suggested resolutions from decision history.
 - Visual design pass, once functional is settled (**R34**).
 
@@ -435,6 +496,43 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (latest) — The Activity view was never a UI problem
+The owner: *"still nothing in activity … you can see the timeline but it says time active 0"*.
+Three queries against the same bucket and day on the tablet settled it:
+
+```
+flood(query_bucket("aw-watcher-android"))            -> 4878.8s
+  + merge_events_by_keys(events, ["app", "title"])   -> 0.0s     ← what aw-webui runs
+  + merge_events_by_keys(events, ["app"])            -> 4878.8s
+```
+
+`merge_events_by_keys` drops every event missing a requested key. Android events carry
+`{app, package, classname}` and no `title`, so a whole day evaluates to zero.
+
+**It is an upstream regression, not ours.** aw-webui `bf0fc84` (2026-07-24), an iOS ScreenTime
+patch, changed the shared Android branch from `["app"]` to `["app", "title"]` — ScreenTime events
+have a title, Android's never have. Still on aw-webui master at 2026-08-31, reported nowhere.
+
+**Why nobody noticed, checked rather than assumed:** the previous aw-android release was
+2026-07-23, one day *before* the regression. The first release carrying it is **v0.14.0b2
+(2026-08-24)** — nine days, not six weeks. And the Timeline still works, so nothing looks broken
+unless you open Activity.
+
+Fixed in **1.8** by emitting `title` from the watcher rather than patching aw-webui: two forks
+instead of three, and it survives the query changing again.
+
+**Upstream is hitting the same walls we are.** Issue **#247** (2026-08-31, user feedback on
+v0.14.0b2) independently reports three problems this fork had already fixed: no way to discover the
+drawer, no sync feedback of any kind, and sync writing nothing to the chosen folder. **#218** is a
+second user who could not reach Sync Settings. That is strong evidence these were real defects
+rather than local misconfiguration — and it is why Phase 6 now carries a concrete upstreaming list.
+
+**Two plan decisions the owner made this session:**
+- **Q4 resolved — Rust pipeline, native phone-first view first, aw-webui view later.** Driven by
+  the stated end state: every device, including the PC, answering "what was I doing then". A Kotlin
+  pipeline would strand that on Android.
+- **Phase 5 cut** to "reachable and not broken". The effort moves to 3.4.
 
 ### 2026-09-02 (late night) — **Cross-device sync works.** Phase 1's premise is proven
 The owner tapped **Sync Now** on the tablet with the phone's data sitting in the Syncthing folder:
