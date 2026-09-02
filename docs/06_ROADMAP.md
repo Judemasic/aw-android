@@ -32,7 +32,21 @@ has to be true before any feature exists.
 > | 1.3 | ✅ | `cargo check` host |
 > | 1.6 | ✅ | `compileDebugKotlin` |
 
-### 1.0 — Forward the API key from the JNI client ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.0a — Export the logging init under its JNI name ✅ DONE 2026-09-02 ⚠️ *awaiting rebuild*
+Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
+before any sync code could run, which is why Blockers 1–5 were never observable.
+
+`android.rs` exported `aw_sync_init_logging` as a plain C symbol; `SyncInterface.kt` declares
+`external fun awSyncInitLogging`, so the JVM looked for
+`Java_net_activitywatch_android_SyncInterface_awSyncInitLogging` and threw. Renamed, with the JNI
+signature `(JNIEnv, JClass, i32)`.
+
+**Result:** the symbol now matches. Guarded by `scripts/check-local.sh jni`, which diffs Kotlin
+`external fun` names against the Rust exports — it reproduces the failure in under a second.
+⚠️ Not yet rebuilt or run. **Check:** no `aw-sync native library unavailable` in logcat, and
+`SyncInterface` initialises.
+
+### 1.0b — Forward the API key from the JNI client ✅ DONE 2026-09-02 ⚠️ *unverified*
 Blocker 5, found while checking upstream drift and **upstream of all the others** — without it push
 obtains no bucket data at all, so no `.db` can appear whatever the layout is.
 
@@ -284,6 +298,41 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (night) — Blocker 6 found on device: sync never ran at all
+The tablet's logcat, on the first install of a working build:
+
+```
+E/SyncScheduler: aw-sync native library unavailable; sync scheduler disabled
+E/SyncScheduler: java.lang.UnsatisfiedLinkError: No implementation found for void
+  net.activitywatch.android.SyncInterface.awSyncInitLogging(int)
+  at net.activitywatch.android.SyncInterface.<init>(SyncInterface.kt:63)
+```
+
+`android.rs` exported the logging init as a plain C symbol, `aw_sync_init_logging`, while Kotlin
+declares `external fun awSyncInitLogging` — so the JVM looked for
+`Java_net_activitywatch_android_SyncInterface_awSyncInitLogging` and found nothing. Every *other*
+export in the file was correctly named; this one was the exception, introduced with the
+`catch_unwind` work on 2026-09-01.
+
+**This sat underneath Blockers 1–5 the whole time.** `SyncInterface`'s constructor threw, so the
+object could never be built and no JNI function was reachable. All the reasoning about directory
+depth, API keys and device ids was correct *and completely unobservable*, because none of that code
+had ever executed. It also means the 2026-09-01 entry's "real fix" for JNI panics shipped a symbol
+the JVM could not resolve.
+
+**The methodological point, stated plainly:** five blockers were found by reading source and every
+one was real, but the thing actually stopping sync was a name mismatch that source-reading cannot
+surface. The Rust compiles, the `.so` loads, and the symbol is merely absent under the name Java
+asks for. Not a syntax error, and `android.rs` is `cfg`-gated away from the host check. **D20 said
+the blocker list stays open until 1.5 is green; this is the second confirmation.**
+
+Now guarded by `scripts/check-local.sh jni`, diffing every Kotlin `external fun` against the Rust
+exports. It caught the bug immediately on its first run — against the submodule, which had not yet
+received the fix. `RustInterface`/`aw-server` was cross-checked at the same time and is clean.
+
+Also this session: 1.6 **verified on the phone** and Q8 effectively resolved (CSS, not native); the
+debug-signing fix landed so device installs no longer wipe history.
 
 ### 2026-09-02 (evening) — First green build; debug signing fixed
 Build [33665149124](https://github.com/Judemasic/aw-android/actions/runs/33665149124) is **green** —

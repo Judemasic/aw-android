@@ -59,6 +59,42 @@ check_kotlin() {
 }
 
 
+
+check_jni() {
+    echo "=== JNI symbol cross-check ================================"
+    # Every `external fun NAME` in Kotlin needs a Rust export literally called
+    # Java_<pkg>_<Class>_NAME. Nothing else catches a mismatch: the Rust compiles, the .so
+    # loads, and the symbol is simply absent under the name the JVM looks up -- it surfaces
+    # as UnsatisfiedLinkError at runtime, on a device.
+    #
+    # Added 2026-09-02 after awSyncInitLogging was exported as a plain C symbol
+    # (aw_sync_init_logging). SyncInterface's constructor threw, SyncScheduler disabled
+    # itself, and NO sync ran at all -- for two days, looking like a sync bug.
+    local rc=0
+    _cmp() { # <label> <kotlin file> <rust file> <jni class prefix>
+        local label="$1" kt="$2" rs="$3" prefix="$4"
+        local missing
+        missing=$(comm -23 \
+            <(grep -oP 'external fun \K\w+' "$kt" | sort -u) \
+            <(grep -oP "${prefix}\K\w+" "$rs" | sort -u))
+        if [ -z "$missing" ]; then
+            printf '  %-16s ok\n' "$label"
+        else
+            printf '  %-16s MISSING Rust export(s):\n' "$label"
+            echo "$missing" | sed 's/^/      /'
+            rc=1
+        fi
+    }
+    _cmp "SyncInterface" \
+        "$REPO_ROOT/mobile/src/main/java/net/activitywatch/android/SyncInterface.kt" \
+        "$REPO_ROOT/aw-server-rust/aw-sync/src/android.rs" \
+        'Java_net_activitywatch_android_SyncInterface_'
+    _cmp "RustInterface" \
+        "$REPO_ROOT/mobile/src/main/java/net/activitywatch/android/RustInterface.kt" \
+        "$REPO_ROOT/aw-server-rust/aw-server/src/android/mod.rs" \
+        'Java_net_activitywatch_android_RustInterface_'
+    return $rc
+}
 check_syntax() {
     echo "=== Rust syntax (cfg-gated files) ========================="
     # rustfmt parses a file regardless of #[cfg], so it reaches android.rs where
@@ -90,7 +126,8 @@ case "${1:-all}" in
     kotlin) check_kotlin ;;
     rust)   check_rust ;;
     syntax) check_syntax ;;
-    all)    check_syntax; check_kotlin; check_rust ;;
+    jni)    check_jni ;;
+    all)    check_syntax; check_jni; check_kotlin; check_rust ;;
     *)      echo "usage: $0 [all|kotlin|rust|syntax]" >&2; exit 2 ;;
 esac
 

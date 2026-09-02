@@ -16,9 +16,10 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> **Sync does not work at all**, for **five** independent reasons documented in
-> [`03_SYNC.md`](03_SYNC.md). Fixes for four of them are **written but never compiled** — CI is the
-> next action. Nothing else can be built or tested until Phase 1 closes them.
+> **Sync does not work at all**, for **six** independent reasons in [`03_SYNC.md`](03_SYNC.md).
+> **Blocker 6 sat underneath them all** — `SyncInterface`'s constructor threw
+> `UnsatisfiedLinkError`, so the sync scheduler disabled itself and *no sync code ever ran*, making
+> Blockers 1–5 unobservable. Fixes for five are written; only 1.6 is verified on a device.
 
 ---
 
@@ -80,6 +81,7 @@ take it from here.**
 | **D21** | **Type-check locally, build in CI.** Kotlin + host-target Rust run on this machine; APKs stay in Actions | The compile-error round-trip was the estimate's dominant cost and it is now ~95s instead of ~30min. Building the APK locally is a different proposition — cross-compiling OpenSSL for Android from Windows fails, as upstream's own `build.gradle` note says. **Qualifies R4/D14 rather than overturning it** | [`02`](02_ARCHITECTURE.md) §5.1 |
 | **D22** | `android.rs` is **CI-verified only**, and a green local check must never be read as covering it | It is `#[cfg(target_os = "android")]`, so the host check skips it *silently* — the dangerous kind of gap. The JNI layer is where 1.0 and 1.1 live | [`02`](02_ARCHITECTURE.md) §5.1 |
 | **D23** | **Commit a fixed debug keystore.** Debug builds sign with `mobile/debug.keystore`, not the build machine's generated one | CI runners are ephemeral, so every build was signed differently and every device install demanded an uninstall — wiping the history this project exists to preserve. A debug keystore is not a secret (default password, self-signed, `.debug` suffix) and cannot touch the release app | [`02`](02_ARCHITECTURE.md) §5.2 |
+| **D24** | **Cross-check JNI symbol names locally** — every Kotlin `external fun` must have a matching `Java_..._<name>` Rust export | The only bug that actually stopped sync was a name mismatch, and no compiler on either side can see it: the Rust builds, the `.so` loads, the symbol is just absent under the name the JVM wants. It cost two days of looking at the wrong layer | [`03`](03_SYNC.md) §2.6 |
 
 ---
 

@@ -156,7 +156,7 @@ When several devices share a hostname, everything but the largest file is **sile
 
 ---
 
-### 2.5 Blocker 5 — the JNI client never sent the API key *(found 2026-09-02; upstream of all the others)*
+### 2.5 Blocker 5 — the JNI client never sent the API key *(found 2026-09-02)*
 
 `aw-sync/src/android.rs::get_client()` built its client with plain `AwClient::new()`:
 
@@ -192,7 +192,54 @@ read from the right directory, then pass the key via `AwClient::new_with_api_key
 
 ---
 
-### 2.6 Also noted
+### 2.6 Blocker 6 — the logging init was exported under the wrong name *(found on device 2026-09-02)*
+
+`SyncInterface.kt` declares:
+
+```kotlin
+private external fun awSyncInitLogging(verbosity: Int)
+```
+
+so the JVM looks up `Java_net_activitywatch_android_SyncInterface_awSyncInitLogging`. But
+`android.rs` exported it as a **plain C symbol**:
+
+```rust
+#[no_mangle]
+pub extern "C" fn aw_sync_init_logging(verbosity: i32) { ... }   // never found by the JVM
+```
+
+Every *other* export in the file was correctly `Java_..._SyncInterface_*`. This one was the
+exception, introduced with the `catch_unwind` work on 2026-09-01.
+
+> **Consequence — total.** `SyncInterface.<init>` calls it at line 63, so the **constructor throws
+> `UnsatisfiedLinkError`**. `SyncScheduler` catches it and logs
+> `"aw-sync native library unavailable; sync scheduler disabled"`. **No sync ran at all**, and every
+> other JNI function was unreachable because the object could never be constructed. This sat
+> underneath Blockers 1–5 the entire time, making all of them unobservable.
+
+Observed on the tablet:
+
+```
+E/SyncScheduler: aw-sync native library unavailable; sync scheduler disabled
+E/SyncScheduler: java.lang.UnsatisfiedLinkError: No implementation found for void
+  net.activitywatch.android.SyncInterface.awSyncInitLogging(int)
+  at net.activitywatch.android.SyncInterface.<init>(SyncInterface.kt:63)
+```
+
+**Fix:** export it as `Java_net_activitywatch_android_SyncInterface_awSyncInitLogging` with the JNI
+signature `(JNIEnv, JClass, i32)`.
+
+> ⚠️ **Nothing local could have caught this, and that is the point.** The Rust compiles. The `.so`
+> loads. The symbol is simply *absent under the name Java asks for*. It is not a syntax error, so
+> rustfmt passes; `android.rs` is `cfg`-gated so the host `cargo check` never sees it; and even a
+> working android-target `cargo check` would compile it happily. Only a device shows it.
+>
+> Now guarded by `scripts/check-local.sh jni`, which diffs every Kotlin `external fun` against the
+> Rust exports. `RustInterface`/`aw-server` was checked at the same time and is clean.
+
+---
+
+### 2.7 Also noted
 
 - `pull_from_hostname()` computes a `device_id` local and never uses it — dead code, remove.
 - `fix_hostname_migration.md` (now deleted) chased hostname migration as the cause of the missing
