@@ -127,6 +127,25 @@ Rationale in [`02_ARCHITECTURE.md` §7.1](02_ARCHITECTURE.md) — `useWideViewPo
 oversized can at least be reached by pinch-zooming. **Record what remains** — that list is the
 input to Q8 and decides how large Phase 5 is.
 
+### 1.7 — Sync settings: reachability and a manual trigger ⬜ *(ride along on the next build)*
+Two device-confirmed gaps ([`06` Phase 5.4](06_ROADMAP.md)). Neither is worth a build of its own —
+**fold them into the next build that happens for another reason** (most likely 1.4).
+
+- **"Sync now" button** in `SyncSettingsActivity`, calling `syncBothMultiDeviceAsync` and showing
+  the returned success/error inline. Today sync is purely time-driven, so verification means
+  toggling the switch off and on and waiting 60s with no in-app feedback — that cost is paid on
+  every iteration of 1.4 and 1.5.
+- **Reach Sync settings without the drawer** — a toolbar action or an entry on the main screen. The
+  drawer's edge-swipe is consumed by the system back gesture on current Android; the owner could
+  only reach it after changing an OS-level setting. On a stock device these settings are
+  unreachable, which is an **R30** defect.
+
+**Workaround until then:** toggling sync off and on restarts the scheduler and fires a sync ~60s
+later — `stop()` clears `isRunning`, so `start()`'s guard passes and it re-arms cleanly.
+
+**Check:** a sync can be triggered on demand, its outcome is visible in the app, and Sync settings
+are reachable on a stock device with default gesture settings.
+
 ## Phase 2 — Shared state
 
 ### 2.1 — Shared folder layout + `VERSION` ⬜
