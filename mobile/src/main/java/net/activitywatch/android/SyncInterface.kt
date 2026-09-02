@@ -65,9 +65,16 @@ class SyncInterface(context: Context) {
         Os.setenv("XDG_CACHE_HOME", cacheDir, true)
         Os.setenv("XDG_CONFIG_HOME", "$filesDir/config", true)
         Os.setenv("XDG_DATA_HOME", "$filesDir/data", true)
-        
+
         System.loadLibrary("aw_sync")
-        
+
+        // Upstream #249 calls `setDataDir(filesDir)` here. Deliberately NOT taken: it requires a
+        // `Java_..._SyncInterface_setDataDir` export this fork's `android.rs` does not have, so
+        // the constructor would throw UnsatisfiedLinkError, SyncScheduler would disable itself,
+        // and no sync would run at all -- Blocker 6 verbatim (03_SYNC.md 2.6). This fork reaches
+        // the same config.toml through XDG_DATA_HOME above, which needs no new JNI symbol
+        // (03_SYNC.md 2.5). Re-check this on every upstream merge.
+
         // Initialize logging for aw-sync native library after loading
         awSyncInitLogging(2) // Info level
         Log.i(TAG, "aw-sync initialized with sync dir: $syncDir")
@@ -87,6 +94,7 @@ class SyncInterface(context: Context) {
     }
     
     // Native JNI functions - Phase 1 multi-device sync
+    // (upstream's `setDataDir` is deliberately absent -- see the init block above)
     private external fun syncPullAll(port: Int, hostname: String): String
     private external fun syncPull(port: Int, hostname: String): String
     private external fun syncPush(port: Int, hostname: String): String
@@ -141,18 +149,11 @@ class SyncInterface(context: Context) {
         }
     }
     
-    private fun getDeviceName(): String {
-        val raw = android.provider.Settings.Global.getString(
-            appContext.contentResolver,
-            android.provider.Settings.Global.DEVICE_NAME
-        )?.trim()?.takeIf { it.isNotEmpty() }
-            ?: android.os.Build.DEVICE ?: "unknown"
-        return raw.trim()
-            .lowercase(java.util.Locale.ROOT)
-            .replace(Regex("[^a-z0-9_-]+"), "_")
-            .trim('_')
-            .ifEmpty { "unknown" }
-    }
+    // Hostname normalisation now lives in DeviceHostname.kt, shared with MainActivity's
+    // Activity-view route (upstream #250). It is byte-for-byte equivalent to the local
+    // implementation it replaces -- same DEVICE_NAME lookup, same Build.DEVICE fallback, same
+    // lowercase/collapse/trim -- so no device's directory name in the shared folder changes.
+    private fun getDeviceName(): String = deviceHostname(appContext)
     
     // Async wrapper for syncPullAll
     fun syncPullAllAsync(callback: (Boolean, String) -> Unit) {
