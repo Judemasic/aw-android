@@ -22,9 +22,10 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-02 (end of day):** everything in Phase 1 except 1.5 is now written. 1.0a, 1.0b,
-> 1.1, 1.2 and 1.6 are **verified on device**; 1.3, 1.4 and 1.7 are **compile-checked only**.
-> Next: a CI build, then 1.5.
+> **Status 2026-09-02 (night):** everything in Phase 1 except 1.5 is written, and the build is on
+> the tablet. 1.0a, 1.0b, 1.1, 1.2 and 1.6 are **verified on device**; 1.4 and 1.7 have **run** on
+> one device without proving what they are for; 1.3 is untouched by hardware. Everything still open
+> needs the **second device**. Next: 1.5.
 >
 > | Step | State | How checked |
 > |---|---|---|
@@ -32,10 +33,10 @@ has to be true before any feature exists.
 > | 1.0b | ✅ on device | API key forwarded, no 401 |
 > | 1.1 | ✅ on device | server-minted UUID names the device directory |
 > | 1.2 | ✅ on device | `<hostname>/<device_id>/test.db`, no `_staging` |
-> | 1.3 | ⚠️ compiles | `cargo check` host — needs two dbs present, so needs 1.4 |
-> | 1.4 | ⚠️ compiles | `compileDebugKotlin` — never run |
+> | 1.3 | ⚠️ compiles | `cargo check` host — needs two dbs present, so needs a second device |
+> | 1.4 | ⚠️ half on device | import pass runs (`peers=0`); export unregressed; **no peer ever imported** |
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
-> | 1.7 | ⚠️ compiles | `compileDebugKotlin` — never run |
+> | 1.7 | ⚠️ half on device | app starts, no inflation crash; neither control looked at yet |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -130,8 +131,23 @@ than guess. SAF entry names are treated as untrusted input — dot-entries (`.st
 `.stversions`), anything containing a path separator, and `*.sync-conflict-*` are ignored.
 
 **Result:** the mirror is bidirectional and Blocker 1 is closed in code.
-✅ Compiles (`compileDebugKotlin`). Not run. **Check:** peer `.db` files appear in app-private
-storage after a sync — `SAF import: peers=1 copied=1 …` in logcat, and
+⚠️ **Half-verified on the tablet 2026-09-02.** The import pass runs and the export restriction
+does not regress the direction that already worked:
+
+```
+SAF import: peers=0 copied=0 skipped=0  ← content://…/primary%3AActivityWatch-sync
+= Synced 18 new events
+Multi-Device Sync completed: success=true
+SAF export: copied=1 skipped=0         → content://…/primary%3AActivityWatch-sync
+```
+
+`peers=0` is the correct answer on a lone device — our own directory is excluded by design and no
+peer has published yet — and `copied=1` matches the pre-change build exactly, which is what rules
+out the real risk in narrowing the export (that it would export nothing).
+
+❌ **The pass this step exists for has still never run.** Importing a peer directory needs a peer,
+which needs the second device. **Check:** peer `.db` files appear in app-private storage after a
+sync — `SAF import: peers=1 copied=1 …` in logcat, and
 `<syncDir>/<their hostname>/<their uuid>/test.db` present on this device. *(R21, R24)*
 
 ### 1.5 — Two-device end-to-end verification ⬜
@@ -174,10 +190,14 @@ Rode along on 1.4's build, as planned.
 
 **Result:** two routes to Sync settings on a stock device — hamburger → drawer, or overflow →
 Sync Settings — and a sync can be triggered on demand with its outcome visible in the app.
-✅ Compiles (`compileDebugKotlin`). Not run. ⚠️ The toolbar takes ~56dp of height off the WebView;
-re-check the 5.1 audit once this is on a device. **Check:** on a stock device with default gesture
-navigation and no OS-level settings changed, reach Sync settings, tap **Sync Now**, and see a
-result line appear.
+⚠️ **Partly verified on the tablet 2026-09-02:** the app starts and the scheduler comes up clean,
+which is the one thing that could have gone catastrophically wrong — both changes are
+inflation-time, and a bad `AppBarLayout` or `ActionBarDrawerToggle` would have taken `MainActivity`
+down on launch. Nothing about either control has been *looked at* yet, and the tablet was never the
+device with the gesture problem. ⚠️ The toolbar takes ~56dp of height off the WebView; re-check the
+5.1 audit once this is on the phone. **Check:** on a stock device with default gesture navigation
+and no OS-level settings changed, reach Sync settings, tap **Sync Now**, and see a result line
+appear.
 
 ## Phase 2 — Shared state
 
@@ -369,6 +389,31 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (night) — 1.4 and 1.7 on the tablet: runs clean, proves half of what it needs to
+CI green, installed over the top (`firstInstallTime` unchanged, so `syncEnabled` and the SAF
+`syncDirUri` survived again — second confirmation that debug signing is fixed). The first scheduled
+sync after install:
+
+```
+SAF import: peers=0 copied=0 skipped=0
+= Synced 18 new events / = Synced 2 new events
+Multi-Device Sync completed: success=true
+SAF export: copied=1 skipped=0
+```
+
+**What this settles:** the import pass executes and is a correct no-op with no peers, the narrowed
+export still copies exactly what the old whole-tree mirror did (`copied=1`, unchanged), and neither
+inflation-time UI change crashes `MainActivity`.
+
+**What it cannot settle:** everything the step is actually for. `peers=0` is the expected reading on
+a lone device, so the import path has still never copied a byte, and 1.3 still has one database to
+choose from. Both need the phone. A single-device green run here is exactly the kind of result that
+looks like progress and proves nothing — same trap as the `{"success": true}` no-op in Blocker 2.
+
+**Next:** install on the phone, let Syncthing carry the tablet's `.db` over, then watch for
+`SAF import: peers=1`. That is 1.5, and it is the first check in this project that can fail
+usefully.
 
 ### 2026-09-02 (end of day) — Blocker 1 closed in code: the mirror finally goes both ways
 **1.4** and **1.7** written together, in one build, as 1.7 planned.
