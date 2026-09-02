@@ -1,15 +1,16 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** **Run a CI build, then 1.5** — two devices, real hardware.
-> Phase 1 is now written end to end. 1.0a, 1.0b, 1.1, 1.2 and 1.6 are verified on device; **1.3,
-> 1.4 and 1.7 are written and Kotlin-compile-checked but have never run** — a local build is not
-> possible (R4), so CI is the first real check they get. 1.4 and 1.7 are Kotlin-only, so no
-> submodule push is needed for them; if the submodule *has* changed, push `aw-server-rust@beta`
-> **first** ([`02`](02_ARCHITECTURE.md) §5, cache trap), then the pointer, then build.
+> **👉 START HERE:** **Build, install on BOTH devices, then finish 1.5.**
+> **Cross-device sync works** — the tablet pulled ~7,000 events off the phone on 2026-09-02. What
+> is left of 1.5 is (a) the *display* half, which needed upstream **#250** (merged, unverified),
+> (b) the phone direction, which needs the phone on a current build, and (c) deleting the four
+> stale directories 1.4a describes. Everything pending is Kotlin-only; the submodule has not moved,
+> so no `aw-server-rust@beta` push is needed — if it ever does move, push it **first**
+> ([`02`](02_ARCHITECTURE.md) §5, cache trap), then the pointer, then build.
 >
-> Data now moves in both directions **in code**. Nothing proves it until 1.5 is green. Do not start
-> the combined timeline first — it has no multi-device data to operate on and no way to prove it is
-> right.
+> Do not start the combined timeline until 1.5 is fully green. It now *has* multi-device data to
+> operate on, which is new — but the display path is still unproven, and that is the path the
+> combined view would be built on.
 
 **How to work this document:** do one step, run its check, stop. Then update the step in place —
 mark it `✅ DONE (date)`, write a **Result** saying what is *actually true now*, and flag with ⚠️
@@ -22,10 +23,9 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-02 (night):** everything in Phase 1 except 1.5 is written, and the build is on
-> the tablet. 1.0a, 1.0b, 1.1, 1.2 and 1.6 are **verified on device**; 1.4 and 1.7 have **run** on
-> one device without proving what they are for; 1.3 is untouched by hardware. Everything still open
-> needs the **second device**. Next: 1.5.
+> **Status 2026-09-02 (late night):** **every step of Phase 1 except 1.5 is verified on device.**
+> Cross-device sync moved ~7,000 events. Two things are open: **1.4a** (export scope, fixed but
+> unbuilt) and the second half of **1.5** (display, and the phone direction).
 >
 > | Step | State | How checked |
 > |---|---|---|
@@ -33,10 +33,11 @@ has to be true before any feature exists.
 > | 1.0b | ✅ on device | API key forwarded, no 401 |
 > | 1.1 | ✅ on device | server-minted UUID names the device directory |
 > | 1.2 | ✅ on device | `<hostname>/<device_id>/test.db`, no `_staging` |
-> | 1.3 | ⚠️ compiles | `cargo check` host — needs two dbs present, so needs a second device |
-> | 1.4 | ⚠️ half on device | import pass runs (`peers=0`); export unregressed; **no peer ever imported** |
+> | 1.3 | ✅ on device | four dbs present, five `Synced` lines, no `choosing largest db` |
+> | 1.4 | ✅ on device | `peers=2 copied=2`, ~7,000 events pulled from the phone |
+> | 1.4a | ⚠️ compiles | export scope fix — found by 1.4's first real run, never built |
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
-> | 1.7 | ⚠️ half on device | app starts, no inflation crash; neither control looked at yet |
+> | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -95,7 +96,7 @@ is now log-only (documented in place).
 ✅ **Verified on device 2026-09-02:** `Creating new database file: .../sync/jude_s_tab_s10_fe/7b54cfe9-.../test.db` — exactly `<hostname>/<device_id>/test.db`, no `_staging`. **Check:** after a sync, `<sync>/<host>/<uuid>/test.db` exists at exactly that
 depth, and `get_remotes()` returns a non-empty list.
 
-### 1.3 — Pull every database, never the largest ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.3 — Pull every database, never the largest ✅ VERIFIED ON DEVICE 2026-09-02
 Replaced `max_by_key(len)` in `sync_wrapper.rs::pull()` with iteration over all discovered dbs, and
 deleted the unused `device_id` local in `pull_from_hostname`.
 
@@ -104,9 +105,12 @@ deleted the unused `device_id` local in `pull_from_hostname`.
 `pull_all_from_all_hostnames` → `pull_from_hostname`, which already iterated every db. The
 `max_by_key` was only on the legacy `pull()` path reached via `syncPullAll`. Blocker 4 was
 therefore real but not on the live path, which lowers its share of the original symptom.
-**Check:** no `"choosing largest db"` in logs with three dbs present. *(R19)*
+✅ **Verified on device 2026-09-02:** with four databases present the pull produced five separate
+`= Synced N new events` lines and no `choosing largest db`. Still owed: the same check with three
+*distinct* devices rather than two. **Check:** no `"choosing largest db"` in logs with three dbs
+present. *(R19)*
 
-### 1.4 — Bidirectional SAF mirror ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.4 — Bidirectional SAF mirror ✅ VERIFIED ON DEVICE 2026-09-02
 The import pass exists. `SyncInterface.importPeerFilesFromSafDir()` walks the SAF tree and copies
 `<hostname>/<device_id>/` into the app-private `syncDir` for **every device id except our own**,
 reproducing the layout verbatim. There is deliberately **no separate staging directory**: the
@@ -130,28 +134,72 @@ Both directions key off `resolveDeviceId()` from 1.1; if it returns null, both p
 than guess. SAF entry names are treated as untrusted input — dot-entries (`.stfolder`,
 `.stversions`), anything containing a path separator, and `*.sync-conflict-*` are ignored.
 
-**Result:** the mirror is bidirectional and Blocker 1 is closed in code.
-⚠️ **Half-verified on the tablet 2026-09-02.** The import pass runs and the export restriction
-does not regress the direction that already worked:
+**Result:** Blocker 1 is closed, and **cross-device sync works**. First run with the phone's data
+present in the shared folder, triggered from the new Sync Now button:
 
 ```
-SAF import: peers=0 copied=0 skipped=0  ← content://…/primary%3AActivityWatch-sync
-= Synced 18 new events
+SAF import: peers=2 copied=2 skipped=0
+Creating new database file: …/sync/jude_s_s25_ultra/7b54cfe9-…/test.db
+= Synced 728 new events
+= Synced 6280 new events
+= Synced 14 / 1 / 20 new events
 Multi-Device Sync completed: success=true
-SAF export: copied=1 skipped=0         → content://…/primary%3AActivityWatch-sync
 ```
 
-`peers=0` is the correct answer on a lone device — our own directory is excluded by design and no
-peer has published yet — and `copied=1` matches the pre-change build exactly, which is what rules
-out the real risk in narrowing the export (that it would export nothing).
+✅ **The tablet pulled ~7,000 events off the phone.** That is R21 satisfied on hardware, and it is
+also the first time **1.3** ran with more than one database present.
 
-❌ **The pass this step exists for has still never run.** Importing a peer directory needs a peer,
-which needs the second device. **Check:** peer `.db` files appear in app-private storage after a
-sync — `SAF import: peers=1 copied=1 …` in logcat, and
-`<syncDir>/<their hostname>/<their uuid>/test.db` present on this device. *(R21, R24)*
+> ⚠️ **`peers=2` was one phone reached by two paths, and that exposed a bug in the export** — see
+> the fixed-in-place note below. The count is expected to read `peers=1` on the next build.
 
-### 1.5 — Two-device end-to-end verification ⬜
+**Check:** peer `.db` files appear in app-private storage after a sync — `SAF import: peers=1 …`
+in logcat, and `<syncDir>/<their hostname>/<their uuid>/test.db` present on this device.
+*(R21, R24)*
+
+#### 1.4a — Export scope narrowed to the current hostname ✅ FIXED 2026-09-02 ⚠️ *unverified*
+Found the moment two devices met. `sync_run` in **pull** mode calls
+`setup_local_remote(<peer hostname>, our_device_id)`, which creates
+`<peer hostname>/<our device id>/test.db` in app-private storage as a side effect of reading a
+peer. The export scanned **every** hostname directory for our device id — a deliberate choice, to
+survive a device rename — and so published our own database into *the peer's* hostname folder as
+well. The phone's older export-everything build did the mirror image. Two devices produced four
+directories:
+
+```
+ActivityWatch-sync/jude_s_s25_ultra/ad0c6c34-…/    ← phone's, correct
+ActivityWatch-sync/jude_s_s25_ultra/7b54cfe9-…/    ← tablet's db under the PHONE's hostname
+ActivityWatch-sync/jude_s_tab_s10_fe/7b54cfe9-…/   ← tablet's, correct
+ActivityWatch-sync/jude_s_tab_s10_fe/ad0c6c34-…/   ← phone's db under the TABLET's hostname
+```
+
+**Not an R20 violation** — every file is still written by exactly one device, the id in its path,
+so Syncthing produces no conflict copies. But it grows as the square of the device count, inflates
+the `peers=` count, and makes every device pull the same data twice.
+
+Export is now limited to `<current hostname>/<our device id>/`. The rename case does not justify
+the wider scan: after a rename the old directory is a stale snapshot either way, and the current
+hostname gets a full push on the next sync.
+
+⚠️ **Owed:** the four stale directories above are still in the shared folder. Once both devices run
+a build with this fix, delete the two wrong ones by hand — nothing deletes them automatically, and
+each will keep being imported as a phantom peer until it goes.
+
+### 1.5 — Two-device end-to-end verification ⚠️ HALF DONE 2026-09-02
 Run the full procedure in [`03_SYNC.md` §5](03_SYNC.md).
+
+✅ **Steps 1–3 pass.** Two devices, two distinct server-minted UUIDs
+(`7b54cfe9-…` tablet, `ad0c6c34-…` phone), both directories present in the shared folder, and the
+tablet's datastore took ~7,000 events that only the phone could have produced.
+
+❌ **Step 4 — *displays* — is not done.** Data arriving in the datastore is not the same as the
+dashboard showing it, and the owner reports the Activity view is empty. That was a separate bug:
+`MainActivity` opened `/#/activity/unknown/`, a sentinel hostname with no
+`aw-watcher-android_*` buckets behind it. Upstream fixed it in **#250**, which is now merged —
+unverified on device.
+
+❌ **The other direction is untested.** The phone still runs the old export-only build, so it has
+never imported anything.
+
 **Check:** device A displays a bucket only device B could have produced.
 
 > **Phase 1 is not done until 1.5 passes on real hardware.** Everything downstream assumes
@@ -171,7 +219,7 @@ Rationale in [`02_ARCHITECTURE.md` §7.1](02_ARCHITECTURE.md) — `useWideViewPo
 oversized can at least be reached by pinch-zooming. **Record what remains** — that list is the
 input to Q8 and decides how large Phase 5 is.
 
-### 1.7 — Sync settings: reachability and a manual trigger ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.7 — Sync settings: reachability and a manual trigger ✅ VERIFIED ON DEVICE 2026-09-02
 Rode along on 1.4's build, as planned.
 
 - **"Sync now"** in `SyncSettingsActivity` runs one `syncBothMultiDeviceAsync` and writes the
@@ -190,14 +238,12 @@ Rode along on 1.4's build, as planned.
 
 **Result:** two routes to Sync settings on a stock device — hamburger → drawer, or overflow →
 Sync Settings — and a sync can be triggered on demand with its outcome visible in the app.
-⚠️ **Partly verified on the tablet 2026-09-02:** the app starts and the scheduler comes up clean,
-which is the one thing that could have gone catastrophically wrong — both changes are
-inflation-time, and a bad `AppBarLayout` or `ActionBarDrawerToggle` would have taken `MainActivity`
-down on launch. Nothing about either control has been *looked at* yet, and the tablet was never the
-device with the gesture problem. ⚠️ The toolbar takes ~56dp of height off the WebView; re-check the
-5.1 audit once this is on the phone. **Check:** on a stock device with default gesture navigation
-and no OS-level settings changed, reach Sync settings, tap **Sync Now**, and see a result line
-appear.
+✅ **Verified on the tablet by the owner 2026-09-02:** Sync settings were reached and **Sync Now**
+was tapped, producing `Manual sync finished: success=true` — and that manual run is the one that
+proved 1.4. The button paid for itself on its first use: the alternative was waiting out a
+15-minute timer.
+⚠️ Still owed: the same walk on the **phone**, which is the device where the drawer was actually
+unreachable, and where the toolbar's ~56dp will matter to the 5.1 audit.
 
 ## Phase 2 — Shared state
 
@@ -389,6 +435,40 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ## Progress log
 
 *Newest first.*
+
+### 2026-09-02 (late night) — **Cross-device sync works.** Phase 1's premise is proven
+The owner tapped **Sync Now** on the tablet with the phone's data sitting in the Syncthing folder:
+
+```
+SAF import: peers=2 copied=2 skipped=0
+= Synced 728 new events
+= Synced 6280 new events
+Multi-Device Sync completed: success=true
+Manual sync finished: success=true
+```
+
+~7,000 events crossed from the phone to the tablet. **Blocker 1 is dead**, 1.3 finally ran with
+more than one database, and 1.7's button paid for itself on its first use — the alternative was
+waiting out a 15-minute timer.
+
+**And the first real run immediately found a bug that no amount of reading would have.** `peers=2`,
+for one phone. Pulling from a peer calls `setup_local_remote(<peer hostname>, our_device_id)`,
+which creates `<peer hostname>/<our device id>/test.db` locally as a side effect of *reading*. The
+export scanned every hostname directory for our device id — chosen to survive a device rename — and
+published our database into the peer's hostname folder. Two devices, four directories. Fixed in
+**1.4a** by exporting only the current hostname's copy. Single-writer (R20) was never violated, so
+this was cost and confusion rather than corruption — but it is quadratic, and it would have looked
+like phantom devices forever.
+
+**Upstream drift closed the same session:** merged all 7 commits from `ActivityWatch/master` on a
+feature branch, then into `beta`. **#249 was refused**, exactly as [`03`](03_SYNC.md) §2.5 warned —
+its Kotlin half declares `external fun setDataDir` with no matching export in this fork's
+`android.rs`, which would have reproduced Blocker 6 precisely. The refusal is now a comment at the
+call site so the next merge re-checks it rather than rediscovering it. The submodule pointer stayed
+on our fork. **#250 is a gift:** it replaces the hardcoded `/#/activity/unknown/` route with the
+real hostname, which is the cause of the empty Activity view the owner reported.
+
+Drift is now **0 behind / 27 ahead**.
 
 ### 2026-09-02 (night) — 1.4 and 1.7 on the tablet: runs clean, proves half of what it needs to
 CI green, installed over the top (`firstInstallTime` unchanged, so `syncEnabled` and the SAF
