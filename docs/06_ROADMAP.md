@@ -14,6 +14,13 @@
 > The shared folder was checked on 2026-09-03 and is **clean** — one directory per device. Two
 > stale databases remain in app-private storage; only one is a real leftover, and 1.5 says which.
 >
+> **Waiting on the owner, not on code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_).**
+> The Timeline labels every peer `android-synced-from-jude` because aw-webui cuts the hostname at
+> its first underscore. The fix is to rename both devices in Android settings to names *without
+> spaces* (`S25U`, `Tab-S10FE`) — but a rename strands the old sync directory in the shared folder
+> as a permanent phantom peer, so it must be done once, on both devices, and cleaned up after.
+> Do not rename without reading 1.10.
+>
 > **The 4.2% ceiling is not ours to lift.** Only events recorded after the **1.8** title fix reach
 > the Activity view — 15,503s of the phone's 366,700s. The rest is already synced and sitting on
 > the tablet; it becomes visible the moment **[aw-webui#959]** is fixed upstream, with no re-sync.
