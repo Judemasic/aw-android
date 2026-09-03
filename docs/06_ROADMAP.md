@@ -516,6 +516,28 @@ is arguably right (the *non*-synced desktop label is already `window`, so this m
 consistent) but it is a change and must be declared when reporting. The alternative that keeps the
 base verbatim regresses #682 — it puts the 62-character hostname straight back into the label.
 
+**Reproducible without sync — verified on the tablet 2026-09-03.** Asking a maintainer to pair two
+Android devices is a good way to have a bug ignored, so the repro was reduced to a single JSON
+import. Read out of `aw-server/src/endpoints/import.rs`:
+
+```rust
+for (_bucketname, mut bucket) in import.buckets {
+    match datastore.create_bucket(&bucket) {
+```
+
+The map key is **discarded** (`_bucketname`); the bucket is created under `bucket.id` from the
+payload, so any id can be minted directly — no watcher, no sync. Two details that matter and are
+only visible in the source:
+- `id` carries `#[serde(default)]`, so **omitting it creates a bucket named `""`** rather than
+  falling back to the map key. It must be written out explicitly.
+- `DELETE /api/0/buckets/<id>` is unconditional (`bucket_delete`, no force flag), so the repro is
+  fully reversible.
+
+Round-tripped against the live server: `POST /api/0/import/` → **HTTP 200**, bucket
+`aw-watcher-android-synced-from-my_phone` created with `hostname=my_phone`, the real
+`timelineLabels.ts` then rendered it **`android-synced-from-my`**, and `DELETE` removed it cleanly
+(10 buckets before, 10 after).
+
 **Not fixed here.** A fork-side fix means patching aw-webui, which
 [`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 decided against. Report it upstream instead.
 
