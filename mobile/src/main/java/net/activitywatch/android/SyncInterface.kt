@@ -52,16 +52,16 @@ class SyncInterface(context: Context) {
 
     /** Cached result of [resolveDeviceId]; reading it costs an HTTP round-trip to the server. */
     @Volatile private var cachedDeviceId: String? = null
-    
+
     init {
         syncDir = resolveSyncDirectory(context).absolutePath
         Os.setenv("AW_SYNC_DIR", syncDir, true)
-        
+
         // Set XDG environment variables to app-writable paths
         // This is required for aw-client-rust (used by aw-sync) to create lock files
         val cacheDir = context.cacheDir.absolutePath
         val filesDir = context.filesDir.absolutePath
-        
+
         Os.setenv("XDG_CACHE_HOME", cacheDir, true)
         Os.setenv("XDG_CONFIG_HOME", "$filesDir/config", true)
         Os.setenv("XDG_DATA_HOME", "$filesDir/data", true)
@@ -92,25 +92,25 @@ class SyncInterface(context: Context) {
         }
         return fallbackDir
     }
-    
+
     // Native JNI functions - Phase 1 multi-device sync
     // (upstream's `setDataDir` is deliberately absent -- see the init block above)
     private external fun syncPullAll(port: Int, hostname: String): String
     private external fun syncPull(port: Int, hostname: String): String
     private external fun syncPush(port: Int, hostname: String): String
-    
+
     // New per-device push function (Phase 1)
     private external fun syncPushWithDeviceId(port: Int, hostname: String, deviceId: String): String
-    
+
     // New pull-from-all-hostnames function (Phase 1)
     private external fun syncPullAllFromAllHostnames(port: Int): String
-    
+
     // This device's identity, read from the running server rather than minted locally.
     // Returns {"success": true, "device_id": ..., "hostname": ...}.
     private external fun getDeviceId(port: Int): String
-    
+
     external fun getSyncDir(): String
-    
+
     // Initialize logging for aw-sync native library
     private external fun awSyncInitLogging(verbosity: Int)
 
@@ -148,97 +148,154 @@ class SyncInterface(context: Context) {
             null
         }
     }
-    
+
     // Hostname normalisation now lives in DeviceHostname.kt, shared with MainActivity's
     // Activity-view route (upstream #250). It is byte-for-byte equivalent to the local
     // implementation it replaces -- same DEVICE_NAME lookup, same Build.DEVICE fallback, same
     // lowercase/collapse/trim -- so no device's directory name in the shared folder changes.
     private fun getDeviceName(): String = deviceHostname(appContext)
-    
+
+    /**
+     * What happened to one file during a SAF transfer.
+     *
+     * Three states, because two of them used to be one: [importFile] returned `false` for *both*
+     * "already current" and "the copy failed", and both incremented the same `skipped` counter.
+     * A pass where every file failed and a pass with nothing to do produced the same log line and
+     * the same `success=true`. Splitting them is the fix; the rest of this file's result plumbing
+     * follows from it.
+     */
+    private enum class FileOutcome { COPIED, SKIPPED, FAILED }
+
+    /**
+     * Tally of one SAF pass (import or export).
+     *
+     * [skipped] and [failed] are deliberately separate. Skipping is the common, healthy case --
+     * an unchanged database, or an entry name policy rejects ([isSafeEntryName]). A failure means
+     * the user's data did not move, and a sync that reports success anyway is lying about the one
+     * thing the user relies on it for.
+     */
+    private class TransferResult {
+        var copied = 0
+        var skipped = 0
+        var failed = 0
+        var peers = 0
+        private var firstError: String? = null
+
+        /** Record a failure, keeping the *first* reason -- it is the one closest to the cause. */
+        fun fail(reason: String) {
+            failed++
+            if (firstError == null) firstError = reason
+        }
+
+        val ok: Boolean get() = failed == 0
+
+        /** A short reason fit to show the user, noting how many later failures were folded in. */
+        fun reason(): String {
+            val first = firstError ?: return "$failed file(s) failed"
+            return if (failed > 1) "$first (+${failed - 1} more)" else first
+        }
+
+        override fun toString() = "copied=$copied skipped=$skipped failed=$failed"
+    }
+
+    /** Outcome of one whole sync cycle, as handed to the caller's callback. */
+    private class SyncOutcome(val success: Boolean, val message: String)
+
+    /** Read the `{"success": ..., "message"|"error": ...}` envelope the JNI layer returns. */
+    private fun nativeOutcome(response: String): SyncOutcome {
+        val json = JSONObject(response)
+        return if (json.getBoolean("success")) {
+            SyncOutcome(true, json.getString("message"))
+        } else {
+            SyncOutcome(false, json.getString("error"))
+        }
+    }
+
     // Async wrapper for syncPullAll
     fun syncPullAllAsync(callback: (Boolean, String) -> Unit) {
         val hostname = getDeviceName()
         performSyncAsync("Pull All", callback) {
-            syncPullAll(5600, hostname)
+            nativeOutcome(syncPullAll(5600, hostname))
         }
     }
-    
+
     // Async wrapper for Push with per-device staging (Phase 1)
     fun syncPushWithDeviceIdAsync(callback: (Boolean, String) -> Unit) {
         val hostname = getDeviceName()
         val deviceId = resolveDeviceId() ?: "unknown"
         performSyncAsync("Push (device-specific)", callback) {
-            syncPushWithDeviceId(5600, hostname, deviceId)
+            nativeOutcome(syncPushWithDeviceId(5600, hostname, deviceId))
         }
     }
-    
+
     // Async wrapper for pull from ALL hostnames (Phase 1)
     fun syncPullAllFromAllHostnamesAsync(callback: (Boolean, String) -> Unit) {
         performSyncAsync("Pull All Hostnames", callback) {
-            syncPullAllFromAllHostnames(5600)
+            nativeOutcome(syncPullAllFromAllHostnames(5600))
         }
     }
-    
-    // Async wrapper for full multi-device sync (Phase 1)
+
+    /**
+     * Run one full multi-device cycle: import peers, pull, push, export self.
+     *
+     * There used to be two entry points here, differing only in whether the SAF export ran before
+     * or after the callback -- background workers needed it before, so they stayed alive long
+     * enough to finish copying. That split is gone, and the export now always finishes first,
+     * because an export that runs *after* the caller has been told "success" can never correct
+     * that answer. The cost is the few hundred milliseconds a caller waits for a true one.
+     */
     fun syncBothMultiDeviceAsync(callback: (Boolean, String) -> Unit) {
-        syncBothMultiDeviceAsync(mirrorBeforeCallback = false, callback)
-    }
-
-    // Background workers must remain active until the SAF mirror completes.
-    fun syncBothAndMirrorAsync(callback: (Boolean, String) -> Unit) {
-        syncBothMultiDeviceAsync(mirrorBeforeCallback = true, callback)
-    }
-
-    private fun syncBothMultiDeviceAsync(
-        mirrorBeforeCallback: Boolean,
-        callback: (Boolean, String) -> Unit
-    ) {
         if (!syncInFlight.compareAndSet(false, true)) {
             Log.i(TAG, "Sync already in flight; skipping concurrent call")
             callback(false, "skipped: sync already in flight")
             return
         }
-        
+
         val hostname = getDeviceName()
         val deviceId = resolveDeviceId() ?: "unknown"
-        
+
         performSyncAsync(
             "Multi-Device Sync",
             { success, message ->
                 syncInFlight.set(false)
                 callback(success, message)
-            },
-            mirrorBeforeCallback
+            }
         ) {
+            // SAF failures are collected rather than thrown. A failed import still leaves the
+            // native sync worth running -- peer databases imported by an earlier cycle are still
+            // on disk and still readable -- so the cycle finishes and reports everything it hit.
+            // Native failures are different: they end the cycle, because nothing after them can
+            // succeed.
+            val problems = mutableListOf<String>()
+
             // Step 2 of the cycle in 03_SYNC.md §3.2: bring every *other* device's database into
             // app-private storage before the pull. The engine only ever scans AW_SYNC_DIR, so
             // without this pass it reads a directory containing nothing but this device's own
             // output -- Blocker 1, the reason cross-device sync never worked (R21).
-            // Step 1 of the cycle (export self) is the previous cycle's step 5, not repeated here.
-            importPeerFiles()
+            val imported = importPeerFiles()
+            if (!imported.ok) problems += "import failed: ${imported.reason()}"
 
             // Phase 1: Pull from ALL hostnames (not just our own)
-            val pullResult = syncPullAllFromAllHostnames(5600)
-            val pullJson = JSONObject(pullResult)
-            if (!pullJson.getBoolean("success")) {
-                return@performSyncAsync pullResult
-            }
-            
+            val pull = nativeOutcome(syncPullAllFromAllHostnames(5600))
+            if (!pull.success) return@performSyncAsync pull
+
             // Phase 1: Push our local data to a per-device staging area
-            val pushResult = syncPushWithDeviceId(5600, hostname, deviceId)
-            val pushJson = JSONObject(pushResult)
-            if (!pushJson.getBoolean("success")) {
-                return@performSyncAsync pushResult
+            val push = nativeOutcome(syncPushWithDeviceId(5600, hostname, deviceId))
+            if (!push.success) return@performSyncAsync push
+
+            // Step 5: publish our own database where peers can reach it. Last, and before the
+            // callback -- see the note on this function.
+            val exported = mirrorSyncFilesToSafDir()
+            if (!exported.ok) problems += "export failed: ${exported.reason()}"
+
+            if (problems.isEmpty()) {
+                SyncOutcome(true, "Successfully completed multi-device sync")
+            } else {
+                SyncOutcome(false, problems.joinToString("; "))
             }
-            
-            // Success: signal complete
-            JSONObject().apply {
-                put("success", true)
-                put("message", "Successfully completed multi-device sync")
-            }.toString()
         }
     }
-    
+
     /**
      * Interrupts any in-progress sync and SAF mirror operation.
      *
@@ -263,8 +320,7 @@ class SyncInterface(context: Context) {
     private fun performSyncAsync(
         operation: String,
         callback: (Boolean, String) -> Unit,
-        mirrorBeforeCallback: Boolean = false,
-        syncFn: () -> String
+        syncFn: () -> SyncOutcome
     ) {
         val executor = Executors.newSingleThreadExecutor()
         activeExecutor = executor
@@ -273,25 +329,15 @@ class SyncInterface(context: Context) {
         executor.execute {
             Log.i(TAG, "Starting sync operation: $operation")
             try {
-                val response = syncFn()
-                val json = JSONObject(response)
-                val success = json.getBoolean("success")
-                val message = if (success) {
-                    json.getString("message")
+                val outcome = syncFn()
+                // Log a failure at warning level. A sync that did not do what it was asked to do
+                // should not be indistinguishable from a healthy one in logcat.
+                if (outcome.success) {
+                    Log.i(TAG, "$operation completed: success=true, message=${outcome.message}")
                 } else {
-                    json.getString("error")
+                    Log.w(TAG, "$operation completed: success=false, message=${outcome.message}")
                 }
-
-                // Worker-triggered syncs keep their WorkManager job active until mirroring
-                // finishes. Other callers get the native result immediately.
-                Log.i(TAG, "$operation completed: success=$success, message=$message")
-                if (success && mirrorBeforeCallback) {
-                    mirrorSyncFilesToSafDir()
-                }
-                handler.post { callback(success, message) }
-                if (success && !mirrorBeforeCallback) {
-                    mirrorSyncFilesToSafDir()
-                }
+                handler.post { callback(outcome.success, outcome.message) }
             } catch (e: Exception) {
                 val errorMsg = "Exception: ${e.message}"
                 handler.post {
@@ -304,21 +350,28 @@ class SyncInterface(context: Context) {
         }
     }
 
-    private fun mirrorSyncFilesToSafDir() {
-        try {
-            copySyncFilesToSafDir()
-        } catch (e: Exception) {
-            Log.w(TAG, "SAF mirror failed (non-fatal): ${e.message}")
-        }
-    }
+    private fun mirrorSyncFilesToSafDir(): TransferResult =
+        runTransfer("SAF export") { copySyncFilesToSafDir() }
 
-    private fun importPeerFiles() {
+    private fun importPeerFiles(): TransferResult =
+        runTransfer("SAF import") { importPeerFilesFromSafDir() }
+
+    /**
+     * Run one SAF pass, turning an unexpected throw into a failed [TransferResult].
+     *
+     * These two used to catch and log "(non-fatal)", which was true of the *process* and false of
+     * the *sync*: the pass had failed, nothing reached the shared folder, and the caller was still
+     * told the sync succeeded. Catching here is still right -- one bad pass should not abort a
+     * cycle that can finish -- but the failure now travels back with the result instead of dying
+     * in logcat.
+     */
+    private fun runTransfer(label: String, block: () -> TransferResult): TransferResult =
         try {
-            importPeerFilesFromSafDir()
+            block()
         } catch (e: Exception) {
-            Log.w(TAG, "SAF import failed (non-fatal): ${e.message}")
+            Log.e(TAG, "$label failed", e)
+            TransferResult().apply { fail("${e.javaClass.simpleName}: ${e.message}") }
         }
-    }
 
     /**
      * Export this device's own data to the user-chosen SAF directory, if one has been configured
@@ -355,41 +408,53 @@ class SyncInterface(context: Context) {
      * `find_remotes` (`aw-sync/src/util.rs`) keeps only directories and looks for `*.db` one level
      * inside them, so a flattened copy would be ignored even if it were made.
      *
-     * Errors are logged but do not propagate -- a copy failure must never fail the sync itself.
+     * Errors do not throw, but they are no longer silent either: they are counted into the
+     * returned [TransferResult], and a caller that sees `failed > 0` must not report the sync a
+     * success. Sharing nothing while claiming to have synced is the failure this reporting exists
+     * to make visible.
+     *
+     * @return what the pass managed to do. `ok` means this device's database is now in the shared
+     *   folder, or that there was deliberately nothing to put there.
      */
-    private fun copySyncFilesToSafDir() {
-        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return
+    private fun copySyncFilesToSafDir(): TransferResult {
+        val result = TransferResult()
+        // No shared folder configured. Sync is local-only by the user's choice, not broken, so
+        // this is a clean result rather than a failure.
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return result
+
         val ourDeviceId = resolveDeviceId()
         if (ourDeviceId == null) {
             // Without our own id there is no way to tell our directory from a peer's, and
-            // exporting a peer's files would break the single-writer rule.
+            // exporting a peer's files would break the single-writer rule. Nothing was shared,
+            // so this counts as a failure rather than a quiet skip.
             Log.w(TAG, "SAF export skipped: this device's id is not known yet")
-            return
+            result.fail("this device's id is not known yet")
+            return result
         }
         val safUri = Uri.parse(uriStr)
         val safDir = DocumentFile.fromTreeUri(appContext, safUri)
         if (safDir == null || !safDir.isDirectory) {
+            // Usually a revoked permission grant or a deleted folder -- and precisely the case
+            // that used to log a warning and let the sync report success anyway.
             Log.w(TAG, "SAF directory not accessible or not a directory: $uriStr")
-            return
+            result.fail("sync folder unreachable (permission revoked, or folder deleted)")
+            return result
         }
 
-        val counts = intArrayOf(0, 0) // [copied, skipped]
         val hostname = getDeviceName()
         val ourDir = File(File(syncDir, hostname), ourDeviceId)
         if (!ourDir.isDirectory) {
             // Nothing has been pushed under this hostname yet; the next push creates it.
             Log.i(TAG, "SAF export: nothing to export at $hostname/$ourDeviceId")
-            return
+            return result
         }
         if (!cancelRequested) {
-            val safHostDir = findOrCreateSafDirectory(safDir, hostname, counts)
-            val safDeviceDir = safHostDir?.let { findOrCreateSafDirectory(it, ourDeviceId, counts) }
-            if (safDeviceDir != null) mirrorDirectory(ourDir, safDeviceDir, counts)
+            val safHostDir = findOrCreateSafDirectory(safDir, hostname, result)
+            val safDeviceDir = safHostDir?.let { findOrCreateSafDirectory(it, ourDeviceId, result) }
+            if (safDeviceDir != null) mirrorDirectory(ourDir, safDeviceDir, result)
         }
-        Log.i(
-            TAG,
-            "SAF export: $hostname/$ourDeviceId copied=${counts[0]} skipped=${counts[1]} → $uriStr"
-        )
+        Log.i(TAG, "SAF export: $hostname/$ourDeviceId $result → $uriStr")
+        return result
     }
 
     /**
@@ -410,22 +475,26 @@ class SyncInterface(context: Context) {
      * renaming a temp file over it, so a database read directly out of that folder can return
      * corrupt pages. Each file is copied here first and only the copy is handed to aw-sync.
      */
-    private fun importPeerFilesFromSafDir() {
-        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return
+    private fun importPeerFilesFromSafDir(): TransferResult {
+        val result = TransferResult()
+        // No shared folder configured -- nothing to import from, and nothing wrong.
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return result
+
         val ourDeviceId = resolveDeviceId()
         if (ourDeviceId == null) {
             // Importing blind would risk overwriting our own live database with a stale copy.
+            // No peer data reached the pull, so the sync must not claim success.
             Log.w(TAG, "SAF import skipped: this device's id is not known yet")
-            return
+            result.fail("this device's id is not known yet")
+            return result
         }
         val safDir = DocumentFile.fromTreeUri(appContext, Uri.parse(uriStr))
         if (safDir == null || !safDir.isDirectory) {
             Log.w(TAG, "SAF directory not accessible or not a directory: $uriStr")
-            return
+            result.fail("sync folder unreachable (permission revoked, or folder deleted)")
+            return result
         }
 
-        val counts = intArrayOf(0, 0) // [copied, skipped]
-        var peers = 0
         for (safHostDir in safDir.listFiles()) {
             if (cancelRequested) {
                 Log.i(TAG, "SAF import cancelled; stopping before ${safHostDir.name}")
@@ -444,18 +513,19 @@ class SyncInterface(context: Context) {
                 val destDir = File(File(syncDir, hostName), deviceId)
                 if (!destDir.isDirectory && !destDir.mkdirs()) {
                     Log.w(TAG, "Could not create import directory ${destDir.absolutePath}")
-                    counts[1]++
+                    result.fail("could not create local directory for $hostName/$deviceId")
                     continue
                 }
-                peers++
-                importDirectory(safDeviceDir, destDir, counts)
+                result.peers++
+                importDirectory(safDeviceDir, destDir, result)
             }
         }
-        Log.i(TAG, "SAF import: peers=$peers copied=${counts[0]} skipped=${counts[1]} ← $uriStr")
+        Log.i(TAG, "SAF import: peers=${result.peers} $result ← $uriStr")
+        return result
     }
 
     /** Recursively copy one peer's SAF directory into [destDir] under app-private storage. */
-    private fun importDirectory(sourceDir: DocumentFile, destDir: File, counts: IntArray) {
+    private fun importDirectory(sourceDir: DocumentFile, destDir: File, result: TransferResult) {
         for (entry in sourceDir.listFiles()) {
             if (cancelRequested) {
                 Log.i(TAG, "SAF import cancelled; stopping before ${entry.name}")
@@ -463,7 +533,9 @@ class SyncInterface(context: Context) {
             }
             val name = entry.name
             if (name == null || !isSafeEntryName(name)) {
-                counts[1]++
+                // Policy rejection, not an error: Syncthing's own `.stversions` and
+                // `.sync-conflict-*` entries land here on every single pass.
+                result.skipped++
                 continue
             }
             try {
@@ -471,26 +543,28 @@ class SyncInterface(context: Context) {
                     val subDir = File(destDir, name)
                     if (subDir.exists() && !subDir.isDirectory) {
                         Log.w(TAG, "Import target $name exists and is not a directory")
-                        counts[1]++
+                        result.fail("$name exists locally as a file, not a directory")
                         continue
                     }
                     if (!subDir.isDirectory && !subDir.mkdirs()) {
                         Log.w(TAG, "Could not create import directory ${subDir.absolutePath}")
-                        counts[1]++
+                        result.fail("could not create local directory $name")
                         continue
                     }
-                    importDirectory(entry, subDir, counts)
-                } else if (importFile(entry, File(destDir, name))) {
-                    counts[0]++
+                    importDirectory(entry, subDir, result)
                 } else {
-                    counts[1]++
+                    when (importFile(entry, File(destDir, name))) {
+                        FileOutcome.COPIED -> result.copied++
+                        FileOutcome.SKIPPED -> result.skipped++
+                        FileOutcome.FAILED -> result.fail("could not import $name")
+                    }
                 }
             } catch (e: IOException) {
                 Log.w(TAG, "Failed to import $name from SAF dir: ${e.message}")
-                counts[1]++
+                result.fail("$name: ${e.message}")
             } catch (e: SecurityException) {
                 Log.w(TAG, "Permission denied importing $name from SAF dir: ${e.message}")
-                counts[1]++
+                result.fail("permission denied reading $name")
             }
         }
     }
@@ -503,46 +577,51 @@ class SyncInterface(context: Context) {
      * the name aw-sync reads. A partial write left by a cancelled or killed sync stays parked
      * under [IMPORT_TMP_SUFFIX], which the Rust side's `.db` extension filter ignores.
      *
-     * @return true if bytes were copied; false if the file was already current, or on any failure.
+     * @return [FileOutcome.COPIED] if bytes were written, [FileOutcome.SKIPPED] if the file was
+     *   already current or the sync was cancelled, [FileOutcome.FAILED] if it should have been
+     *   copied and was not. The old signature returned `Boolean` and folded the last two together,
+     *   which is what let a pass where every copy failed look exactly like a pass with no work.
      */
-    private fun importFile(source: DocumentFile, dest: File): Boolean {
+    private fun importFile(source: DocumentFile, dest: File): FileOutcome {
         if (dest.isDirectory) {
             Log.w(TAG, "Import target ${dest.name} is a directory; cannot write a file there")
-            return false
+            return FileOutcome.FAILED
         }
-        if (!needsImport(source, dest)) return false
+        if (!needsImport(source, dest)) return FileOutcome.SKIPPED
 
         val tmp = File(dest.absolutePath + IMPORT_TMP_SUFFIX)
         try {
             val input = appContext.contentResolver.openInputStream(source.uri)
             if (input == null) {
                 Log.w(TAG, "Null input stream for ${source.name} in SAF dir")
-                return false
+                return FileOutcome.FAILED
             }
             input.use { inp -> FileOutputStream(tmp).use { out -> inp.copyTo(out) } }
 
             if (cancelRequested) {
+                // A deliberate stop, not a fault. The destination is untouched, and the next
+                // cycle copies this file.
                 tmp.delete()
-                return false
+                return FileOutcome.SKIPPED
             }
             if (!tmp.renameTo(dest)) {
                 Log.w(TAG, "Could not move imported ${dest.name} into place")
                 tmp.delete()
-                return false
+                return FileOutcome.FAILED
             }
             // Carry the peer's timestamp across so the next sync can tell an unchanged file from
             // a new one; see needsImport.
             val sourceModified = source.lastModified()
             if (sourceModified > 0L) dest.setLastModified(sourceModified)
-            return true
+            return FileOutcome.COPIED
         } catch (e: IOException) {
             Log.w(TAG, "Failed to import ${source.name}: ${e.message}")
             tmp.delete()
-            return false
+            return FileOutcome.FAILED
         } catch (e: SecurityException) {
             Log.w(TAG, "Permission denied importing ${source.name}: ${e.message}")
             tmp.delete()
-            return false
+            return FileOutcome.FAILED
         }
     }
 
@@ -577,23 +656,24 @@ class SyncInterface(context: Context) {
 
     /**
      * Find [name] inside [parent], creating it if absent. A non-directory of the same name cannot
-     * be mirrored into, so it is counted as skipped rather than written over.
+     * be mirrored into; that is a failure, not a skip, because our database does not get published
+     * and nothing later in the pass can compensate.
      */
     private fun findOrCreateSafDirectory(
         parent: DocumentFile,
         name: String,
-        counts: IntArray
+        result: TransferResult
     ): DocumentFile? {
         val existing = parent.findFile(name)
         if (existing != null && !existing.isDirectory) {
             Log.w(TAG, "SAF entry $name exists but is not a directory")
-            counts[1]++
+            result.fail("$name exists in the sync folder as a file, not a directory")
             return null
         }
         val dir = existing ?: parent.createDirectory(name)
         if (dir == null) {
             Log.w(TAG, "Could not create SAF directory for $name")
-            counts[1]++
+            result.fail("could not create $name in the sync folder")
         }
         return dir
     }
@@ -602,8 +682,13 @@ class SyncInterface(context: Context) {
      * Recursively mirror [sourceDir] into [destDir], creating subdirectories as needed so the
      * `<device_id>/` layout aw-sync produces is reproduced verbatim in the SAF tree.
      */
-    private fun mirrorDirectory(sourceDir: File, destDir: DocumentFile, counts: IntArray) {
-        val entries = sourceDir.listFiles() ?: return
+    private fun mirrorDirectory(sourceDir: File, destDir: DocumentFile, result: TransferResult) {
+        val entries = sourceDir.listFiles()
+        if (entries == null) {
+            Log.w(TAG, "Could not list ${sourceDir.absolutePath} for export")
+            result.fail("could not read ${sourceDir.name} locally")
+            return
+        }
 
         for (entry in entries) {
             if (cancelRequested) {
@@ -612,8 +697,8 @@ class SyncInterface(context: Context) {
             }
             try {
                 if (entry.isDirectory) {
-                    val subDir = findOrCreateSafDirectory(destDir, entry.name, counts) ?: continue
-                    mirrorDirectory(entry, subDir, counts)
+                    val subDir = findOrCreateSafDirectory(destDir, entry.name, result) ?: continue
+                    mirrorDirectory(entry, subDir, result)
                 } else {
                     // Reuse an existing file if present; otherwise create a new one. A
                     // same-named DIRECTORY must be rejected rather than written into: an
@@ -624,31 +709,31 @@ class SyncInterface(context: Context) {
                     val existingFile = destDir.findFile(entry.name)
                     if (existingFile != null && existingFile.isDirectory) {
                         Log.w(TAG, "SAF entry ${entry.name} is a directory; cannot write a file there")
-                        counts[1]++
+                        result.fail("${entry.name} exists in the sync folder as a directory")
                         continue
                     }
                     val dest = existingFile
                         ?: destDir.createFile("application/octet-stream", entry.name)
                     if (dest == null) {
                         Log.w(TAG, "Could not create SAF file for ${entry.name}")
-                        counts[1]++
+                        result.fail("could not create ${entry.name} in the sync folder")
                         continue
                     }
                     val out = appContext.contentResolver.openOutputStream(dest.uri, "wt")
                     if (out == null) {
                         Log.w(TAG, "Null output stream for ${entry.name} in SAF dir")
-                        counts[1]++
+                        result.fail("could not open ${entry.name} for writing")
                         continue
                     }
                     out.use { FileInputStream(entry).use { inp -> inp.copyTo(it) } }
-                    counts[0]++
+                    result.copied++
                 }
             } catch (e: IOException) {
                 Log.w(TAG, "Failed to copy ${entry.name} to SAF dir: ${e.message}")
-                counts[1]++
+                result.fail("${entry.name}: ${e.message}")
             } catch (e: SecurityException) {
                 Log.w(TAG, "Permission denied copying ${entry.name} to SAF dir: ${e.message}")
-                counts[1]++
+                result.fail("permission denied writing ${entry.name}")
             }
         }
     }

@@ -22,8 +22,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             continuation.invokeOnCancellation { syncInterface.cancel() }
 
             try {
-                syncInterface.syncBothAndMirrorAsync { success, message ->
-                    if (!continuation.isActive) return@syncBothAndMirrorAsync
+                // syncBothMultiDeviceAsync now finishes the SAF export before it calls back, so
+                // this worker stays alive for the copy without needing a separate entry point --
+                // and a failed export reaches `success` here instead of being logged and lost.
+                syncInterface.syncBothMultiDeviceAsync { success, message ->
+                    if (!continuation.isActive) return@syncBothMultiDeviceAsync
 
                     if (success) {
                         Log.i(TAG, "Automatic sync completed successfully: $message")

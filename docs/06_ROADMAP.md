@@ -6,12 +6,13 @@
 > view renders them. The combined timeline is now unblocked — it has real multi-device data *and*
 > a display path that has been proven, which is what 1.5 was gating on.
 >
-> **Two things are owed before new work, both small:**
-> 1. **Sync failures are reported as success.** `mirrorSyncFilesToSafDir()` and `importPeerFiles()`
->    both swallow exceptions, so a sync whose mirror or import failed still logs
->    `success=true`. Upstream hit the same bug and fixes it in **[#251]** — adopt the reasoning.
->    This is the failure that would look like *"sync works but the other device never appears."*
-> 2. **Two stale directories** from the 1.4a bug may remain in the shared folder. Verify and delete.
+> **One thing is owed, and it needs CI:** **1.9** is written and compiles but has never run. A
+> local `assembleDebug` is **not** enough to test it — the APK it produces contains **zero `.so`
+> files**, so installing it would break sync outright with `UnsatisfiedLinkError`. Push, let CI
+> build, install *that*. ([`02`](02_ARCHITECTURE.md) §5.)
+>
+> The shared folder was checked on 2026-09-03 and is **clean** — one directory per device. Two
+> stale databases remain in app-private storage; only one is a real leftover, and 1.5 says which.
 >
 > **The 4.2% ceiling is not ours to lift.** Only events recorded after the **1.8** title fix reach
 > the Activity view — 15,503s of the phone's 366,700s. The rest is already synced and sitting on
@@ -36,7 +37,9 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-03:** ✅ **Phase 1 is complete. Every step is verified on device.**
+> **Status 2026-09-03:** ✅ **Phase 1's goal is met: cross-device sync works end to end on
+> hardware**, and every step 1.0a–1.8 is verified on device. **1.9 is the one exception** — it was
+> written after the fact, fixes error *reporting* rather than sync itself, and has not run yet.
 > Cross-device sync moves data *and* the dashboard shows it. The one caveat that survives is
 > **1.8's**, now measured across sync: only events recorded *after* the title fix are visible to
 > the Activity view, which today is **4.2%** of the phone's history.
@@ -54,6 +57,7 @@ has to be true before any feature exists.
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; reported upstream as aw-webui#959 |
+> | 1.9 | ⚠️ compiles | failed sync no longer reports success — needs a CI build to test |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -362,6 +366,53 @@ build: **Time active 0.0s → 317.5s**, with **Top Applications** populated. The
 on screen. The 317.5s is small only because it counts events recorded *after* the install, which is
 exactly the caveat above. **Check:** Activity shows a non-zero **Time active** and a populated
 **Top Applications** for a day recorded after this build.
+
+### 1.9 — A sync that failed must not report success ✅ DONE 2026-09-03 ⚠️ *unverified*
+Found by reading upstream **[PR #251]**, which fixes the same class of bug: *"a failed SAF mirror
+was also logged as non-fatal, so the app could report native sync success while the user-selected
+directory stayed unchanged."* True of this fork too, in both directions — and the import side is
+worse, because a failed import is exactly the *"sync works but the other device never appears"*
+symptom that cost this project most of Phase 1.
+
+**The root cause was a data structure, not a `catch` block.** Both passes tallied into
+`counts = intArrayOf(0, 0) // [copied, skipped]`, and `skipped` was incremented for two unrelated
+things: a file that was already current, and a file that *failed to copy*. `importFile` said so in
+its own contract — *"@return true if bytes were copied; false if the file was already current, **or
+on any failure**"*. A boolean cannot carry three states. So a pass where every single file failed
+logged `copied=0 skipped=1`, which is byte-identical to a healthy pass with nothing to do.
+
+Four changes, in dependency order:
+
+| Change | Why |
+|---|---|
+| `FileOutcome { COPIED, SKIPPED, FAILED }` replaces the `Boolean` | the three states the code always had |
+| `TransferResult` (copied/skipped/failed/peers + first error) replaces `IntArray(2)` | separates *deliberate* from *broken*, and keeps a reason worth showing a user |
+| `runTransfer()` converts a throw into a failed result | still catches — one bad pass must not abort a cycle that can finish — but the failure travels back instead of dying in logcat |
+| export moved **before** the callback | an export that runs *after* the caller is told "success" can never correct that answer |
+
+That last one deleted `syncBothAndMirrorAsync`, whose only reason to exist was running the mirror
+before the callback for background workers. Now that every caller does, one entry point remains.
+
+**Failures are collected, not thrown.** A failed import still leaves the native sync worth running
+— peer databases from an earlier cycle are on disk and readable — so the cycle finishes and reports
+everything it hit. Native pull/push failures still end the cycle, because nothing after them can
+succeed.
+
+**Result:** `Sync failed: export failed: sync folder unreachable (permission revoked, or folder
+deleted)` now reaches the Sync Settings status line, where it used to read `Sync complete`. Logcat
+gains a `failed=N` column and logs an unsuccessful sync at **warning** level rather than info.
+
+⚠️ **Deliberately unchanged, so the next person does not think it was missed:** if the native pull
+fails, the export is skipped, so our own data is not published that cycle. Arguably it should still
+publish — peers would get our data even during a server problem. Left alone because a native pull
+failure almost certainly breaks the push too, and the next cycle is 15 minutes away. Revisit if a
+device is ever seen stuck.
+
+✅ Compiles; `scripts/check-local.sh` passes. **Check:** revoke the sync folder permission in
+Android settings, tap **Sync Now**, and see `Sync failed:` with a reason naming the folder — not
+`Sync complete`. Then restore it and confirm a normal sync still reports success with `failed=0`.
+
+[PR #251]: https://github.com/ActivityWatch/aw-android/pull/251
 
 ---
 
