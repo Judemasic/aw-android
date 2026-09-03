@@ -490,6 +490,32 @@ nothing).
 > one and only that device's rows remain. This is the reliable answer to *"which row is the S25U?"*
 > until the label is fixed.
 
+**Verified by running the real code, not by reading it (2026-09-03).** `origin/master`'s
+`timelineLabels.ts` was extracted with `git show` and executed under Node against the tablet's live
+bucket list, reproducing `VisTimeline.vue`'s collision logic verbatim. Result: `hasCollision =
+false`, and **4 of the 5 synced buckets lose their origin hostname**. Both files are byte-identical
+between our pin and `origin/master` (`git diff --stat` empty), so this is a live master bug.
+
+**Candidate fix, and an honest note about what it changes.** Relax the sync regex so it does not
+require an underscore, then shorten the base:
+
+```js
+const syncMatch = bucketId.match(/^(.*?)-synced-from-(.+)$/);
+const base = shortenBucketLabel(syncMatch[1]) || syncMatch[1];
+```
+
+| Bucket id | master today | with the fix |
+|---|---|---|
+| `aw-watcher-android-synced-from-jude_s_s25_ultra` | `android-synced-from-jude` | `android (synced from jude_s_s25_ultra)` |
+| `aw-stopwatch-synced-from-ad0c6c34-…` | `stopwatch-synced-from-ad0c6c34-…` | `stopwatch (synced from ad0c6c34-…)` |
+| `aw-watcher-window_erb-m2.localdomain-synced-from-remote` | `aw-watcher-window (synced from remote)` | `window (synced from remote)` |
+
+⚠️ **The desktop row changes too — `aw-watcher-window` becomes `window`.** An earlier draft of this
+claimed desktop was untouched; that was wrong, and running the code is what caught it. The change
+is arguably right (the *non*-synced desktop label is already `window`, so this makes the two
+consistent) but it is a change and must be declared when reporting. The alternative that keeps the
+base verbatim regresses #682 — it puts the 62-character hostname straight back into the label.
+
 **Not fixed here.** A fork-side fix means patching aw-webui, which
 [`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 decided against. Report it upstream instead.
 
