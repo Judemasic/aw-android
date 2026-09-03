@@ -6,20 +6,41 @@
 > view renders them. The combined timeline is now unblocked — it has real multi-device data *and*
 > a display path that has been proven, which is what 1.5 was gating on.
 >
-> **One thing is owed, and it needs CI:** **1.9** is written and compiles but has never run. A
-> local `assembleDebug` is **not** enough to test it — the APK it produces contains **zero `.so`
-> files**, so installing it would break sync outright with `UnsatisfiedLinkError`. Push, let CI
-> build, install *that*. ([`02`](02_ARCHITECTURE.md) §5.)
+> **🔥 DO THIS FIRST — bump `aw-webui` and get ~96% of the history back.** Upstream fixed
+> [aw-webui#959] on 2026-09-03 (**[#960], merged `85db7b5`**), so Android no longer needs a `title`
+> to appear in the Activity view. The events are **already on both devices**; only the dashboard
+> was hiding them. No re-sync, no data migration — it is a submodule bump.
+>
+> Our chain is `aw-android → Judemasic/aw-server-rust@beta (c6f7df2) → aw-webui (3cbe349)`, and
+> `3cbe349` predates the fix. Verified: `git merge-base --is-ancestor 85db7b5 origin/master` is
+> true in aw-webui, so it is on master.
+>
+> ```bash
+> # 1. in aw-server-rust/aw-webui — move to a commit containing the fix
+> cd aw-server-rust/aw-webui && git fetch origin master && git checkout <sha ≥ 85db7b5>
+> # 2. commit the pointer in the fork and PUSH IT FIRST (02 §5, cache trap)
+> cd .. && git add aw-webui && git commit && git push origin beta
+> # 3. then bump aw-android's pointer, push, and run CI
+> cd .. && git add aw-server-rust && git commit && git push origin beta
+> ```
+> ⚠️ **The submodule moves this time**, so the push order above is not optional — pushing the
+> pointer without pushing `aw-server-rust@beta` first gives CI a cache hit and an APK with stale
+> `.so` files. Expect **1.5's 15,503s to jump toward 366,700s** once installed; that is the check.
+>
+> **Then:** the failure path of **1.9** is still untested — revoke the sync folder permission, tap
+> **Sync Now**, expect `Sync failed:` (see 1.9). And **1.10** needs an owner decision, below.
 >
 > The shared folder was checked on 2026-09-03 and is **clean** — one directory per device. Two
 > stale databases remain in app-private storage; only one is a real leftover, and 1.5 says which.
 >
 > **Waiting on the owner, not on code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_).**
 > The Timeline labels every peer `android-synced-from-jude` because aw-webui cuts the hostname at
-> its first underscore. The fix is to rename both devices in Android settings to names *without
-> spaces* (`S25U`, `Tab-S10FE`) — but a rename strands the old sync directory in the shared folder
-> as a permanent phantom peer, so it must be done once, on both devices, and cleaned up after.
-> Do not rename without reading 1.10.
+> its first underscore. **You do not have to rename to work around this** — the Timeline's
+> `Filters ▸ Host:` dropdown reads the untruncated `hostname` metadata and already distinguishes
+> the devices. Renaming to underscore-free names (`S25U`, `Tab-S10FE`) fixes the *label* too, but
+> costs: the old sync directory is stranded as a phantom peer, **and already-synced buckets keep
+> their old ids**, so history splits across `…-synced-from-jude_s_s25_ultra` and
+> `…-synced-from-s25u`. Read 1.10 before deciding.
 >
 > **The 4.2% ceiling is not ours to lift.** Only events recorded after the **1.8** title fix reach
 > the Activity view — 15,503s of the phone's 366,700s. The rest is already synced and sitting on
@@ -63,8 +84,8 @@ has to be true before any feature exists.
 > | 1.5 | ✅ on device | tablet holds 6,797 phone events and the Activity query returns non-zero |
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
-> | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; reported upstream as aw-webui#959 |
-> | 1.9 | ⚠️ compiles | failed sync no longer reports success — needs a CI build to test |
+> | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; **aw-webui#959 fixed upstream** by #960 |
+> | 1.9 | ✅ on device | `failed=0` column live on both devices; export now precedes the callback |
 > | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, not fixed |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
@@ -355,6 +376,27 @@ shared Android branch from `["app"]` to `["app", "title"]`.
 > `git merge-base --is-ancestor bf0fc84 <pin>` inside `aw-server-rust/aw-webui` — dates alone are
 > not proof, because a pin can be older than its own commit date suggests.
 
+> ✅ **FIXED UPSTREAM 2026-09-03 — [aw-webui#960], merged as `85db7b5`.** Closed as completed the
+> morning after the report. The maintainer credits it directly: *"Reported by Judemasic in
+> ActivityWatch/aw-android#247, full analysis in #959."*
+>
+> The shipped fix is **source-aware merge keys**, not a blanket revert: an optional `isIos` flag on
+> `AndroidQueryParams` lets `appQuery()` keep `["app", "classname", "title"]` for ScreenTime
+> buckets while the `aw-watcher-android` path merges on `["app"]` / `["app", "classname"]`. A
+> regression test covers both. (An earlier PR, #964, was closed as a duplicate — its unconditional
+> `classname` key would have regressed ScreenTime.)
+>
+> **What this means for us — this is the important part:**
+> 1. **The 4.2% ceiling lifts.** Android events no longer need `title`, so the ~96% of history
+>    recorded *before* 1.8 becomes visible. It is already synced and sitting on both devices; no
+>    re-sync is needed. **It requires bumping the `aw-webui` submodule past `85db7b5` — see the
+>    START HERE block.**
+> 2. **1.8 is now redundant, and should still stay.** With Android merging on `["app", "classname"]`
+>    the `title` we emit is no longer a merge key, so it neither helps nor hurts that query. It is
+>    kept because it costs one duplicated string per event, `title` is a field every other watcher
+>    emits, and a real field cannot be re-broken by a future query edit — which is precisely how
+>    this regression happened. Revisit only if upstream gives Android a *meaningful* title.
+
 **Reported upstream 2026-09-02 as [aw-webui#959](https://github.com/ActivityWatch/aw-webui/issues/959)**
 — filed against **aw-webui**, not aw-android, because the faulty query lives there and the same
 `canonicalEvents` path serves every client. Root cause noted in that thread: aw-webui's "Android"
@@ -421,12 +463,42 @@ labels by **bucket id**. Two vocabularies for one thing, and only one of them is
 **The local bucket carries no hostname either way** (`aw-watcher-android`, shown as `android`) —
 that is inherent to the id, not the shortener. On any device, plain `android` is *that* device.
 
-**Not fixed here.** A fork-side fix is not possible without patching aw-webui, which
-[`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 already decided against. Worth reporting upstream
-alongside [aw-webui#959] — same file's neighbourhood, same cause: Android's bucket shape not being
-considered when a desktop-shaped helper was written.
+**Where it came from.** `shortenBucketLabel` and `formatTimelineBucketLabelHtml` were added by
+[aw-webui#757] (merged 2026-02-22, `1393ec6d`) to fix [aw-webui#682] — a user with a 62-character
+cloud hostname whose synced bucket names made the timeline sidebar unusable. The intended output
+was `aw-watcher-window_host-synced-from-remote` → `aw-watcher-window (synced from remote)`. That is
+the **desktop** id shape, and it is the only one the sync branch handles.
 
-### 1.9 — A sync that failed must not report success ✅ DONE 2026-09-03 ⚠️ *unverified*
+**There is a partial safety net, and it does not fire here.** `formatTimelineBucketLabelHtml` takes
+an optional `hostname` and renders `short @ host` — but `VisTimeline.vue` only passes it when
+`hasCollision` is true, i.e. when two buckets shorten to the *same* label. On a two-device setup
+every shortened label is still unique, so nothing is appended and the truncated name stands alone.
+Ironically the label **self-heals at three devices**: two peers whose names both begin `Jude`
+collide, and both then get `@ <full hostname>`.
+
+⚠️ **Still present on upstream `master` as of 2026-09-03** — fetched and compared byte for byte
+against our pin; the file is identical. **No existing issue covers it**: searched the ActivityWatch
+org for `shortenBucketLabel`, `timeline label truncated`, `synced-from`, and `hostname bucket name
+display`. The nearest prior art is #682 (closed, the origin) and [aw-server-rust#649], which
+proposed *"keep the raw ID in a tooltip, stop using it as the label"* — that is Stage 2 of its
+plan, and **our pinned aw-webui has none of it** (`grep` for `sync.origin` in `src/` returns
+nothing).
+
+> ✅ **There is a working way to tell devices apart today, no rename needed.** The Timeline has a
+> **Host filter** (`Filters ▸ Host:`) built from each bucket's `hostname` **metadata**, not its id
+> — so it is never truncated. It lists `jude_s_tab_s10_fe` and `jude_s_s25_ultra` in full. Select
+> one and only that device's rows remain. This is the reliable answer to *"which row is the S25U?"*
+> until the label is fixed.
+
+**Not fixed here.** A fork-side fix means patching aw-webui, which
+[`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 decided against. Report it upstream instead.
+
+[aw-webui#757]: https://github.com/ActivityWatch/aw-webui/pull/757
+[aw-webui#682]: https://github.com/ActivityWatch/aw-webui/issues/682
+[aw-server-rust#649]: https://github.com/ActivityWatch/aw-server-rust/issues/649
+[aw-webui#960]: https://github.com/ActivityWatch/aw-webui/pull/960
+
+### 1.9 — A sync that failed must not report success ✅ VERIFIED ON DEVICE 2026-09-03
 Found by reading upstream **[PR #251]**, which fixes the same class of bug: *"a failed SAF mirror
 was also logged as non-fatal, so the app could report native sync success while the user-selected
 directory stayed unchanged."* True of this fork too, in both directions — and the import side is
@@ -467,9 +539,26 @@ publish — peers would get our data even during a server problem. Left alone be
 failure almost certainly breaks the push too, and the next cycle is 15 minutes away. Revisit if a
 device is ever seen stuck.
 
-✅ Compiles; `scripts/check-local.sh` passes. **Check:** revoke the sync folder permission in
-Android settings, tap **Sync Now**, and see `Sync failed:` with a reason naming the folder — not
-`Sync complete`. Then restore it and confirm a normal sync still reports success with `failed=0`.
+✅ **Verified on both devices 2026-09-03**, from a CI build of `b12e398`. The healthy path is
+unregressed and the ordering fix is visible in the timestamps — compare the same device before and
+after:
+
+```
+OLD (phone, 12:26:09)   Multi-Device Sync completed: success=true   .310
+                        SAF export: … copied=1 skipped=0            .334   ← export AFTER the callback
+
+NEW (phone, 12:32:05)   SAF import: peers=1 copied=1 skipped=0 failed=0   .677
+                        SAF export: … copied=1 skipped=0 failed=0         .852
+                        Multi-Device Sync completed: success=true         .853   ← export BEFORE
+```
+
+The tablet shows the same shape at 12:28:12. `failed=0` is present on both passes, so the new
+column is live and the success path still reports success.
+
+⚠️ **The failure path is still untested.** Everything above proves a *healthy* sync is unaffected;
+none of it exercises `failed > 0`. **Check:** revoke the sync folder permission in Android
+settings, tap **Sync Now**, and see `Sync failed:` with a reason naming the folder — not
+`Sync complete`. That needs the UI; it cannot be driven from adb (§5.3).
 
 [PR #251]: https://github.com/ActivityWatch/aw-android/pull/251
 
