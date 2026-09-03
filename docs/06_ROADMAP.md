@@ -58,6 +58,7 @@ has to be true before any feature exists.
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; reported upstream as aw-webui#959 |
 > | 1.9 | ⚠️ compiles | failed sync no longer reports success — needs a CI build to test |
+> | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, not fixed |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -367,6 +368,57 @@ on screen. The 317.5s is small only because it counts events recorded *after* th
 exactly the caveat above. **Check:** Activity shows a non-zero **Time active** and a populated
 **Top Applications** for a day recorded after this build.
 
+### 1.10 — Timeline truncates every peer's name at the first `_` 🔎 FOUND 2026-09-03, NOT FIXED
+Reported by the owner: *"in the timeline the names are different from the activity … I don't know
+which for the S25U and which for the tab."* Not a naming preference — the hostname is being
+**cut off**, and with three devices every peer would look identical.
+
+aw-webui's `shortenBucketLabel` (`src/util/timelineLabels.ts`, added in `dc02ac8`, 2026-06-08)
+drops everything from the **first underscore** onward, because on desktop the underscore separates
+the host: `aw-watcher-window_erb-m2.localdomain` → `window`. Android's synced buckets do not have
+that shape. They are `aw-watcher-android-synced-from-<hostname>`, and the hostname *itself*
+contains the underscores — so the cut lands inside the peer's name.
+
+There is a branch meant to catch exactly this, but it cannot fire:
+`/^([^_]+)_.*-synced-from-(.+)$/` requires an underscore *before* `-synced-from-`, which is the
+desktop layout. Android's base id `aw-watcher-android` has no underscore at all, so the match fails
+and the naive shortener runs instead. Verified by simulating the function against this device's
+real bucket list:
+
+| Bucket | Timeline label |
+|---|---|
+| `aw-watcher-android` | `android` |
+| `aw-watcher-android-synced-from-jude_s_s25_ultra` | **`android-synced-from-jude`** |
+| `aw-watcher-android-media-synced-from-jude_s_s25_ultra` | **`android-media-synced-from-jude`** |
+| `aw-watcher-android-web-synced-from-jude_s_s25_ultra` | **`android-web-synced-from-jude`** |
+
+Every device owned by the same person collapses to `…-synced-from-jude`. The full id survives only
+in the hover tooltip, which is unusable on a touchscreen.
+
+**Why Activity looks different:** Activity selects by **hostname** (`jude_s_s25_ultra`), Timeline
+labels by **bucket id**. Two vocabularies for one thing, and only one of them is truncated.
+
+> **Workaround, no code required: rename the device so its name has no spaces.**
+> `deviceHostname()` reads Android's `Settings.Global.DEVICE_NAME` and `sanitizeDeviceHostname`
+> lowercases it and replaces every run of non-`[a-z0-9_-]` with `_`. So `Jude's S25 Ultra` becomes
+> `jude_s_s25_ultra` — three underscores, and the label dies at the first. **Hyphens survive the
+> sanitizer.** `S25U` → `s25u`, `Tab-S10FE` → `tab-s10fe`, both underscore-free, both surviving the
+> shortener intact as `android-synced-from-s25u`.
+>
+> ⚠️ **Renaming is not free — the hostname is the sync directory name.** After a rename the device
+> publishes to `<newname>/<uuid>/` and the **old directory stays in the shared folder forever**,
+> re-imported as a phantom peer by every device on every cycle (this is the 1.4a failure mode
+> again). Buckets already synced under the old name also keep it. Do it once, on both devices,
+> then delete the old directories by hand.
+
+**The local bucket carries no hostname either way** (`aw-watcher-android`, shown as `android`) —
+that is inherent to the id, not the shortener. On any device, plain `android` is *that* device.
+
+**Not fixed here.** A fork-side fix is not possible without patching aw-webui, which
+[`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 already decided against. Worth reporting upstream
+alongside [aw-webui#959] — same file's neighbourhood, same cause: Android's bucket shape not being
+considered when a desktop-shaped helper was written.
+
 ### 1.9 — A sync that failed must not report success ✅ DONE 2026-09-03 ⚠️ *unverified*
 Found by reading upstream **[PR #251]**, which fixes the same class of bug: *"a failed SAF mirror
 was also logged as non-fatal, so the app could report native sync success while the user-selected
@@ -560,17 +612,46 @@ Controls sized for a thumb, not a mouse.
 
 ## Phase 6 — Later
 
-- **Upstream what this fork fixed.** Not charity — several of these are bugs upstream has *already
-  received reports about* and would otherwise fix twice:
-  | Ours | Upstream evidence |
-  |---|---|
-  | `title` on window events (1.8) | aw-webui `bf0fc84` regression, unreported, still on master |
-  | Sync Now + inline result (1.7) | **#247**: *"sync has no feedback, no 'last date synced' or failed/success indicator"* |
-  | Restored toolbar (1.7) | **#247**: *"I only found out with Qwen that there is a left-swipe menu"*; **#218** closed as unreachable |
-  | Bidirectional SAF mirror (1.4) | **#247**: *"sync seems to not work. No change in the chosen folder"* |
-  | Push/pull depth, pull-every-db (1.2, 1.3) | no upstream report — Android-only paths |
-  The `title` fix is the cheapest and most valuable to send first: one field, and it un-breaks the
-  Activity view for every Android user on v0.14.0b2 or later.
+- **Upstream what this fork fixed.** Not charity — several are bugs upstream has *already received
+  reports about* and would otherwise fix twice:
+  | Ours | Upstream evidence | Status |
+  |---|---|---|
+  | `title` on window events (1.8) | aw-webui `bf0fc84` regression | **reported: [aw-webui#959]** |
+  | Timeline name truncation (1.10) | aw-webui `dc02ac8` `shortenBucketLabel` | ⬜ found 2026-09-03, not reported |
+  | Sync Now + inline result (1.7) | **#247**: *"sync has no feedback, no 'last date synced' or failed/success indicator"* | ⚠️ **overlaps [PR #251]** |
+  | Failure reporting (1.9) | **[PR #251]** fixes the same bug upstream | ⚠️ **overlaps [PR #251]** |
+  | Restored toolbar (1.7) | **#247**: *"I only found out with Qwen that there is a left-swipe menu"*; **#218** closed as unreachable | not sent |
+  | Bidirectional SAF mirror (1.4) | **#247**: *"sync seems to not work. No change in the chosen folder"* | not sent |
+  | Push/pull depth, pull-every-db (1.2, 1.3) | no upstream report — Android-only paths | not sent |
+
+- ⚠️ **Read [PR #251] before sending anything from 1.7 or 1.9.** It is **open, not merged**, and it
+  touches the same four files: `AWPreferences.kt`, `SyncInterface.kt`, `SyncSettingsActivity.kt`,
+  `activity_sync_settings.xml`. It persists the last sync's time and outcome and shows
+  `Last sync: never / succeeded at … / failed at …`. Ours adds an on-demand **trigger** and honest
+  failure propagation. The two are complementary, not duplicates — but the honest pitch is *"adds a
+  manual trigger on top of #251's status display"*, and a textual conflict in all four files is
+  certain. Rebase onto it rather than proposing a parallel design.
+
+> **Decision 2026-09-03 — keep the 1.8 `title` fix; do not withdraw it when #959 is fixed.**
+> The question is worth answering once, because it looks like duplicated effort. It is not:
+> - **#959 is an open issue, not a merged fix.** Nobody is assigned. Withdrawing ours now would
+>   take the Activity view straight back to `Time active: 0s`.
+> - **They repair different layers.** #959 fixes aw-webui's *query*. 1.8 makes Android events carry
+>   the `title` field every other watcher already emits. An Android event without a `title` is the
+>   odd one out regardless of what any query does with it.
+> - **It survives the next change.** The regression happened because a query was retuned for a
+>   different client sharing the Android branch. That can happen again; a real field cannot be
+>   re-broken by a query edit.
+> - **The costs are small and known:** a duplicated string per event (`title` == `app`, the screen
+>   name stays in `classname`), and one more diff to carry against upstream.
+>
+> **Revisit only if** upstream fixes #959 by giving Android a *meaningful* title — the activity or
+> screen name rather than the app label. Then ours would disagree with theirs and should yield.
+> Nothing about the fix is retroactive either way: pre-fix events have no `title` recorded, so only
+> an upstream query fix can ever surface them.
+
+[aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
+[PR #251]: https://github.com/ActivityWatch/aw-android/pull/251
 - An aw-webui combined view (Q4's second half) is the other natural contribution.
 - Rules engine proper — generalise accumulated signatures (**R15**; the data is already there).
 - Device role priors (screen-off is never foreground).

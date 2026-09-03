@@ -16,15 +16,22 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> **Sync works one-way on hardware; the other way is written but unproven.** Six blockers were
-> found ([`03_SYNC.md`](03_SYNC.md)); **five are fixed and verified on hardware**. A device writes
-> `<sync>/<hostname>/<device_id>/test.db` and the SAF mirror copies it into the Syncthing folder —
-> the original symptom is gone.
+> ✅ **Cross-device sync works, on hardware, in both directions — Phase 1 is done (2026-09-03).**
+> All six blockers in [`03_SYNC.md`](03_SYNC.md) are fixed and verified on two real devices. Each
+> device writes `<sync>/<hostname>/<device_id>/test.db`, exports only its own directory, and
+> imports every peer's before each pull.
 >
-> **Blocker 1, the architectural one, is now fixed in code (step 1.4, 2026-09-02):** the mirror
-> imports every *other* device's directory back into app-private storage before each pull, and
-> exports only our own. ⚠️ **It has never run.** The next thing that matters is a CI build and then
-> **1.5** — two real devices — which is also the only way 1.3 and 1.4 can be proven at all.
+> **Proof:** the tablet holds **6,797 events the phone produced**, under
+> `aw-watcher-android-synced-from-jude_s_s25_ultra`, and the Activity view renders them. That is
+> step **1.5** satisfied — data arriving *and* being displayed.
+>
+> ⚠️ **One ceiling, and it is not ours.** Only events recorded after the **1.8** title fix reach
+> the Activity view — **4.2%** of the phone's history. The other 96% is already synced and sitting
+> on the tablet, invisible because of an upstream aw-webui bug
+> ([#959](https://github.com/ActivityWatch/aw-webui/issues/959), reported 2026-09-02). An upstream
+> fix reveals all of it with no re-sync. **Do not build a workaround.**
+>
+> **Next:** Phase 2, plus **1.9** — written and compiling, never run, needs a CI build.
 
 ---
 
