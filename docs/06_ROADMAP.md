@@ -1,16 +1,29 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** **Build, install on BOTH devices, then finish 1.5.**
-> **Cross-device sync works** — the tablet pulled ~7,000 events off the phone on 2026-09-02. What
-> is left of 1.5 is (a) the *display* half, which needed upstream **#250** (merged, unverified),
-> (b) the phone direction, which needs the phone on a current build, and (c) deleting the four
-> stale directories 1.4a describes. Everything pending is Kotlin-only; the submodule has not moved,
-> so no `aw-server-rust@beta` push is needed — if it ever does move, push it **first**
-> ([`02`](02_ARCHITECTURE.md) §5, cache trap), then the pointer, then build.
+> **👉 START HERE:** ✅ **Phase 1 is done — begin Phase 2.**
+> Cross-device sync works end to end and is verified on hardware: the tablet holds **6,797 events
+> the phone produced**, under `aw-watcher-android-synced-from-jude_s_s25_ultra`, and the Activity
+> view renders them. The combined timeline is now unblocked — it has real multi-device data *and*
+> a display path that has been proven, which is what 1.5 was gating on.
 >
-> Do not start the combined timeline until 1.5 is fully green. It now *has* multi-device data to
-> operate on, which is new — but the display path is still unproven, and that is the path the
-> combined view would be built on.
+> **Two things are owed before new work, both small:**
+> 1. **Sync failures are reported as success.** `mirrorSyncFilesToSafDir()` and `importPeerFiles()`
+>    both swallow exceptions, so a sync whose mirror or import failed still logs
+>    `success=true`. Upstream hit the same bug and fixes it in **[#251]** — adopt the reasoning.
+>    This is the failure that would look like *"sync works but the other device never appears."*
+> 2. **Two stale directories** from the 1.4a bug may remain in the shared folder. Verify and delete.
+>
+> **The 4.2% ceiling is not ours to lift.** Only events recorded after the **1.8** title fix reach
+> the Activity view — 15,503s of the phone's 366,700s. The rest is already synced and sitting on
+> the tablet; it becomes visible the moment **[aw-webui#959]** is fixed upstream, with no re-sync.
+> Do not build a workaround for it.
+>
+> Everything pending is Kotlin-only; the submodule has not moved, so no `aw-server-rust@beta` push
+> is needed — if it ever does move, push it **first** ([`02`](02_ARCHITECTURE.md) §5, cache trap),
+> then the pointer, then build.
+
+[#251]: https://github.com/ActivityWatch/aw-android/pull/251
+[aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
 
 **How to work this document:** do one step, run its check, stop. Then update the step in place —
 mark it `✅ DONE (date)`, write a **Result** saying what is *actually true now*, and flag with ⚠️
@@ -23,9 +36,10 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-02 (late night):** **every step of Phase 1 except 1.5 is verified on device.**
-> Cross-device sync moved ~7,000 events. Two things are open: **1.4a** (export scope, fixed but
-> unbuilt) and the second half of **1.5** (display, and the phone direction).
+> **Status 2026-09-03:** ✅ **Phase 1 is complete. Every step is verified on device.**
+> Cross-device sync moves data *and* the dashboard shows it. The one caveat that survives is
+> **1.8's**, now measured across sync: only events recorded *after* the title fix are visible to
+> the Activity view, which today is **4.2%** of the phone's history.
 >
 > | Step | State | How checked |
 > |---|---|---|
@@ -35,9 +49,11 @@ has to be true before any feature exists.
 > | 1.2 | ✅ on device | `<hostname>/<device_id>/test.db`, no `_staging` |
 > | 1.3 | ✅ on device | four dbs present, five `Synced` lines, no `choosing largest db` |
 > | 1.4 | ✅ on device | `peers=2 copied=2`, ~7,000 events pulled from the phone |
-> | 1.4a | ⚠️ compiles | export scope fix — found by 1.4's first real run, never built |
+> | 1.4a | ✅ on device | both devices log `SAF export: <hostname>/<own uuid>` — scoped |
+> | 1.5 | ✅ on device | tablet holds 6,797 phone events and the Activity query returns non-zero |
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
+> | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; reported upstream as aw-webui#959 |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -184,23 +200,72 @@ hostname gets a full push on the next sync.
 a build with this fix, delete the two wrong ones by hand — nothing deletes them automatically, and
 each will keep being imported as a phantom peer until it goes.
 
-### 1.5 — Two-device end-to-end verification ⚠️ HALF DONE 2026-09-02
+### 1.5 — Two-device end-to-end verification ✅ VERIFIED ON DEVICE 2026-09-03
 Run the full procedure in [`03_SYNC.md` §5](03_SYNC.md).
 
 ✅ **Steps 1–3 pass.** Two devices, two distinct server-minted UUIDs
 (`7b54cfe9-…` tablet, `ad0c6c34-…` phone), both directories present in the shared folder, and the
 tablet's datastore took ~7,000 events that only the phone could have produced.
 
-❌ **Step 4 — *displays* — is not done.** Data arriving in the datastore is not the same as the
-dashboard showing it, and the owner reports the Activity view is empty. That was a separate bug:
-`MainActivity` opened `/#/activity/unknown/`, a sentinel hostname with no
-`aw-watcher-android_*` buckets behind it. Upstream fixed it in **#250**, which is now merged —
-unverified on device.
+✅ **Both directions move files.** The phone is on a current build and imports too — steady state
+on 2026-09-02 was `SAF import: peers=1 copied=1` and `SAF export: <own hostname>/<own uuid>
+copied=1` on *each* device, which is 1.4 and 1.4a working symmetrically.
 
-❌ **The other direction is untested.** The phone still runs the old export-only build, so it has
-never imported anything.
+✅ **Step 4 — *displays* — passes, 2026-09-03, tablet attached over adb.** The tablet's own server
+lists a bucket it could not have produced, carrying the phone's hostname:
 
-**Check:** device A displays a bucket only device B could have produced.
+```
+aw-watcher-android-synced-from-jude_s_s25_ultra | currentwindow | jude_s_s25_ultra   6797 events
+aw-watcher-android                              | currentwindow | jude_s_tab_s10_fe   485 events
+```
+
+The peer's buckets arrive under `<bucket>-synced-from-<hostname>` with `hostname` set to the
+**origin** device, which is what makes them selectable as a separate host in the dashboard. And the
+query behind the Activity view returns non-zero for that host — measured against the phone's bucket
+on the tablet, over 2026-08-01 → 09-04:
+
+| Query | Result |
+|---|---|
+| `flood(query_bucket(…))` | **366,699.9s** |
+| … `+ merge_events_by_keys(events, ["app", "title"])` | **15,503.1s** |
+| … `+ merge_events_by_keys(events, ["app"])` | **366,699.9s** |
+
+**That is the check satisfied: 15,503.1s — 4h18m of the phone's activity, visible on the tablet.**
+Two bugs stood in front of this and both are fixed: `MainActivity` opened `/#/activity/unknown/`, a
+sentinel hostname with no buckets behind it (upstream **#250**, merged), and the Activity query
+dropped every title-less event (**1.8**).
+
+> ⚠️ **The middle row is the real story, and it is 1.8's caveat measured across sync: 15,503 of
+> 366,700 seconds — 4.2%.** The other 96% is phone history recorded *before* the title fix, and it
+> is still dropped by the upstream merge. Sync is not the limiter; aw-webui#959 is. A fix upstream
+> would make all of it appear at once, with no re-sync — the events are already on the tablet.
+> Nothing in this fork can recover them, because the missing `title` was never recorded.
+
+> ✅ **The dot-prefix guard is earning its place.** Syncthing file versioning is on, so the shared
+> folder also contains **`.stversions/`** — and inside it, archived copies of the stale directories
+> 1.4a created, laid out as `.stversions/<hostname>/<uuid>/test.db`. That is a perfect decoy: it
+> has the exact shape the importer looks for. `isSafeEntryName()` rejects any entry starting with
+> `.`, and the logs prove it works — syncs report `peers=1`, not `peers=2`, with those archives
+> sitting right there. Without that guard every deleted peer would resurrect itself forever.
+
+> ⚠️ **Two stale databases remain in *app-private* storage** (the shared folder is clean). Only one
+> is a leftover; the other is by design, and telling them apart matters:
+>
+> | Path | Size | Last written | What it is |
+> |---|---|---|---|
+> | `jude_s_tab_s10_fe/ad0c6c34-…` | 45 KB | 09-02 22:17 | **true leftover** — delete; nothing recreates it |
+> | `jude_s_s25_ultra/7b54cfe9-…` | 45 KB | 09-02 21:56 | **regenerates** — `sync_run`'s pull calls `setup_local_remote(<peer host>, our_id)`; deleting it is pointless |
+>
+> Compare the live pair: `jude_s_tab_s10_fe/7b54cfe9-…` (124 KB, ours) and
+> `jude_s_s25_ultra/ad0c6c34-…` (1.4 MB, the phone's), both written within the last ten minutes.
+> Cost of the leftovers is a redundant pull every 15 minutes, not wrong data — events dedupe by id.
+
+> ℹ️ **Noted, not chased:** `aw-stopwatch-synced-from-ad0c6c34-…` names the peer by **device
+> UUID** where every watcher bucket names it by **hostname**. Upstream inconsistency in the
+> stopwatch path, harmless here — it makes that one bucket sort oddly in a host list. Revisit if
+> Phase 2 leans on bucket naming.
+
+**Check:** device A displays a bucket only device B could have produced. ✅
 
 > **Phase 1 is not done until 1.5 passes on real hardware.** Everything downstream assumes
 > cross-device data actually arrives; a green build proves nothing here. Five blockers have now
@@ -245,7 +310,7 @@ proved 1.4. The button paid for itself on its first use: the alternative was wai
 ⚠️ Still owed: the same walk on the **phone**, which is the device where the drawer was actually
 unreachable, and where the toolbar's ~56dp will matter to the 5.1 audit.
 
-### 1.8 — Emit a `title` so the Activity view works ✅ DONE 2026-09-02 ⚠️ *unverified*
+### 1.8 — Emit a `title` so the Activity view works ✅ VERIFIED ON DEVICE 2026-09-02
 Not a sync step, but it sits in Phase 1 because until it is true the app shows the owner nothing,
 and 1.5's "device A *displays* B's data" check cannot pass.
 
@@ -263,9 +328,28 @@ Measured on the tablet, same bucket, same day:
 | … `+ merge_events_by_keys(events, ["app"])` | **4878.8s** |
 
 **Upstream regression:** aw-webui `bf0fc84` (2026-07-24), an iOS ScreenTime patch that changed the
-shared Android branch from `["app"]` to `["app", "title"]`. Unfixed on master at 2026-08-31 and
-reported nowhere — first Android release carrying it was **v0.14.0b2 (2026-08-24)**, so the
-exposure is nine days, not six weeks.
+shared Android branch from `["app"]` to `["app", "title"]`.
+
+> ⚠️ **A blame-scoping claim was made here and was wrong.** An earlier draft said the regression
+> shipped in **v0.14.0b2** and had "nine days of exposure". It does not ship there. Verified by
+> ancestry, not by comparing dates:
+>
+> | Build | → aw-server-rust | → aw-webui | Contains `bf0fc84`? |
+> |---|---|---|---|
+> | **v0.14.0b2** | `e8e6e90` | `749585f` (2026-07-22) | **no** — `git merge-base --is-ancestor` says clean |
+> | **this fork / master builds** | `c6f7df2` | `3cbe349` (2026-08-26) | **yes** |
+>
+> So **released Android users are unaffected**; only master/CI builds are. Reproduce with
+> `git merge-base --is-ancestor bf0fc84 <pin>` inside `aw-server-rust/aw-webui` — dates alone are
+> not proof, because a pin can be older than its own commit date suggests.
+
+**Reported upstream 2026-09-02 as [aw-webui#959](https://github.com/ActivityWatch/aw-webui/issues/959)**
+— filed against **aw-webui**, not aw-android, because the faulty query lives there and the same
+`canonicalEvents` path serves every client. Root cause noted in that thread: aw-webui's "Android"
+branch is shared with Apple ScreenTime imports (`bucketsAndroid()` returns android *and*
+`aw-import-screentime` buckets), so PR #917 tightened the merge keys for iOS and silently broke
+Android. #917's own body lists "events without `title` were silently skipped" as a bug it *fixed*
+for iOS while introducing it for Android.
 
 `title` is set to the app label in `Event.kt` and `SessionModels.kt`. Emitting the field beats
 patching aw-webui: two forks instead of three, and it survives the query changing again. The
@@ -273,8 +357,11 @@ specific screen stays in `classname`, which `title_events` groups by.
 
 ⚠️ **Only new events get a title.** Everything recorded before this build stays invisible to that
 query — the Activity view will fill in going forward, not retroactively.
-✅ Compiles. **Check:** Activity shows a non-zero **Time active** and a populated **Top
-Applications** for a day recorded after this build.
+✅ **Verified on the tablet 2026-09-02.** Same bucket, same day, before and after installing this
+build: **Time active 0.0s → 317.5s**, with **Top Applications** populated. The owner confirmed it
+on screen. The 317.5s is small only because it counts events recorded *after* the install, which is
+exactly the caveat above. **Check:** Activity shows a non-zero **Time active** and a populated
+**Top Applications** for a day recorded after this build.
 
 ---
 
@@ -494,6 +581,28 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-03 — Phase 1 complete: cross-device sync verified end to end
+Tablet attached over adb. Its server lists `aw-watcher-android-synced-from-jude_s_s25_ultra`
+(hostname `jude_s_s25_ultra`, **6,797 events**) beside its own 485 — a bucket it could not have
+produced. The Activity query against that host returns **15,503.1s**, so **1.5's "device A displays
+a bucket only device B could have produced" is satisfied.** Phase 1 closes.
+
+The same measurement quantified 1.8's caveat across sync: `flood` alone yields 366,699.9s, the
+`["app", "title"]` merge yields 15,503.1s. **4.2%.** The other 96% is pre-fix phone history —
+already on the tablet, invisible only because of aw-webui#959. An upstream fix reveals all of it
+without a re-sync.
+
+Also corrected a **wrong claim in this document**: 1.8 stated the regression shipped in
+**v0.14.0b2** with "nine days of exposure". It does not. Verified by ancestry rather than dates —
+`git merge-base --is-ancestor bf0fc84 749585f` returns false, and `749585f` is what v0.14.0b2 pins
+through `aw-server-rust e8e6e90`. Released users are unaffected; only master builds carry it. The
+corrected chain is now a table in 1.8 with the command to reproduce it.
+
+Reported upstream as **aw-webui#959**, filed against aw-webui rather than aw-android because the
+faulty query lives there. Found while reading aw-android#247: upstream **PR #251** is open and
+touches the same four files as **1.7**, so expect a conflict — and it fixes the
+success-reported-on-failure bug this fork still has.
 
 *Newest first.*
 
