@@ -167,6 +167,72 @@ APK, or show that sync works. Only two real devices do that (roadmap 1.5).
 
 ---
 
+### 5.3 Verifying on a device *(added 2026-09-03)*
+
+Recipes that closed roadmap **1.5**. All of them assume one device attached and `adb devices`
+listing it.
+
+> ⚠️ **`./gradlew` needs `JAVA_HOME`, which is not set on this machine.** Prefix any Gradle
+> command with:
+> ```bash
+> export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+> ```
+> `scripts/check-local.sh` sets this itself; running `./gradlew` directly does not.
+
+> 🚨 **A local `assembleDebug` "succeeds" and produces a broken APK.** This is the trap R4 exists to
+> prevent, and it is worse than R4 implies, because nothing fails:
+> ```
+> BUILD SUCCESSFUL in 20s
+> $ unzip -l mobile/build/outputs/apk/debug/mobile-debug.apk | grep '\.so'
+> (nothing)
+> ```
+> `cargoBuild` is not wired into Gradle (§5.1), so the APK contains **zero native libraries**.
+> Installing it replaces a working build with one that throws `UnsatisfiedLinkError` on every sync
+> — it will look exactly like a regression in whatever you last changed. **Always check
+> `unzip -l <apk> | grep '\.so'` before `adb install`, and get APKs from CI.**
+
+**Talk to the device's aw-server.** The server binds loopback inside the app sandbox, so forward a
+port and read the API key out of app-private storage:
+
+```bash
+adb forward tcp:15600 tcp:5600
+KEY=$(adb shell "run-as net.activitywatch.android.debug \
+  cat /data/data/net.activitywatch.android.debug/files/config.toml" \
+  | grep -i api_key | sed 's/.*=[[:space:]]*//' | tr -d '"\r')
+curl -s -H "Authorization: Bearer $KEY" http://localhost:15600/api/0/buckets/
+```
+
+Two things that cost time when they were guessed instead of checked:
+- The header is **`Authorization: Bearer <key>`**. A bare `Authorization: <key>` is rejected.
+- `config.toml` is at `files/config.toml`, **not** `files/config/aw-server-rust/config.toml`.
+
+**Run a query** — this is how the Activity view's numbers were measured directly, and how
+[`06_ROADMAP.md`](06_ROADMAP.md) 1.8 and 1.5 were settled. The body schema
+(`aw-models/src/query.rs`) is `{timeperiods: [...], query: [...]}` where **`query` is a flat list
+of strings**, not a nested list:
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"timeperiods":["2026-09-01T00:00:00+00:00/2026-09-04T00:00:00+00:00"],
+       "query":["events = flood(query_bucket(\"aw-watcher-android\")); RETURN = sum_durations(events);"]}' \
+  http://localhost:15600/api/0/query/
+```
+
+**Inspect the sync directories.** The shared folder is what Syncthing replicates; the app-private
+one is what aw-sync actually reads. `ls -R` hides `.stversions`, so use `find`:
+
+```bash
+adb shell 'find /sdcard/ActivityWatch-sync/ -name "*.db" -exec ls -l {} \;'
+adb shell 'find /sdcard/Android/data/net.activitywatch.android.debug/files/sync/ -name "*.db" -exec ls -l {} \;'
+```
+
+**What cannot be triggered from a shell.** `SyncAlarmReceiver` is not exported, so `am broadcast`
+silently does nothing, and `SyncSettingsActivity` is `exported="false"`, so `am start` fails. There
+is no way to force a sync from adb — use the **Sync Now** button (roadmap 1.7), which exists partly
+for this reason, or wait out the 15-minute scheduler.
+
+---
+
 ### 5.2 Debug signing *(fixed 2026-09-02)*
 
 `mobile/build.gradle` commits a **fixed debug keystore** (`mobile/debug.keystore`) and points the
