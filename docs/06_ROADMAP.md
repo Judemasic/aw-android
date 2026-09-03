@@ -516,6 +516,37 @@ is arguably right (the *non*-synced desktop label is already `window`, so this m
 consistent) but it is a change and must be declared when reporting. The alternative that keeps the
 base verbatim regresses #682 — it puts the 62-character hostname straight back into the label.
 
+> ### 🔺 It is not an Android bug, and that answers "why fix it in aw-webui?"
+>
+> Reasonable objection: aw-android exists to absorb platform differences so shared components do
+> not have to care about Android. So why is this fixed upstream in aw-webui rather than here?
+>
+> **Because the trigger is the bucket-id *shape*, not the platform.** `shortenBucketLabel` cuts at
+> the first `_`. Desktop watcher ids embed the hostname with an underscore
+> (`aw-watcher-window_host`), which *accidentally* satisfies the `syncMatch` regex, so they escape.
+> The bug hits any bucket whose **base id contains no underscore**. Verified by running master's
+> real code:
+>
+> | Bucket id | Label | |
+> |---|---|---|
+> | `aw-watcher-window_host_a-synced-from-host_b` | `aw-watcher-window (synced from host_b)` | ✅ desktop watcher, fine even with underscored hosts |
+> | `aw-watcher-afk_my_pc-synced-from-other_pc` | `aw-watcher-afk (synced from other_pc)` | ✅ fine |
+> | **`aw-stopwatch-synced-from-my_desktop`** | **`stopwatch-synced-from-my`** | ❌ **broken — and this is desktop** |
+> | `aw-watcher-android-synced-from-my_phone` | `android-synced-from-my` | ❌ broken |
+>
+> **`aw-stopwatch` is aw-webui's own feature** (`client: aw-webui`), present on every platform.
+> Two desktops with underscored hostnames syncing stopwatch data hit this with no Android involved.
+> So it is a defect in a shared display helper that Android merely exposes most often — Android's
+> hostnames come from a device name whose spaces become underscores, making it the common case
+> rather than the exception.
+>
+> The division of labour this fork follows is about **runtime and platform** concerns — JNI, SAF,
+> the WebView, Android services. `aw-webui` is deliberately *shared* UI, bundled unmodified into
+> the APK. Patching it here would mean forking a third repository
+> ([`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 says no) and would leave desktop broken. The
+> only fork-side "fix" available is renaming devices to avoid underscores, which is bending our
+> data to suit someone else's display bug.
+
 **Reproducible without sync — verified on the tablet 2026-09-03.** Asking a maintainer to pair two
 Android devices is a good way to have a bug ignored, so the repro was reduced to a single JSON
 import. Read out of `aw-server/src/endpoints/import.rs`:
@@ -533,10 +564,21 @@ only visible in the source:
 - `DELETE /api/0/buckets/<id>` is unconditional (`bucket_delete`, no force flag), so the repro is
   fully reversible.
 
-Round-tripped against the live server: `POST /api/0/import/` → **HTTP 200**, bucket
-`aw-watcher-android-synced-from-my_phone` created with `hostname=my_phone`, the real
-`timelineLabels.ts` then rendered it **`android-synced-from-my`**, and `DELETE` removed it cleanly
-(10 buckets before, 10 after).
+Round-tripped against the live server twice. The **minimal** payload that works — no `created`, no
+`data`, no `last_updated`, and a deliberately wrong map key:
+
+```json
+{ "buckets": { "b": {
+  "id": "aw-watcher-android-synced-from-my_phone",
+  "type": "currentwindow", "client": "aw-android", "hostname": "my_phone",
+  "events": [ { "timestamp": "2026-09-03T10:00:00Z", "duration": 600,
+                "data": { "app": "Firefox" } } ] } } }
+```
+
+`POST /api/0/import/` → **HTTP 200**. No bucket named `b` was created — it landed as
+`aw-watcher-android-synced-from-my_phone`, which is the map key being discarded, proven rather than
+inferred. `created` was filled in by the server. The real `timelineLabels.ts` then rendered it
+**`android-synced-from-my`**, and `DELETE` removed it cleanly (10 buckets before, 10 after).
 
 **Not fixed here.** A fork-side fix means patching aw-webui, which
 [`07_OPEN_QUESTIONS.md`](07_OPEN_QUESTIONS.md) Q4 decided against. Report it upstream instead.
