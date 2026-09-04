@@ -1,30 +1,23 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** ✅ **Phase 1 is done. The `aw-webui` bump is done and pushed. One thing is
-> owed on hardware, then Phase 2 begins.**
+> **👉 START HERE:** ✅ **Phase 1 is done and the `aw-webui` bump is verified on both devices.
+> Begin Phase 2 — [2.1](#21--shared-folder-layout--version).**
 >
-> **🔎 DO THIS FIRST — install the new APK and confirm the history reappeared.** The bump landed
-> in code on 2026-09-04 ([1.11](#111--bump-aw-webui-past-the-960-fix)): `aw-webui`
-> `3cbe349 → a2ca625`, carried up through `Judemasic/aw-server-rust@beta` (`9e01fab`) and then
-> `Judemasic/aw-android@beta` (`1524318`), in that order because the submodule moved. CI build
-> [33874769211] is **green**, and the APK was checked to actually carry the new webui — the fix's
-> query string is in the shipped `libaw_server.so`, so the cache trap did not bite (1.11 shows the
-> grep). **Download the artifact from that run and install it.**
+> **The 4.2% ceiling is gone, measured not assumed (2026-09-04, step
+> [1.11](#111--bump-aw-webui-past-the-960-fix)).** `aw-webui` moved `3cbe349 → a2ca625`, carried
+> through `Judemasic/aw-server-rust@beta` (`9e01fab`) then `Judemasic/aw-android@beta` (`1524318`)
+> in that order because the submodule moved. Both devices run the resulting build, and on the
+> tablet the phone's synced history goes **48,186s → 399,383s (8.3×)** under the fixed merge keys —
+> **no re-sync, no migration.** The data had been there the whole time.
 >
-> Nothing about it has been seen on a screen. **The check:** install on the tablet, open
-> **Activity** for the synced phone bucket across the full history, and expect **Time active to
-> jump from ~15,503s toward ~366,700s** — the ~96% recorded before the 1.8 title fix, which was
-> synced all along and only hidden by the dashboard. No re-sync, no migration. If the number does
-> not move, the cause is *not* delivery — that half is already ruled out — so look at the query
-> and the bucket the Activity view is actually reading.
+> **Two things are still owed from Phase 1, both small, neither blocking:**
+> 1. **1.9's failure path has never run.** Revoke the sync folder permission, tap **Sync Now**,
+>    expect `Sync failed:` naming the folder — not `Sync complete`. Needs the UI; adb cannot drive it.
+> 2. **1.10 needs an owner decision, not code** (below).
 >
-> The same build also brings [#966] (`prompt()` → modals, so WebView dialogs stop being silent
-> no-ops) and [#956] (category JSON import over SAF) — both worth a glance while the device is in
+> Also newly in the build and unexamined: [#966] (`prompt()` → modals, so WebView dialogs stop being
+> silent no-ops) and [#956] (category JSON import over SAF). Worth a glance next time a device is in
 > hand.
->
-> **Then, still owed from Phase 1:** the failure path of **1.9** has never run — revoke the sync
-> folder permission, tap **Sync Now**, expect `Sync failed:` naming the folder, not
-> `Sync complete`. It needs the UI; adb cannot drive it.
 >
 > **Waiting on the owner, not on code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_).**
 > The Timeline labels every peer `android-synced-from-jude` because aw-webui cuts the hostname at
@@ -36,14 +29,14 @@
 > `…-synced-from-s25u`. Read 1.10 before deciding. `a2ca625` does **not** fix it — the bug is still
 > live on upstream master.
 >
-> **After that: Phase 2 — shared state.** Start at [2.1](#21--shared-folder-layout--version).
-> Note the debt 1.1 left it: the restore guard from [`05`](05_DATA_MODEL.md) §7 belongs with
-> `meta.json`, because an app backup clones aw-server's `device_id` file just as readily.
+> **Phase 2 starts at [2.1](#21--shared-folder-layout--version)**, and note the debt 1.1 left it:
+> the restore guard from [`05`](05_DATA_MODEL.md) §7 belongs with `meta.json`, because an app backup
+> clones aw-server's `device_id` file just as readily.
 >
 > The shared folder was checked on 2026-09-03 and is **clean** — one directory per device. Two
 > stale databases remain in app-private storage; only one is a real leftover, and 1.5 says which.
 >
-> ⚠️ **The submodule has moved once now, so the habit matters:** whenever `aw-server-rust` changes,
+> ⚠️ **The submodule has now moved once, so the habit matters:** whenever `aw-server-rust` changes,
 > push `aw-server-rust@beta` **first**, then the pointer in `aw-android`, then build.
 
 [#251]: https://github.com/ActivityWatch/aw-android/pull/251
@@ -62,14 +55,13 @@ anything not verified. Append to the Progress Log at the bottom, newest first.
 Fixes the blockers in [`03_SYNC.md` §2](03_SYNC.md). Nothing here is new functionality; it is what
 has to be true before any feature exists.
 
-> **Status 2026-09-04:** ✅ **Phase 1's goal is met: cross-device sync works end to end on
-> hardware**, and every step 1.0a–1.9 is verified on device — with the one hole named in 1.9, whose
-> *failure* path has still never run. Cross-device sync moves data *and* the dashboard shows it.
+> **Status 2026-09-04:** ✅ **Phase 1 is complete.** Cross-device sync works end to end on hardware,
+> the dashboard shows the result, and **1.8's 4.2% ceiling is gone** — 1.11 bumped `aw-webui` past
+> the upstream fix and the tablet now resolves the phone's synced history at **399,383s** against
+> **48,186s** before, with no re-sync. Steps 1.0a–1.11 are verified on device.
 >
-> **1.8's caveat is addressed but not yet observed.** Only events recorded after the title fix were
-> visible to the Activity view — 4.2% of the phone's history — and the cause was upstream, not
-> ours. **1.11** bumps `aw-webui` past the fix; the remaining ~96% should appear on install, with
-> no re-sync. Until someone looks at a device, that is a claim about commits, not about the app.
+> **One hole remains:** 1.9's *failure* path has never run — everything verified about 1.9 concerns
+> a healthy sync. It needs the UI and cannot be driven from adb. 1.10 is an owner decision, not code.
 >
 > | Step | State | How checked |
 > |---|---|---|
@@ -86,7 +78,7 @@ has to be true before any feature exists.
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; **aw-webui#959 fixed upstream** by #960 |
 > | 1.9 | ✅ on device | `failed=0` column live on both devices; export now precedes the callback |
 > | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, still unfixed on master |
-> | 1.11 | ⚠️ in the APK | fix string found in the shipped `libaw_server.so`; **not yet seen on a device** |
+> | 1.11 | ✅ on device | tablet: the phone's synced history **48,186s → 399,383s** (8.3×), no re-sync |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -654,7 +646,7 @@ settings, tap **Sync Now**, and see `Sync failed:` with a reason naming the fold
 
 ---
 
-### 1.11 — Bump `aw-webui` past the #960 fix ✅ DONE 2026-09-04, ⚠️ NOT YET VERIFIED ON DEVICE
+### 1.11 — Bump `aw-webui` past the #960 fix ✅ VERIFIED ON DEVICE 2026-09-04
 The step [1.8](#18--emit-a-title-on-window-events-so-the-activity-view-is-not-empty)'s caveat and
 the 4.2% ceiling both end here, and neither needed any code of ours: upstream's
 [aw-webui#960] (`85db7b5`) stopped merging `aw-watcher-android` buckets on the `title` key, so
@@ -701,16 +693,34 @@ and nowhere in `3cbe349`. (`["app", "title"]` is still present too, as it should
 on the `isIos` branch for ScreenTime buckets.) So the delivery path is verified end to end, and the
 one remaining unknown is genuinely the behaviour, not the build.
 
-⚠️ **Not verified on a device.** The commit graph is checked
-(`git merge-base --is-ancestor 85db7b5 origin/master` is true; the pin now contains it); nothing has
-been installed or looked at on a screen.
+✅ **VERIFIED ON BOTH DEVICES 2026-09-04.** The owner installed the build on both (phone
+`lastUpdateTime 15:29:32`, tablet `15:32:32`), and both installed APKs carry the fix — grepping
+`base.apk` on each device for the post-fix query string returns **8** (two hits per embedded
+webui, across the arm64 and x86_64 `libaw_server.so` / `libaw_sync.so`).
 
-**Check:** install the resulting APK on the tablet and open **Activity** for the synced phone
-bucket over the full history. **Time active should jump from ~15,503s toward ~366,700s.** No
-re-sync, no migration — if it does not move, the cause is **not** delivery (that is ruled out
-above), so look at the query and at which bucket the Activity view is reading.
-Then re-check **Top Applications** is populated for a day recorded *before* the 1.8 build — that is
-the specific thing #960 unhides.
+The measurement was then taken through each device's own server, running the two merge-key variants
+over the full year so the *only* difference is the thing #960 changed:
+
+| Device | Bucket | old `["app","title"]` | new `["app"]` | |
+|---|---|---|---|---|
+| **Tablet** | `aw-watcher-android-synced-from-jude_s_s25_ultra` | 48,186s | **399,383s** | **8.3×** |
+| Phone | `aw-watcher-android` (its own) | 67,542s | **418,760s** | 6.2× |
+| Phone | `…-synced-from-jude_s_tab_s10_fe` | 4,563s | **50,138s** | 11.0× |
+
+The tablet row is this step's stated check. It predicted `~15,503s → ~366,700s`; the observed pair
+is `48,186s → 399,383s`. **Both numbers are higher than predicted for the same reason** — two more
+days of events accrued between the 09-03 measurement and this one, and the newer ones carry titles
+(1.8), which lifts the *old* query's figure too. The ratio is the result, and no data was re-synced
+to get it.
+
+> ⚠️ **What this measures, precisely:** the query engine, over the real buckets, on the real
+> devices — the same merge that `canonicalEvents` performs and that was returning near-zero. It is
+> not a screenshot of the rendered Activity page. The rendering half rests on the installed APK
+> containing the fixed webui, which the `base.apk` grep above establishes directly.
+
+**Worth a look while you are in the app:** `Top Applications` for a day recorded *before* the 1.8
+build — that is the specific thing #960 unhides, and it is the visual counterpart to the numbers
+above.
 
 [33874769211]: https://github.com/Judemasic/aw-android/actions/runs/33874769211
 
@@ -962,7 +972,38 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 
 ## Progress log
 
-### 2026-09-04 — The `aw-webui` bump: the 4.2% ceiling is lifted in code, not yet on a screen
+### 2026-09-04 (afternoon) — Measured on hardware: 8.3× more history is visible, nothing re-synced
+The owner installed the 1.11 build on both devices (phone `15:29:32`, tablet `15:32:32`) and both
+were checked directly rather than taken on trust — grepping each device's live `base.apk` for the
+post-fix query string returns **8**, so the fixed webui is genuinely in the running app.
+
+Then the actual measurement, taken through each device's own server over the full year, varying
+*only* the merge keys #960 changed:
+
+| Device | Bucket | old `["app","title"]` | new `["app"]` | |
+|---|---|---|---|---|
+| **Tablet** | `…-synced-from-jude_s_s25_ultra` | 48,186s | **399,383s** | **8.3×** |
+| Phone | `aw-watcher-android` (own) | 67,542s | **418,760s** | 6.2× |
+| Phone | `…-synced-from-jude_s_tab_s10_fe` | 4,563s | **50,138s** | 11.0× |
+
+The tablet row is 1.11's stated check, and it passes: predicted `~15,503s → ~366,700s`, observed
+`48,186s → 399,383s`. Both figures came in above the prediction for one reason — two days of events
+accrued since the 09-03 baseline, and post-1.8 events carry titles, which raises the *old* query's
+number too. The ratio is what the fix bought, and it cost no re-sync and no migration.
+
+**Both stale-build worries are now closed by looking**, not by reasoning: the CI artifact was
+grepped before install, and the installed APK was grepped on each device after. That mattered here
+because the whole change is a submodule pointer — the one kind of change where "it built fine" and
+"it shipped the new code" are genuinely different claims.
+
+⚠️ **This measures the query engine, not a screenshot.** It is the same merge `canonicalEvents`
+performs and that was returning near-zero; the rendering half rests on the fixed webui being in the
+installed APK, which the grep establishes. Nobody has photographed the Activity page.
+
+**Phase 1 now has exactly one hole left:** 1.9's *failure* path, which needs the UI and cannot be
+driven from adb. 1.10 remains an owner decision. Phase 2 is unblocked.
+
+### 2026-09-04 (midday) — The `aw-webui` bump: pointers moved, build verified, device not yet
 Step **1.11**. Upstream fixed [aw-webui#959] the morning after it was reported ([#960], `85db7b5`),
 and the only work left on our side was moving a submodule pointer — no code, no migration, no
 re-sync. Done and pushed:

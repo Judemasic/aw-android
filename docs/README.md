@@ -16,28 +16,29 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 
 ## Current state, in one line
 
-> ✅ **Cross-device sync works, on hardware, in both directions — Phase 1 is done (2026-09-03).**
+> ✅ **Cross-device sync works, on hardware, in both directions — Phase 1 is done.**
 > All six blockers in [`03_SYNC.md`](03_SYNC.md) are fixed and verified on two real devices. Each
 > device writes `<sync>/<hostname>/<device_id>/test.db`, exports only its own directory, and
 > imports every peer's before each pull.
 >
-> **Proof:** the tablet holds **6,797 events the phone produced**, under
+> **Proof:** the tablet holds thousands of events the phone produced, under
 > `aw-watcher-android-synced-from-jude_s_s25_ultra`, and the Activity view renders them. That is
 > step **1.5** satisfied — data arriving *and* being displayed.
 >
-> ✅ **The one ceiling has been lifted upstream, and the fix is now in our build (2026-09-04).**
-> Only events recorded after the **1.8** title fix reached the Activity view — 4.2% of the phone's
-> history — because of an aw-webui regression. Reported as
-> [#959](https://github.com/ActivityWatch/aw-webui/issues/959) on 2026-09-02, **fixed by
-> [#960](https://github.com/ActivityWatch/aw-webui/pull/960) the next morning** (`85db7b5`)
-> crediting the report, and picked up here by bumping `aw-webui` `3cbe349 → a2ca625` through both
-> forks ([`06`](06_ROADMAP.md) step 1.11).
+> ✅ **The one ceiling is gone, and it was measured (2026-09-04).** Only events recorded after the
+> **1.8** title fix reached the Activity view — 4.2% of the phone's history — because of an aw-webui
+> regression. Reported as [#959](https://github.com/ActivityWatch/aw-webui/issues/959) on
+> 2026-09-02, **fixed upstream by [#960](https://github.com/ActivityWatch/aw-webui/pull/960) the
+> next morning** (`85db7b5`) crediting the report, and picked up here by bumping `aw-webui`
+> `3cbe349 → a2ca625` through both forks ([`06`](06_ROADMAP.md) step 1.11).
 >
-> ⚠️ **That last part is verified in git and in the built APK — not on a device.** CI is green and
-> the fix's query string is present in the shipped `libaw_server.so`, so the build is not stale. The
-> next move is to install it and watch Activity go from **15,503s** toward **366,700s** — no re-sync,
-> no migration. Until someone looks at a device, the ceiling is lifted in principle only. See
-> [`06_ROADMAP.md`](06_ROADMAP.md)'s START HERE.
+> On the tablet, the phone's synced history now resolves at **399,383s** against **48,186s** under
+> the old merge keys — **8.3×, with no re-sync and no migration.** The data had been there all
+> along; only the dashboard was hiding it.
+>
+> **Next: Phase 2 — shared state**, starting at [`06_ROADMAP.md`](06_ROADMAP.md) 2.1. Two small
+> things are still owed from Phase 1 and neither blocks it: 1.9's *failure* path has never been
+> exercised, and 1.10 is waiting on an owner decision.
 
 ---
 
