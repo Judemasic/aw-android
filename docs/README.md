@@ -25,16 +25,18 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 > `aw-watcher-android-synced-from-jude_s_s25_ultra`, and the Activity view renders them. That is
 > step **1.5** satisfied — data arriving *and* being displayed.
 >
-> ✅ **The one ceiling has been lifted upstream.** Only events recorded after the **1.8** title fix
-> reached the Activity view — 4.2% of the phone's history — because of an aw-webui regression.
-> Reported as [#959](https://github.com/ActivityWatch/aw-webui/issues/959) on 2026-09-02 and
-> **fixed by [#960](https://github.com/ActivityWatch/aw-webui/pull/960) the next morning**
-> (`85db7b5`), crediting the report. The other 96% is already synced and sitting on both devices.
+> ✅ **The one ceiling has been lifted upstream, and the fix is now in our build (2026-09-04).**
+> Only events recorded after the **1.8** title fix reached the Activity view — 4.2% of the phone's
+> history — because of an aw-webui regression. Reported as
+> [#959](https://github.com/ActivityWatch/aw-webui/issues/959) on 2026-09-02, **fixed by
+> [#960](https://github.com/ActivityWatch/aw-webui/pull/960) the next morning** (`85db7b5`)
+> crediting the report, and picked up here by bumping `aw-webui` `3cbe349 → a2ca625` through both
+> forks ([`06`](06_ROADMAP.md) step 1.11).
 >
-> **Next, and it is the highest-value thing available:** bump the `aw-webui` submodule past
-> `85db7b5` and that history becomes visible — no re-sync, no migration. See
-> [`06_ROADMAP.md`](06_ROADMAP.md)'s START HERE for the push order, which matters here because the
-> submodule actually moves.
+> ⚠️ **That last part is verified in git and nowhere else.** The next move is to install the CI
+> build and watch Activity go from **15,503s** toward **366,700s** — no re-sync, no migration. Until
+> someone looks at a device, the ceiling is lifted in principle only. See
+> [`06_ROADMAP.md`](06_ROADMAP.md)'s START HERE.
 
 ---
 
