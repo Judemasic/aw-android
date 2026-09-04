@@ -7,14 +7,16 @@
 > in code on 2026-09-04 ([1.11](#111--bump-aw-webui-past-the-960-fix)): `aw-webui`
 > `3cbe349 → a2ca625`, carried up through `Judemasic/aw-server-rust@beta` (`9e01fab`) and then
 > `Judemasic/aw-android@beta` (`1524318`), in that order because the submodule moved. CI build
-> [33874769211] was dispatched from `beta`.
+> [33874769211] is **green**, and the APK was checked to actually carry the new webui — the fix's
+> query string is in the shipped `libaw_server.so`, so the cache trap did not bite (1.11 shows the
+> grep). **Download the artifact from that run and install it.**
 >
 > Nothing about it has been seen on a screen. **The check:** install on the tablet, open
 > **Activity** for the synced phone bucket across the full history, and expect **Time active to
 > jump from ~15,503s toward ~366,700s** — the ~96% recorded before the 1.8 title fix, which was
 > synced all along and only hidden by the dashboard. No re-sync, no migration. If the number does
-> not move, suspect the delivery before the fix: re-read the cache trap in
-> [`02`](02_ARCHITECTURE.md) §5 and confirm the APK actually carries the new `.so` files.
+> not move, the cause is *not* delivery — that half is already ruled out — so look at the query
+> and the bucket the Activity view is actually reading.
 >
 > The same build also brings [#966] (`prompt()` → modals, so WebView dialogs stop being silent
 > no-ops) and [#956] (category JSON import over SAF) — both worth a glance while the device is in
@@ -84,7 +86,7 @@ has to be true before any feature exists.
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; **aw-webui#959 fixed upstream** by #960 |
 > | 1.9 | ✅ on device | `failed=0` column live on both devices; export now precedes the callback |
 > | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, still unfixed on master |
-> | 1.11 | ⚠️ code only | `aw-webui` `3cbe349 → a2ca625`, both pointers pushed; **not seen on a device** |
+> | 1.11 | ⚠️ in the APK | fix string found in the shipped `libaw_server.so`; **not yet seen on a device** |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
 Blocker 6, found on device and **underneath everything else** — the sync scheduler disabled itself
@@ -684,17 +686,32 @@ free here, and stopping short of them would mean bumping again shortly.
 cache trap). A pointer-only push gives CI a cache hit and an APK with stale `.so` files.
 CI build [33874769211] was dispatched from `beta` at 12:49 UTC.
 
-⚠️ **Verified only as far as the repositories.** The commit graph is checked
+✅ **CI is green ([33874769211], 21m30s) and the APK provably carries the new aw-webui.** The build
+took twice the usual 10–17m, which is itself the cache miss doing what it was supposed to. The
+stale-`.so` worry was then closed directly rather than assumed away: aw-webui is embedded in
+`libaw_server.so`, so the artifact was downloaded, `lib/arm64-v8a/libaw_server.so` extracted, and
+the query string the fix introduces searched for.
+
+```
+grep -c 'merge_events_by_keys(events, ["app"]);'  libaw_server.so   → 2
+```
+
+That exact string exists **only** at the new pin — `git grep` finds it at `a2ca625:src/queries.ts:173`
+and nowhere in `3cbe349`. (`["app", "title"]` is still present too, as it should be: #960 keeps it
+on the `isIos` branch for ScreenTime buckets.) So the delivery path is verified end to end, and the
+one remaining unknown is genuinely the behaviour, not the build.
+
+⚠️ **Not verified on a device.** The commit graph is checked
 (`git merge-base --is-ancestor 85db7b5 origin/master` is true; the pin now contains it); nothing has
 been installed or looked at on a screen.
 
 **Check:** install the resulting APK on the tablet and open **Activity** for the synced phone
 bucket over the full history. **Time active should jump from ~15,503s toward ~366,700s.** No
-re-sync, no migration — if it does not move, the bump did not reach the device (check the cache
-trap above before suspecting the fix). Then re-check **Top Applications** is populated for a day
-recorded *before* the 1.8 build — that is the specific thing #960 unhides.
+re-sync, no migration — if it does not move, the cause is **not** delivery (that is ruled out
+above), so look at the query and at which bucket the Activity view is reading.
+Then re-check **Top Applications** is populated for a day recorded *before* the 1.8 build — that is
+the specific thing #960 unhides.
 
-[aw-webui#960]: https://github.com/ActivityWatch/aw-webui/pull/960
 [33874769211]: https://github.com/Judemasic/aw-android/actions/runs/33874769211
 
 ---
@@ -964,17 +981,31 @@ with anything of ours at stake. `git merge-base --is-ancestor 85db7b5 origin/mas
 fixes for free: **#966** replaces `prompt()` with modals (a `prompt()` call is a silent no-op in a
 WebView, so whatever used it was dead in this app) and **#956** adds category JSON import over SAF.
 Stopping at `85db7b5` would have meant bumping again within days.
-
 **The push order mattered for the first time.** Every previous build was Kotlin-only, so the cache
 trap in [`02`](02_ARCHITECTURE.md) §5 was theoretical. Here the submodule actually moves:
-`aw-server-rust@beta` was pushed first and the pointer second. CI build [33874769211] dispatched
-from `beta`.
+`aw-server-rust@beta` was pushed first and the pointer second. CI build [33874769211] came back
+**green in 21m30s** — against a usual 10–17m, which is the cache miss doing exactly what it was
+meant to.
 
-⚠️ **Nothing has been observed on a device.** What is verified is the commit graph; what is claimed
-is that ~96% of the phone's history stops being hidden. Those are not the same statement, and the
-second one is the one that matters. **Next session's first move:** install, open Activity for the
-synced phone bucket, and see whether **15,503s** moves toward **366,700s**. If it does not, suspect
-delivery before the fix — a stale `.so` in the APK looks exactly like a fix that did not work.
+**Then the cache trap was closed by inspection, not by inference.** "It probably rebuilt" is the
+kind of claim that costs a day when it is wrong, and a stale `.so` looks identical to a fix that
+did not work. aw-webui is embedded in `libaw_server.so`, so the artifact was downloaded and the
+library grepped for the query string #960 introduces:
+
+```
+grep -c 'merge_events_by_keys(events, ["app"]);'  lib/arm64-v8a/libaw_server.so   → 2
+```
+
+`git grep` puts that string at `a2ca625:src/queries.ts:173` and nowhere in `3cbe349`, so its
+presence in the binary can only mean the new webui was compiled in. Delivery is now verified end to
+end.
+
+⚠️ **Nothing has been observed on a device.** What is verified is the build and its contents; what
+is claimed is that ~96% of the phone's history stops being hidden. Those are not the same
+statement, and the second is the one that matters. **Next session's first move:** install, open
+Activity for the synced phone bucket, and see whether **15,503s** moves toward **366,700s**. If it
+does not, delivery is already ruled out — the answer will be in the query or in which bucket the
+view is reading.
 
 ### 2026-09-03 — Phase 1 complete: cross-device sync verified end to end
 Tablet attached over adb. Its server lists `aw-watcher-android-synced-from-jude_s_s25_ultra`

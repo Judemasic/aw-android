@@ -33,9 +33,10 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 > crediting the report, and picked up here by bumping `aw-webui` `3cbe349 → a2ca625` through both
 > forks ([`06`](06_ROADMAP.md) step 1.11).
 >
-> ⚠️ **That last part is verified in git and nowhere else.** The next move is to install the CI
-> build and watch Activity go from **15,503s** toward **366,700s** — no re-sync, no migration. Until
-> someone looks at a device, the ceiling is lifted in principle only. See
+> ⚠️ **That last part is verified in git and in the built APK — not on a device.** CI is green and
+> the fix's query string is present in the shipped `libaw_server.so`, so the build is not stale. The
+> next move is to install it and watch Activity go from **15,503s** toward **366,700s** — no re-sync,
+> no migration. Until someone looks at a device, the ceiling is lifted in principle only. See
 > [`06_ROADMAP.md`](06_ROADMAP.md)'s START HERE.
 
 ---
