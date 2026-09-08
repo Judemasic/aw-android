@@ -10,9 +10,11 @@
 > tablet the phone's synced history goes **48,186s → 399,383s (8.3×)** under the fixed merge keys —
 > **no re-sync, no migration.** The data had been there the whole time.
 >
-> **Two things are still owed from Phase 1, both small, neither blocking:**
-> 1. **1.9's failure path has never run.** Revoke the sync folder permission, tap **Sync Now**,
->    expect `Sync failed:` naming the folder — not `Sync complete`. Needs the UI; adb cannot drive it.
+> **One thing is still owed from Phase 1, and it is not code:**
+> 1. ✅ **1.9's failure path ran on 2026-09-08** — `Sync failed:` reaches the status line naming
+>    both passes, at warning level. Driven from adb after all, via a stale `syncDirUri` rather
+>    than a Settings revoke; see [1.9](#19--a-sync-that-failed-must-not-report-success) for what
+>    that does and does not prove, and for why the Syncthing-managed folder must not be renamed.
 > 2. **1.10 needs an owner decision, not code** (below).
 >
 > Also newly in the build and unexamined: [#966] (`prompt()` → modals, so WebView dialogs stop being
@@ -60,8 +62,9 @@ has to be true before any feature exists.
 > the upstream fix and the tablet now resolves the phone's synced history at **399,383s** against
 > **48,186s** before, with no re-sync. Steps 1.0a–1.11 are verified on device.
 >
-> **One hole remains:** 1.9's *failure* path has never run — everything verified about 1.9 concerns
-> a healthy sync. It needs the UI and cannot be driven from adb. 1.10 is an owner decision, not code.
+> **No holes remain in 1.9:** the *failure* path ran on 2026-09-08 and reports `Sync failed:` at
+> warning level. It turned out to be adb-drivable via a stale `syncDirUri`; 1.10 is an owner
+> decision, not code.
 >
 > | Step | State | How checked |
 > |---|---|---|
@@ -76,7 +79,7 @@ has to be true before any feature exists.
 > | 1.6 | ✅ on device | viewport honoured, pinch-zoom works |
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; **aw-webui#959 fixed upstream** by #960 |
-> | 1.9 | ✅ on device | `failed=0` column live on both devices; export now precedes the callback |
+> | 1.9 | ✅ on device | healthy: `failed=0`, export precedes callback. failure: `Sync failed:` at **warn** level, 2026-09-08 |
 > | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, still unfixed on master |
 > | 1.11 | ✅ on device | tablet: the phone's synced history **48,186s → 399,383s** (8.3×), no re-sync |
 
@@ -580,7 +583,7 @@ inferred. `created` was filled in by the server. The real `timelineLabels.ts` th
 [aw-server-rust#649]: https://github.com/ActivityWatch/aw-server-rust/issues/649
 [aw-webui#960]: https://github.com/ActivityWatch/aw-webui/pull/960
 
-### 1.9 — A sync that failed must not report success ✅ VERIFIED ON DEVICE 2026-09-03
+### 1.9 — A sync that failed must not report success ✅ VERIFIED ON DEVICE 2026-09-03 (failure path 2026-09-08)
 Found by reading upstream **[PR #251]**, which fixes the same class of bug: *"a failed SAF mirror
 was also logged as non-fatal, so the app could report native sync success while the user-selected
 directory stayed unchanged."* True of this fork too, in both directions — and the import side is
@@ -637,10 +640,55 @@ NEW (phone, 12:32:05)   SAF import: peers=1 copied=1 skipped=0 failed=0   .677
 The tablet shows the same shape at 12:28:12. `failed=0` is present on both passes, so the new
 column is live and the success path still reports success.
 
-⚠️ **The failure path is still untested.** Everything above proves a *healthy* sync is unaffected;
-none of it exercises `failed > 0`. **Check:** revoke the sync folder permission in Android
-settings, tap **Sync Now**, and see `Sync failed:` with a reason naming the folder — not
-`Sync complete`. That needs the UI; it cannot be driven from adb (§5.3).
+✅ **The failure path is now verified too — on the tablet, 2026-09-08.** The status line reads
+`Sync failed:` and both failure sites fire at **warning** level, so the whole of 1.9 is closed.
+
+```
+15:57:24.840  W  SAF directory not accessible or not a directory: …ActivityWatch-sync-MISSING
+15:57:25.112  W  SAF directory not accessible or not a directory: …ActivityWatch-sync-MISSING
+15:57:25.112  W  Multi-Device Sync completed: success=false, message=import failed: sync folder
+                 unreachable (permission revoked, or folder deleted); export failed: sync folder
+                 unreachable (permission revoked, or folder deleted)
+15:57:25.113  I  Manual sync finished: success=false, message=…
+```
+
+On screen: `Sync failed: import failed: sync folder unreachable (permission revoked, or folder
+deleted); export failed: sync folder unreachable (permission revoked, or folder deleted)`.
+
+📝 **Correction to the Result above:** it predicted `Sync failed: export failed: …`. The real
+message names **both** passes, joined by `; `. That is the collect-don't-throw design working as
+written — the import failed, the cycle carried on to the export rather than aborting, and the user
+is told about both. Worth knowing before anyone matches on that string.
+
+⚠️ **Not exercised: a literal Settings-UI revoke.** Both sites guard on the same
+`safDir == null || !safDir.isDirectory`, and this test hit it with a **stale `syncDirUri`** —
+`…%3AActivityWatch-sync` → `…%3AActivityWatch-sync-MISSING` in `shared_prefs/AWPreferences.xml`,
+via `run-as`, restored byte-identical afterwards. Same line, same `result.fail()`, same propagation
+to `tvSyncStatus`; it is the *folder-unreachable* half of that `||`, not the *permission-revoked*
+half.
+
+**Why not the real revoke:** the sync folder is **Syncthing-managed** (`.stfolder`, `.stversions`).
+Renaming or deleting it to force the failure would propagate the deletion to the phone. Do not do
+it. The stale-URI swap touches no synced data at all — verified after the test: both peer databases
+still present, folder 3.4M → 5.9M from ordinary syncing.
+
+⚠️ **Also note: the `failed=N` column never appears on this path.** Both passes return at the
+`safDir` guard, *before* the `SAF import:` / `SAF export:` lines that carry the counters. A folder
+that is unreachable is reported through the message, not the counts — so do not grep for `failed=1`
+to detect this class of failure.
+
+🔧 **Gotcha that cost an hour, for whoever automates this next: `am force-stop` is not enough.**
+`BackgroundService` is sticky, so Android restarts the process within a second or two — and if you
+edit `shared_prefs` *after* the force-stop, that restarted process has already cached the old
+values, and `monkey` then just refocuses it. The first attempt looked like the fix had silently
+failed: prefs on disk said `-MISSING`, the app logged the real URI and reported `success=true`.
+**Correct order: edit prefs first, then force-stop, then confirm a new pid appeared, then drive
+the UI.** `SyncSettingsActivity` is not exported, so reach it with
+`monkey -p … -c android.intent.category.LAUNCHER 1`, then the drawer, then *Sync Settings*.
+
+**The healthy path still works after restoring** — same session, `16:01:19`:
+`SAF import: peers=1 copied=0 skipped=1 failed=0`, `SAF export: … copied=1 skipped=0 failed=0`,
+`success=true`, export still logged **before** the completion callback.
 
 [PR #251]: https://github.com/ActivityWatch/aw-android/pull/251
 
@@ -971,6 +1019,47 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-08 — 1.9's failure path finally ran, and it was adb-drivable after all
+The last hole in Phase 1 is closed. On the tablet (`SM-X520`, `jude_s_tab_s10_fe`), a sync against
+an unreachable folder now reports failure everywhere it should:
+
+```
+15:57:24.840  W  SAF directory not accessible or not a directory: …ActivityWatch-sync-MISSING
+15:57:25.112  W  SAF directory not accessible or not a directory: …ActivityWatch-sync-MISSING
+15:57:25.112  W  Multi-Device Sync completed: success=false, message=import failed: …; export failed: …
+```
+
+and the status line reads `Sync failed: import failed: sync folder unreachable (permission revoked,
+or folder deleted); export failed: …` — the string 1.9 was written to produce.
+
+**Three things worth carrying forward.**
+
+**The message names both passes, not just the export.** 1.9's Result predicted
+`Sync failed: export failed: …`. The real message joins the import *and* the export with `; `,
+which is the collect-don't-throw design behaving correctly: the import failed, the cycle continued
+to the export instead of aborting, and the user hears about both. 1.9 has been corrected in place.
+
+**`failed=N` never appears on this path.** Both passes return at the `safDir` guard, before the
+`SAF import:` / `SAF export:` lines that carry the counters. Do not detect this class of failure by
+grepping for `failed=1`; it is reported through the message.
+
+**The doc was wrong that adb cannot drive it — but the obvious way to drive it is dangerous.** The
+sync folder is Syncthing-managed (`.stfolder`, `.stversions`), so renaming or deleting it to force
+the failure would propagate the deletion to the phone. Instead the failure was induced by swapping
+`syncDirUri` to a folder that does not exist, via `run-as`, and restoring it byte-identical
+afterwards. Both peer databases were intact after the test and the healthy path was re-verified at
+`16:01:19` (`failed=0`, export still before the callback). This exercises the *folder-unreachable*
+half of `safDir == null || !safDir.isDirectory`, not a literal Settings revoke — same line, same
+`result.fail()`, but the distinction is recorded rather than glossed.
+
+**The trap, for next time:** `am force-stop` alone does not reload preferences. `BackgroundService`
+is sticky, so a new process appears within a second or two, and editing `shared_prefs` *after* the
+force-stop leaves that process holding the old values — the first attempt reported `success=true`
+with the real URI while the file on disk said `-MISSING`. Edit prefs **first**, then force-stop,
+then confirm a new pid, then drive the UI. `SyncSettingsActivity` is not exported, so reach it via
+`monkey -c android.intent.category.LAUNCHER`, the drawer, then *Sync Settings*.
+
 
 ### 2026-09-04 (afternoon) — Measured on hardware: 8.3× more history is visible, nothing re-synced
 The owner installed the 1.11 build on both devices (phone `15:29:32`, tablet `15:32:32`) and both

@@ -36,9 +36,10 @@ a fresh conversation. Read this file first, then open [`06_ROADMAP.md`](06_ROADM
 > the old merge keys — **8.3×, with no re-sync and no migration.** The data had been there all
 > along; only the dashboard was hiding it.
 >
-> **Next: Phase 2 — shared state**, starting at [`06_ROADMAP.md`](06_ROADMAP.md) 2.1. Two small
-> things are still owed from Phase 1 and neither blocks it: 1.9's *failure* path has never been
-> exercised, and 1.10 is waiting on an owner decision.
+> **Next: Phase 2 — shared state**, starting at [`06_ROADMAP.md`](06_ROADMAP.md) 2.1. One thing is
+> still owed from Phase 1 and it does not block Phase 2: 1.10 is waiting on an owner decision.
+> 1.9's *failure* path was exercised on 2026-09-08 — `Sync failed:` reaches the status line at
+> warning level, naming both the import and the export.
 
 ---
 
