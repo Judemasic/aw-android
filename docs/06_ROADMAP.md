@@ -10,12 +10,27 @@
 > tablet the phone's synced history goes **48,186s → 399,383s (8.3×)** under the fixed merge keys —
 > **no re-sync, no migration.** The data had been there the whole time.
 >
-> **One thing is still owed from Phase 1, and it is not code:**
-> 1. ✅ **1.9's failure path ran on 2026-09-08** — `Sync failed:` reaches the status line naming
->    both passes, at warning level. Driven from adb after all, via a stale `syncDirUri` rather
->    than a Settings revoke; see [1.9](#19--a-sync-that-failed-must-not-report-success) for what
->    that does and does not prove, and for why the Syncthing-managed folder must not be renamed.
-> 2. **1.10 needs an owner decision, not code** (below).
+> **Phase 1 has no code left in it.** 1.9's failure path — the last untested thing — ran on
+> **2026-09-08**: `Sync failed:` reaches the status line naming *both* the import and the export,
+> at warning level. It was drivable from adb after all, via a stale `syncDirUri`; read
+> [1.9](#19--a-sync-that-failed-must-not-report-success) for what that does and does not prove, and
+> for **why the Syncthing-managed sync folder must never be renamed to force a failure** (D25/D26).
+>
+> **The only thing still owed is a decision, not code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_)** (below).
+>
+> **Where the repos stand (2026-09-08), both pushed:**
+>
+> | Repo | Branch | At | Note |
+> |---|---|---|---|
+> | `Judemasic/aw-server-rust` | `beta` | `b462665` | upstream `master` merged in — category-rule priority ([#663]) and query changes. `cargo check` + 76 tests pass locally |
+> | `Judemasic/aw-android` | `beta` | `0820e69` | docs only: 1.9 closed, D25–D27 added |
+>
+> ⚠️ **`aw-android` still pins `aw-server-rust` at `9e01fab`, deliberately — one commit behind that
+> merge.** The merge brought in **zero** Android-relevant code (four files, all `aw-query` /
+> `aw-transform`; no `android`, `jni` or `aw-sync` hits), so bumping the pin would put unverified
+> server code into the next Android build and invalidate 1.11's hardware verification for no gain.
+> Bump it when something on the server side is actually needed, then re-verify on device — the same
+> way [1.11](#111--bump-aw-webui-past-the-960-fix) was done.
 >
 > Also newly in the build and unexamined: [#966] (`prompt()` → modals, so WebView dialogs stop being
 > silent no-ops) and [#956] (category JSON import over SAF). Worth a glance next time a device is in
@@ -43,6 +58,7 @@
 
 [#251]: https://github.com/ActivityWatch/aw-android/pull/251
 [aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
+[#663]: https://github.com/ActivityWatch/aw-server-rust/pull/663
 [#966]: https://github.com/ActivityWatch/aw-webui/pull/966
 [#956]: https://github.com/ActivityWatch/aw-webui/pull/956
 
