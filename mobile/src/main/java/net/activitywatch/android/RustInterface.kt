@@ -97,30 +97,6 @@ class RustInterface(context: Context? = null) {
     external fun migrateHostname(hostname: String): String
     external fun migrateWatcherAndroidBucketNames(): String
 
-    /**
-     * The combined timeline for one range (roadmap 3.4), as JSON.
-     *
-     * Runs the whole `aw-combined` pipeline in Rust — normalise, segment, classify, provisional
-     * attribution, coalesce — over every `currentwindow` bucket in the datastore, local and
-     * `-synced-from-*` alike, and returns the combined track, the raw per-device tracks and the
-     * totals. See `docs/04_COMBINED_TIMELINE.md` §2.
-     *
-     * [start] and [end] are RFC 3339 (e.g. `2026-09-09T00:00:00+02:00`). [hostnameToUuidJson] is a
-     * flat `{"hostname": "uuid"}` object used to resolve events imported *before* 3.1's origin
-     * tagging; `{}` is valid and means such events are attributed to the hostname captured from the
-     * bucket id, which keeps them visible as a distinct device rather than folding them into ours.
-     *
-     * **Blocking** — reads a day of events out of SQLite and runs an O(n²) sweep. Never call it on
-     * the main thread.
-     *
-     * Errors come back as `{"error": "..."}` rather than as an exception across the FFI boundary.
-     */
-    external fun getCombinedTimeline(
-        start: String,
-        end: String,
-        hostnameToUuidJson: String,
-    ): String
-
     fun sayHello(to: String): String {
         return greeting(to)
     }

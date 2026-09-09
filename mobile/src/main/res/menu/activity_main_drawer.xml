@@ -16,14 +16,6 @@
             android:id="@+id/nav_buckets"
             android:icon="?attr/actionModeCopyDrawable"
             android:title="Raw Data" />
-    </group>
-
-    <!--
-      Outside the checkable group on purpose: this opens its own Activity rather than swapping the
-      fragment behind the drawer, so leaving it checked would claim a screen that is not there.
-      Same reason nav_sync_settings and nav_auth_settings sit outside it.
-    -->
-    <group>
         <item
             android:id="@+id/nav_combined"
             android:icon="?attr/actionModeCopyDrawable"

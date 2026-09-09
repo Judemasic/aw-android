@@ -287,7 +287,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                 startActivity(Intent(this, AuthSettingsActivity::class.java))
             }
             R.id.nav_combined -> {
-                startActivity(Intent(this, CombinedTimelineActivity::class.java))
+                fragmentClass = WebUIFragment::class.java
+                url = authenticatedUrl("$baseURL/#/combined")
             }
             R.id.nav_sync_settings -> {
                 startActivity(Intent(this, SyncSettingsActivity::class.java))

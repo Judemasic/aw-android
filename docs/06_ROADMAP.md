@@ -27,8 +27,9 @@
 > drew the screen with a native Android `View`, and there is no Android on a PC, so no amount of
 > restyling can get there. **3.5a is done** — the pipeline is now served at
 > `GET /api/0/combined/timeline`, verified against a running server (R6 and R8 both hold over
-> HTTP). **3.5b, the Vue view, is next.** The 3.4 native screen and its JNI call stay until the
-> replacement is verified, then come out in 3.5c.
+> HTTP). **3.5b is verified on device** (the owner confirmed pinch-zoom works), and **3.5c has taken
+> the native screen out** — there is now exactly one combined view, the Vue one, and the drawer's
+> "Combined timeline" entry opens it. **4.1, the resolution sheet, is next.**
 >
 > ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
 > now 3.5b's acceptance list. Separately,
@@ -1459,8 +1460,9 @@ map lives in the Syncthing folder behind SAF, which only Kotlin can open.
 
 ⚠️ **The JNI entry point and the 3.4 native screen deliberately stay for now.** Deleting a working
 screen before its replacement exists would leave the owner with none. They come out in 3.5c.
+*(Done — 3.5c removed both on 2026-09-09.)*
 
-#### 3.5b — The Vue view ⏳ BUILT (2026-09-09) — verified in a browser, ⚠️ NOT on device
+#### 3.5b — The Vue view ✅ DONE (2026-09-09) — browser **and** device
 Build `CombinedTimeline.vue` in aw-webui, reusing the Activity view's components so it inherits the
 look. Must fix, at minimum, every defect listed under 3.4 — device **names** not raw uuids, a tap
 detail that says *which device* each side was on, a legend — and must read well at phone, tablet and
@@ -1630,11 +1632,42 @@ shrinks over time instead of growing. The clean contribution split: **the render
 (general value), **the combined multi-device view stays in the fork** (nothing upstream to merge it
 into).
 
-#### 3.5c — Retire the native screen ⬜
+#### 3.5c — Retire the native screen ✅ DONE 2026-09-09
 Once 3.5b is verified on hardware, remove `CombinedTimelineView.kt`,
 `CombinedTimelineActivity.kt`, `CombinedTimeline.kt`, the `getCombinedTimeline` JNI function and its
 `RustInterface` declaration, and point the nav-drawer entry at the web view. **Not before** — see
 the warning in 3.5a.
+
+##### What came out
+
+| Removed | Where |
+|---|---|
+| `views/CombinedTimelineView.kt` (233 lines) | the hand-written canvas renderer |
+| `CombinedTimelineActivity.kt` (173 lines) | the day-at-a-time screen and its ‹ › nav |
+| `models/CombinedTimeline.kt` (162 lines) | the Kotlin mirror of the JSON the JNI call returned |
+| `res/layout/activity_combined_timeline.xml` | its layout |
+| the `<activity>` entry in `AndroidManifest.xml` | no Activity left to declare |
+| `RustInterface.getCombinedTimeline` | the Kotlin `external fun` |
+| `Java_..._getCombinedTimeline` in `aw-server/src/android/mod.rs` | the JNI export |
+| ten `combined_*` strings | only `combined_timeline`, the drawer label, survives |
+
+`crate::combined` itself is **untouched** — it still backs `GET /api/0/combined/timeline`, which is
+what the Vue view calls. Only the JNI door into it is gone.
+
+`nav_combined` now swaps in a `WebUIFragment` at `#/combined` instead of starting an Activity, so it
+moved **into** the drawer's checkable group: it is a screen behind the drawer now, like Activity and
+Raw Data, and leaving it checked no longer claims a screen that is not there.
+
+##### Also landed here (owner request, 2026-09-09)
+
+**A Prev/Next block stepper** above the timeline, in `CombinedTimeline.vue`. The owner's point:
+*"some of them are small and can't be tapped reliably"*. At a whole-day zoom most blocks are a
+couple of pixels across — far under a thumb — and zooming in to hit one loses the context that told
+you where to look. The buttons walk the selection along whichever track the selection is in
+(Combined when nothing is selected), with an `n / total` counter; ← and → do the same on a desktop,
+except while a form control has focus. `ProportionalTimeline` gained `revealRange()`, which centres
+the newly selected block in the scroll container — without it the stepper would be useless at
+exactly the zoom that makes it necessary.
 
 > **Distinct from [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width).** 5.5 is upstream
 > aw-webui's *existing* **Timeline** screen at phone width. 3.5 is the *new* combined view. They
@@ -1644,7 +1677,7 @@ the warning in 3.5a.
 
 ## Phase 4 — Manual resolution
 
-### 4.1 — Resolution sheet ⬜
+### 4.1 — Resolution sheet ⬜ **← next**
 Tap-to-open, the four outcomes, and the `once` / `always` scope control.
 *(R9, R11, R16)*
 
@@ -1652,6 +1685,9 @@ Tap-to-open, the four outcomes, and the `once` / `always` scope control.
 combined timeline, which [3.5](#35--rebuild-the-combined-timeline-in-aw-webui) is moving into
 aw-webui to satisfy **R35** (PC, tablet and phone). A native `BottomSheet` would be stranded on
 Android and would have to be written twice. **Do 3.5b first** — a sheet needs a block to open from.
+*(3.5b is done; the block to open from is the shaded segment in `CombinedTimeline.vue`, whose detail
+aside already carries a `div.resolve` placeholder reading "Resolve this overlap … (roadmap 4.1)".
+That placeholder is where the sheet goes.)*
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -2030,9 +2066,18 @@ per device, with unresolved contention striped (**R8**).
   and `upstream` is `ActivityWatch/aw-webui`.
 - ⚠️ **True phone width (412px) is still untested**: headless Edge will not go below a 510px
   viewport. The vertical layout is exercised at 510; the narrowest case waits for hardware.
-- Next: **a CI build and a device test.** Then 3.5c retires the native screen, and
-  only then **4.1 — Resolution sheet**, which must also be built in aw-webui since it opens from a
-  shaded block.
+- ✅ **3.5b verified on device** (owner, 2026-09-09): *"the zoom works"*. That was the last thing
+  holding 3.5c.
+- ✅ **3.5c done (2026-09-09).** The native Kotlin screen, its layout, its model, its `<activity>`
+  entry, the `getCombinedTimeline` JNI export and the Kotlin `external fun` are all gone; ten
+  now-dead `combined_*` strings went with them. `nav_combined` opens `#/combined` in a
+  `WebUIFragment`, so the two combined views have collapsed to one. `crate::combined` stays — the
+  HTTP endpoint the Vue view calls is unchanged.
+- ➕ **Owner request, landed with 3.5c:** Prev/Next buttons to step between timeline blocks, because
+  *"some of them are small and can't be tapped reliably"*. Arrow keys too on a desktop. The renderer
+  gained `revealRange()` so the stepped-to block is scrolled into view.
+- Next: **4.1 — Resolution sheet**, in aw-webui, replacing the placeholder already sitting in the
+  detail aside.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after

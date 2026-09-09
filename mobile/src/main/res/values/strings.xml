@@ -47,18 +47,6 @@
     <string name="export_saved">Saved %1$s</string>
     <string name="export_save_failed">Could not save export</string>
 
-    <!-- Combined timeline (roadmap 3.4) -->
+    <!-- Combined timeline (roadmap 3.5) — the drawer entry that opens aw-webui's /#/combined -->
     <string name="combined_timeline">Combined timeline</string>
-    <string name="combined_today">Today</string>
-    <string name="combined_prev_arrow">‹</string>
-    <string name="combined_next_arrow">›</string>
-    <string name="combined_previous_day">Previous day</string>
-    <string name="combined_next_day">Next day</string>
-    <string name="combined_tap_hint">Tap a block on the combined track to see what was competing for it.</string>
-    <!-- %1$s combined total, %2$s sum of the devices' totals, %3$d device count, %4$d shaded blocks -->
-    <string name="combined_summary">%1$s combined, from %2$s across %3$d device(s). %4$d block(s) shaded as unresolved.</string>
-    <!-- %1$s what counted, %2$s how long, %3$s what else was running -->
-    <string name="combined_detail_contended">%1$s counted for %2$s — also running: %3$s</string>
-    <string name="combined_empty_day">No activity recorded on this day.</string>
-    <string name="combined_load_failed">Could not build the combined timeline.</string>
 </resources>
