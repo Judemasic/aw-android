@@ -124,6 +124,9 @@ check_rust() {
     cd "$REPO_ROOT/aw-server-rust"
     cargo check -p aw-sync --lib
     cargo check -p aw-combined --lib
+    # aw-server's lib carries src/combined.rs, the datastore adapter the JNI entry point calls.
+    # It lives outside android/ precisely so this host check compiles it (roadmap 3.4).
+    cargo check -p aw-server --lib
 }
 
 case "${1:-all}" in

@@ -286,6 +286,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             R.id.nav_auth_settings -> {
                 startActivity(Intent(this, AuthSettingsActivity::class.java))
             }
+            R.id.nav_combined -> {
+                startActivity(Intent(this, CombinedTimelineActivity::class.java))
+            }
             R.id.nav_sync_settings -> {
                 startActivity(Intent(this, SyncSettingsActivity::class.java))
             }

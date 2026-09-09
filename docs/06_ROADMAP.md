@@ -9,9 +9,15 @@
 > separate opt-in `coalesce`, with 42 passing tests including a direct R6 invariant suite. Nothing
 > calls it yet, so there is nothing to verify on a device. The submodule pointer moved to
 > `aw-server-rust@beta` `a39f52e`, which carries only the (still unused) crate — no CI build or APK
-> needed. **The next step is [3.4](#34--combined-view-with-shading)** — wire `aw-combined` to a
-> native phone-first view over JNI and shade unresolved contention; this one **does** need a CI
-> build and an APK, and it is the first Phase 3 device test.
+> needed.
+>
+> ⏳ **[3.4](#34--combined-view-with-shading) is done in code and NOT yet verified on device**
+> (2026-09-09). The crate is finally wired to something: a **Combined timeline** screen in the nav
+> drawer, drawing the combined track above the per-device tracks with unresolved contention shaded
+> (**R8**), fed by a new `getCombinedTimeline` JNI call. Kotlin and host Rust both type-check;
+> `aw-server-rust@beta` is now `e2e7db3`. **This step needs a CI build and an APK**, and it is the
+> first Phase 3 step whose result can actually be seen. Until it has run on hardware, treat the
+> screen as unproven.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -1241,11 +1247,67 @@ device count, `coalesce` refusing to merge across a flag change, and determinism
 nothing calls the crate yet. No CI build or APK; the submodule pointer moves forward carrying only
 the unused crate. The first Phase 3 device test is 3.4.
 
-### 3.4 — Combined view with shading ⬜ ← *the screen the owner actually wants*
+### 3.4 — Combined view with shading ⏳ DONE IN CODE (2026-09-09) — ⚠️ NOT verified on device
 Render the combined track above per-device tracks; shade unresolved contention. *(R8)*
 **Q4 is resolved (2026-09-02): native, phone-first, on top of the Rust pipeline from 3.2.** An
 aw-webui view comes later for desktop. Born mobile-first per **R33** — it never joins Phase 5's
 backlog.
+
+**Result.** `aw-combined` is finally wired to something. A **Combined timeline** entry in the nav
+drawer opens `CombinedTimelineActivity`: one day at a time, prev/next/today, the combined track
+drawn above one row per device, unresolved contention striped and outlined.
+
+- **`aw-server/src/combined.rs`** (new, in `aw-server-rust`) is the datastore adapter — the only
+  place that knows both halves. It reads a range out of the datastore, sorts bucket ids for
+  determinism (**R18**), splits them into activity and idle, runs `compute_segments` then
+  `coalesce`, and returns JSON: the combined rows (foreground label, device, state, `unresolved`,
+  background list), the raw per-device rows, and the totals.
+- **It is deliberately not inside `android/`.** That module is `cfg(target_os = "android")`, so a
+  desktop `cargo check` never type-checks a line of it — and this repo's local check *is* a desktop
+  check. Keeping the logic in `aw-server/src/combined.rs` means the part that can be wrong is
+  verified before an APK exists; the JNI function is a string-in/string-out shell. `check-local.sh
+  rust` gained `cargo check -p aw-server --lib` to cover it.
+- **JNI:** `Java_..._RustInterface_getCombinedTimeline(start, end, hostnameToUuidJson)`. Timestamps
+  are RFC 3339 and the own-device uuid is read on the Rust side from aw-server's own `device_id`
+  file, so the two halves cannot disagree about who "we" are. A bad argument returns
+  `{"error": ...}` rather than panicking across the FFI boundary.
+- **Kotlin:** `models/CombinedTimeline.kt` parses the JSON (Android-free, so it is unit-testable),
+  `views/CombinedTimelineView.kt` draws it, `CombinedTimelineActivity` owns the day picker and the
+  summary line. The JNI call is blocking and runs on `Dispatchers.IO`.
+- **The summary line is the R6 demonstration:** it shows the combined total *against* the sum of
+  the devices' totals. On a day with real overlap the combined figure is the smaller one, and that
+  gap is the entire point of the feature.
+
+**Judgment calls** (not dictated by `04` or the roadmap):
+
+- **Activity is `currentwindow` only; `web.tab.current` is excluded.** A device with a web bucket
+  has it overlapping its own window bucket for the same instants, so including it would put a
+  browser *tab* in contention with its own *window* on one device and let a tab title win the
+  combined track. Web data stays in the raw per-device view. Revisit if tab-level detail is wanted.
+- **Per-device rows are built from raw events**, before idle subtraction and before segmentation,
+  because **R11** says those rows are unmodified truth kept underneath for comparison. They call
+  `aw_combined::resolve_device` (newly public) so origin is decided by the same rule (**R19**) the
+  pipeline uses rather than a second copy that can drift.
+- **The hostname→uuid map is passed empty (`{}`).** Since 3.1 every imported event carries
+  `$aw.origin.device`; an event predating that is attributed to the hostname captured from its
+  bucket id, which keeps it visible as its own device instead of being folded into ours. A real map
+  needs a `hostname` field in `devices/<uuid>/meta.json` — a shared **schema** change, which does
+  not belong in a view step. Consequence to watch for on device: a peer with pre-3.1 history may
+  appear as *two* rows, one uuid and one hostname. That is honest, not a totals bug (they never
+  overlap in time), but it is the first thing to look at if the device list looks too long.
+- **Shading is diagonal stripes, not a lighter tint.** A tint reads as "less of this activity",
+  which is the opposite of what the flag means — the block's time *is* counted (**R17**); what is
+  uncertain is which competitor deserved it.
+- **`min_contention` is still the 60 s default, not a setting.** Nothing in the app exposes one and
+  3.4 is about seeing the track at all. It gets a home when Phase 4 gives it one (D15/Q1).
+
+**Check (local, done):** `scripts/check-local.sh` green — Kotlin compiles, host Rust checks clean
+including the new `aw-server --lib`. `cargo test -p aw-combined` 42 green, plus 3 new `aw-server`
+unit tests for the label/idle helpers.
+
+⚠️ **Not verified on device.** Nothing here has run on hardware: no APK has been built from this
+commit, so the JNI symbol has never been resolved, the datastore has never been read through it,
+and no pixel of the view has been drawn. **This needs a CI build**, then install on both devices.
 
 ---
 
@@ -1453,7 +1515,31 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 
 ## Progress log
 
-### 2026-09-09 (later, latest) — 3.3: provisional attribution + coalesce
+### 2026-09-09 (latest) — 3.4: the combined view, in code
+`aw-combined` is wired to a screen. A **Combined timeline** item in the nav drawer opens
+`CombinedTimelineActivity`, which asks Rust for one day and draws the combined track above one row
+per device, with unresolved contention striped (**R8**).
+
+- **`aw-server/src/combined.rs`** is the new datastore adapter: it reads the range, splits buckets
+  into activity (`currentwindow`) and idle (`afkstatus`, filtered to `status == "afk"`), runs the
+  pipeline plus `coalesce`, and shapes the JSON. It sits outside `android/` on purpose so a desktop
+  `cargo check` compiles it — `android/` is `cfg(target_os = "android")` and is never host-checked,
+  which is exactly where a mistake would hide until CI.
+- **`getCombinedTimeline(start, end, hostnameToUuidJson)`** is the new JNI entry point; the own
+  device uuid is read Rust-side from `device_id` so the halves cannot disagree.
+- **Kotlin:** `models/CombinedTimeline.kt` (Android-free parser), `views/CombinedTimelineView.kt`
+  (the drawing), `CombinedTimelineActivity` (day picker, summary, tap detail).
+- **The summary line shows the R6 gap** — combined total vs the sum of the devices' totals.
+- Judgment calls: `currentwindow` only (a web bucket would contend with its own window); per-device
+  rows from raw events (**R11**) via the now-public `resolve_device` (**R19**); empty hostname→uuid
+  map, so pre-3.1 history shows under its hostname rather than being folded into us; stripes rather
+  than a tint for shading.
+- `check-local.sh` gained `cargo check -p aw-server --lib`. All local checks green.
+- `aw-server-rust@beta` → `e2e7db3`; submodule pointer moved.
+- ⚠️ **Nothing has run on hardware.** Next: CI build, install on both devices, then check the R6
+  summary against the per-device totals and that a contended block is actually striped.
+
+### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
 classify and picks, for every segment, the single slice that counts toward day totals (**R6/R17**);
 `aw-combined::coalesce` is a **separate opt-in** function that merges heartbeat-split slivers for

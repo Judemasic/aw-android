@@ -28,6 +28,14 @@ The combined track sits **above** the per-device tracks (the owner's words: *"a 
 above them that will show everything"*). Per-device tracks are unmodified raw truth (R11) and are
 always available underneath for comparison.
 
+> **In code (3.4):** `CombinedTimelineActivity` + `views/CombinedTimelineView`, reached from the
+> nav drawer as **Combined timeline**. One day at a time, prev/next/today. The data comes from
+> `RustInterface.getCombinedTimeline(start, end, hostnameToUuidJson)`, whose Rust side is
+> `aw-server::combined::combined_timeline` — the only place that reads a datastore, since
+> `aw-combined` itself is pure. Unresolved segments are drawn with diagonal stripes and a dark
+> border (**R8**); tapping one names what was competing for it. The screen's summary line is the
+> **R6** demonstration: the combined total against the sum of the devices' totals.
+
 ---
 
 ## 2. Computation pipeline
