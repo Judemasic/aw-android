@@ -10,10 +10,12 @@
   --line:#D2D8DF;        --line-2:#E3E8ED;
   --accent:#0E7C6B;      --accent-ink:#0A5F52;  --accent-wash:#DCEFEB;
   --warn:#B4541F;        --warn-wash:#F6E6DA;
+  --danger:#A32B25;
   --app-1:#2E6F5E; --app-2:#5F4B94; --app-3:#2C6FA6;
   --app-4:#A83E36; --app-5:#8A6A2F; --app-6:#4E6B2F;
   --on-app:#FFFFFF;
   --shadow:0 1px 2px rgba(20,23,28,.06), 0 6px 20px -12px rgba(20,23,28,.28);
+  --shadow-lg:0 10px 40px -8px rgba(20,23,28,.35);
   --r:7px;
 }
 @media (prefers-color-scheme:dark){
@@ -22,10 +24,11 @@
     --ink:#E8EBEF;       --ink-2:#BDC5CF;       --muted:#8E97A3;
     --line:#2B323B;      --line-2:#222831;
     --accent:#3BC6AD;    --accent-ink:#67D8C3;  --accent-wash:#12332F;
-    --warn:#E08A4E;      --warn-wash:#3A2A1B;
+    --warn:#E08A4E;      --warn-wash:#3A2A1B;   --danger:#E0645C;
     --app-1:#3A8A76; --app-2:#7566A8; --app-3:#3E86C0;
     --app-4:#BE5850; --app-5:#A78243; --app-6:#66883F;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+    --shadow-lg:0 12px 48px -6px rgba(0,0,0,.8);
   }
 }
 :root[data-theme="dark"]{
@@ -33,55 +36,38 @@
   --ink:#E8EBEF;       --ink-2:#BDC5CF;       --muted:#8E97A3;
   --line:#2B323B;      --line-2:#222831;
   --accent:#3BC6AD;    --accent-ink:#67D8C3;  --accent-wash:#12332F;
-  --warn:#E08A4E;      --warn-wash:#3A2A1B;
+  --warn:#E08A4E;      --warn-wash:#3A2A1B;   --danger:#E0645C;
   --app-1:#3A8A76; --app-2:#7566A8; --app-3:#3E86C0;
   --app-4:#BE5850; --app-5:#A78243; --app-6:#66883F;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+  --shadow-lg:0 12px 48px -6px rgba(0,0,0,.8);
 }
 
 *{box-sizing:border-box}
 body{
   background:var(--ground); color:var(--ink);
   font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  font-size:14px; line-height:1.55; margin:0;
-  -webkit-font-smoothing:antialiased;
+  font-size:14px; line-height:1.55; margin:0; -webkit-font-smoothing:antialiased;
 }
-.mono{font-family:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
-.cond{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif}
-
+.mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
 .wrap{max-width:1180px;margin:0 auto;padding:32px 20px 72px}
 
-/* ---------- masthead ---------- */
 header.masthead{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
-.eyebrow{
-  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px
-}
-h1{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-weight:700;font-size:clamp(28px,5vw,42px);line-height:1.08;
-  letter-spacing:-.015em;margin:0 0 12px;text-wrap:balance
-}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px}
+h1{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-weight:700;
+  font-size:clamp(28px,5vw,42px);line-height:1.08;letter-spacing:-.015em;margin:0 0 12px;text-wrap:balance}
 .standfirst{margin:0;max-width:64ch;color:var(--ink-2);font-size:15.5px}
 .standfirst b{color:var(--ink);font-weight:600}
 
-/* ---------- controls ---------- */
-.controls{
-  display:flex;flex-wrap:wrap;gap:22px 30px;align-items:flex-start;
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  padding:16px 18px;margin-bottom:8px;box-shadow:var(--shadow)
-}
+.controls{display:flex;flex-wrap:wrap;gap:20px 28px;align-items:flex-start;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:8px;box-shadow:var(--shadow)}
 .ctl{display:flex;flex-direction:column;gap:7px}
-.ctl > span.lbl{
-  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;
-  text-transform:uppercase;color:var(--muted)
-}
+.ctl > span.lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted)}
 .seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--surface-2)}
-.seg button{
-  font:inherit;font-size:12.5px;font-weight:500;padding:6px 11px;border:0;
-  background:transparent;color:var(--ink-2);cursor:pointer;white-space:nowrap;
-  border-right:1px solid var(--line)
-}
+.seg button{font:inherit;font-size:12.5px;font-weight:500;padding:6px 11px;border:0;background:transparent;
+  color:var(--ink-2);cursor:pointer;white-space:nowrap;border-right:1px solid var(--line)}
 .seg button:last-child{border-right:0}
 .seg button:hover{background:var(--line-2);color:var(--ink)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
@@ -90,190 +76,222 @@ h1{
 .checks label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-2);cursor:pointer}
 .checks input{accent-color:var(--accent);width:15px;height:15px;margin:0}
 
-/* ---------- verdict strip ---------- */
-.verdict{
-  display:flex;gap:10px;align-items:flex-start;margin:0 0 24px;
-  padding:11px 14px;border-radius:0 var(--r) var(--r) 0;
-  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
-  font-size:13px;color:var(--ink-2)
-}
+.verdict{display:flex;gap:10px;align-items:flex-start;margin:0 0 24px;padding:11px 14px;
+  border-radius:0 var(--r) var(--r) 0;background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--accent);font-size:13px;color:var(--ink-2)}
 .verdict.bad{border-left-color:var(--warn);background:var(--warn-wash)}
 .verdict b{color:var(--ink)}
 
-/* ---------- device frame ---------- */
 .stage{display:flex;justify-content:center;margin-bottom:14px}
-.frame{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  box-shadow:var(--shadow);overflow:hidden;width:100%;transition:max-width .3s ease
-}
-.frame-bar{
-  display:flex;justify-content:space-between;align-items:center;gap:12px;
-  padding:7px 12px;border-bottom:1px solid var(--line-2);background:var(--surface-2);
-  font-size:11px;color:var(--muted)
-}
-.frame-bar .mono{font-size:11px}
+.frame{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  overflow:hidden;width:100%;transition:max-width .3s ease;position:relative}
+.frame-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 12px;
+  border-bottom:1px solid var(--line-2);background:var(--surface-2);font-size:11px;color:var(--muted)}
 
-/* ---------- app chrome inside frame ---------- */
-.appbar{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:10px 12px;border-bottom:1px solid var(--line-2)
-}
-.appbar h2{
-  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;
-  margin:0;letter-spacing:-.01em
-}
+/* ---- app chrome ---- */
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;
+  border-bottom:1px solid var(--line-2);flex-wrap:wrap}
+.appbar h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;margin:0;letter-spacing:-.01em}
 .daynav{display:flex;align-items:center;gap:4px}
-.daynav button{
-  font:inherit;font-size:13px;width:28px;height:28px;line-height:1;border:1px solid var(--line);
-  background:var(--surface);color:var(--ink-2);border-radius:5px;cursor:pointer
-}
+.daynav button{font:inherit;font-size:13px;width:28px;height:28px;line-height:1;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);border-radius:5px;cursor:pointer}
 .daynav button:hover{background:var(--surface-2);color:var(--ink)}
 .daynav .today{width:auto;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.03em}
+.themeseg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.themeseg button{font:inherit;font-size:11px;padding:4px 8px;border:0;border-right:1px solid var(--line);
+  background:transparent;color:var(--muted);cursor:pointer}
+.themeseg button:last-child{border-right:0}
+.themeseg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 
-.summary{
-  display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line-2);
-}
-.stat{flex:1 1 0;min-width:88px;padding:9px 12px;border-right:1px solid var(--line-2)}
+/* ---- toolbar disclosure ---- */
+details.tools{border-bottom:1px solid var(--line-2)}
+details.tools > summary{list-style:none;cursor:pointer;padding:8px 12px;display:flex;align-items:center;
+  gap:8px;font-size:12.5px;color:var(--ink-2);user-select:none}
+details.tools > summary::-webkit-details-marker{display:none}
+details.tools > summary::before{content:"▸";font-size:10px;color:var(--muted);transition:transform .15s}
+details.tools[open] > summary::before{transform:rotate(90deg)}
+details.tools > summary b{color:var(--ink);font-weight:600}
+details.tools > summary .sum{color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;margin-left:auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolpanel{padding:2px 12px 12px;display:flex;flex-direction:column;gap:12px;background:var(--surface-2)}
+.trow{display:flex;flex-direction:column;gap:6px}
+.trow > .lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.qdur{display:flex;flex-wrap:wrap;gap:4px}
+.qdur button{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:4px 9px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:4px;cursor:pointer}
+.qdur button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.daterange{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.daterange input{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:4px 7px;
+  border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
+
+/* ---- device rows ---- */
+.devlist{display:flex;flex-direction:column;gap:6px}
+.devrow{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);
+  border-radius:5px;padding:6px 9px}
+.devrow input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0;flex:0 0 auto}
+.devkey{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.06em;
+  background:var(--ink);color:var(--surface);border-radius:3px;padding:1px 5px;flex:0 0 auto}
+.devrow input[type=text]{font:inherit;font-size:12.5px;font-weight:600;flex:1 1 60px;min-width:0;
+  border:1px solid transparent;background:transparent;color:var(--ink);border-radius:4px;padding:2px 5px}
+.devrow input[type=text]:hover{border-color:var(--line)}
+.devrow input[type=text]:focus{border-color:var(--accent);outline:none;background:var(--surface-2)}
+.devrow .uuid{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted);flex:0 0 auto}
+.devrow .own{font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--accent-ink);
+  background:var(--accent-wash);border-radius:99px;padding:1px 6px;flex:0 0 auto}
+
+.summary{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line-2)}
+.stat{flex:1 1 0;min-width:82px;padding:9px 12px;border-right:1px solid var(--line-2)}
 .stat:last-child{border-right:0}
 .stat .v{font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600;letter-spacing:-.02em;display:block;line-height:1.2}
-.stat .k{font-size:10.5px;color:var(--muted);letter-spacing:.02em}
+.stat .k{font-size:10.5px;color:var(--muted)}
 .stat.flag .v{color:var(--warn)}
 
-/* ---------- minimap ---------- */
 .minimap{position:relative;height:38px;border-bottom:1px solid var(--line-2);padding:6px 12px 12px;cursor:pointer}
 .mm-track{position:relative;height:100%;background:var(--surface-2);border-radius:3px;overflow:hidden}
 .mm-b{position:absolute;top:0;bottom:0;opacity:.85}
 .mm-b.c{background:repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 5px),var(--warn-wash)}
-.mm-view{position:absolute;top:-2px;bottom:-2px;border:1.5px solid var(--accent);border-radius:3px;background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none}
+.mm-view{position:absolute;top:-2px;bottom:-2px;border:1.5px solid var(--accent);border-radius:3px;
+  background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none}
 .mm-ticks{position:absolute;left:12px;right:12px;bottom:1px;height:9px}
 .mm-ticks span{position:absolute;font-family:"IBM Plex Mono",monospace;font-size:8.5px;color:var(--muted);transform:translateX(-50%)}
 
-/* ---------- timeline body ---------- */
 .tl-body{display:flex;align-items:stretch}
 .tl-scroll{flex:1 1 auto;overflow:auto;position:relative;scrollbar-width:thin}
 .tl-inner{position:relative}
-
-.hourcol{position:absolute;left:0;top:0;bottom:0;width:var(--hourw);pointer-events:none}
-.hourcol .hr{
-  position:absolute;left:0;width:100%;font-family:"IBM Plex Mono",monospace;
-  font-size:10px;color:var(--muted);padding-right:6px;text-align:right;
-  transform:translateY(-.5em)
-}
+.hr{position:absolute;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted);transform:translateY(-.5em)}
 .gridline{position:absolute;background:var(--line-2)}
 
-.lane{position:absolute}
-.lane-head{
-  position:sticky;z-index:3;background:var(--surface);border-bottom:1px solid var(--line);
-  font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--muted);padding:5px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
-}
+/* ---- blocks ---- */
+.blk{position:absolute;border-radius:4px;overflow:hidden;cursor:pointer;color:var(--on-app);
+  border:1px solid rgba(0,0,0,.16);display:flex;min-height:0}
+.blk:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px;z-index:8}
+.blk.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:7}
+.band{position:relative;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;
+  padding:3px 6px;overflow:hidden;border-right:1px solid rgba(0,0,0,.28)}
+.band:last-child{border-right:0}
+.band .row1{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.nm{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.du{font-family:"IBM Plex Mono",monospace;font-size:10.5px;opacity:.92;white-space:nowrap;line-height:1.3}
+.dvtag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;opacity:.85;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.blk.tiny .band{padding:0}
+.blk.tiny .nm,.blk.tiny .du,.blk.tiny .dvtag,.blk.tiny .row1{display:none}
+/* Below ~34px the device tag has no room and gets clipped mid-glyph. The name and
+   duration still fit, and the device is identifiable from the gutter column anyway. */
+.blk.short .dvtag{display:none}
+.blk.contended::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(45deg,rgba(255,255,255,.3) 0 3px,transparent 3px 8px);
+  box-shadow:inset 0 0 0 2px var(--warn);border-radius:3px}
+.blk.horiz .band{justify-content:center;padding:2px 5px}
 
-.blk{
-  position:absolute;border-radius:4px;overflow:hidden;cursor:pointer;
-  color:var(--on-app);border:1px solid rgba(0,0,0,.14);
-  display:flex;padding:3px 6px;gap:6px;min-height:0
-}
-.blk:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px;z-index:5}
-.blk .nm{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
-.blk .du{font-family:"IBM Plex Mono",monospace;font-size:10.5px;opacity:.9;white-space:nowrap;line-height:1.3}
-.blk .sub{font-size:10px;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
-.blk.v{flex-direction:column;justify-content:flex-start;gap:0}
-.blk.v .row1{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
-.blk.h{flex-direction:column;justify-content:center;gap:0;padding:2px 5px}
-.blk.tiny{padding:0;border-radius:2px}
-.blk.tiny .nm,.blk.tiny .du,.blk.tiny .sub,.blk.tiny .row1{display:none}
-.blk.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:6}
-.blk.contended::after{
-  content:"";position:absolute;inset:0;pointer-events:none;
-  background:repeating-linear-gradient(45deg,rgba(255,255,255,.34) 0 3px,transparent 3px 8px);
-  box-shadow:inset 0 0 0 2px var(--warn)
-}
-
-.quiet{
-  position:absolute;display:flex;align-items:center;justify-content:center;gap:8px;
-  color:var(--muted);font-size:10.5px;font-family:"IBM Plex Mono",monospace
-}
+.quiet{position:absolute;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);
+  font-size:10.5px;font-family:"IBM Plex Mono",monospace;pointer-events:none}
 .quiet::before,.quiet::after{content:"";flex:1 1 auto;height:1px;background:var(--line);min-width:8px}
-.quiet.h{writing-mode:vertical-rl;text-orientation:mixed}
-.quiet.h::before,.quiet.h::after{width:1px;height:auto;min-height:8px;flex:1 1 auto}
+.quiet.h{writing-mode:vertical-rl}
+.quiet.h::before,.quiet.h::after{width:1px;height:auto;min-height:8px}
 
-.gutter-b{position:absolute;border-radius:2px;opacity:.92}
-.gutter-b.contended{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 2px,transparent 2px 6px)}
+/* ---- device gutter (narrow) ---- */
+.devcol-head{position:absolute;top:0;z-index:6;background:var(--surface);border-bottom:1px solid var(--line);
+  border-left:2px solid var(--ink);font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;
+  letter-spacing:.05em;color:var(--ink);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;white-space:nowrap}
+.devcol-head.vert{writing-mode:vertical-rl;text-orientation:mixed;padding:5px 0}
+.devcol-rail{position:absolute;background:var(--line);width:1px;z-index:1}
+.gutter-b{position:absolute;border-radius:2px;opacity:.94;cursor:pointer;border:1px solid rgba(0,0,0,.18)}
+.gutter-b:focus-visible{outline:2px solid var(--accent-ink);outline-offset:1px;z-index:8}
+.gutter-b.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:7}
+.gutter-b.contended{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.42) 0 2px,transparent 2px 6px)}
 
-/* ---------- detail ---------- */
-.detail{
-  width:294px;flex:0 0 294px;border-left:1px solid var(--line);
-  background:var(--surface-2);padding:14px;overflow:auto
-}
-.detail.sheet{
-  position:static;width:auto;flex:none;border-left:0;border-top:1px solid var(--line);
-  max-height:none
-}
+/* ---- detail ---- */
+.detail{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--surface-2);padding:14px;overflow:auto}
+.detail.sheet{width:auto;flex:none;border-left:0;border-top:1px solid var(--line)}
 .detail h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;margin:0 0 2px;font-weight:700}
 .detail .when{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);margin:0 0 12px}
 .dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;margin:0 0 14px}
 .dl dt{color:var(--muted)}
-.dl dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12px}
-.pill{
-  display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
-  padding:2px 8px;border-radius:99px;letter-spacing:.02em
-}
+.dl dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12px;word-break:break-word}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px}
 .pill.settled{background:var(--accent-wash);color:var(--accent-ink)}
 .pill.contended{background:var(--warn-wash);color:var(--warn)}
 .swatch{width:9px;height:9px;border-radius:2px;flex:0 0 auto;display:inline-block}
-.also{margin:0 0 14px;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
-.also li{display:flex;gap:8px;align-items:center;font-size:12.5px;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:6px 9px}
-.also .dev{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);margin-left:auto}
-.resolve{
-  border:1px dashed var(--line);border-radius:var(--r);padding:10px;background:var(--surface);
-  font-size:12px;color:var(--muted)
-}
-.resolve b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:3px;font-weight:600}
-.empty{color:var(--muted);font-size:12.5px;padding:6px 0}
+.klabel{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);display:block;margin:0 0 6px}
+.slices{margin:0 0 14px;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.slices li{display:flex;gap:8px;align-items:center;font-size:12.5px;background:var(--surface);
+  border:1px solid var(--line);border-radius:5px;padding:6px 8px}
+.slices li.fg{border-color:var(--ink);border-left-width:3px}
+.slices .dev{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted);margin-left:auto;text-align:right}
+.slices button{font:inherit;font-size:11px;padding:3px 8px;border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-2);border-radius:4px;cursor:pointer;flex:0 0 auto}
+.slices button:hover{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.btn{font:inherit;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-ink)}
+.btn.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+.btn.danger:hover{background:var(--danger);color:#fff}
+.resolve{border:1px dashed var(--line);border-radius:var(--r);padding:10px;background:var(--surface);
+  font-size:12px;color:var(--muted)}
+.resolve b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:3px}
+.empty{color:var(--muted);font-size:12.5px;padding:10px 0;text-align:center}
 
-/* ---------- legend ---------- */
-.legend{
-  display:flex;flex-wrap:wrap;gap:5px 14px;padding:8px 12px;
-  border-top:1px solid var(--line-2);font-size:11px;color:var(--ink-2)
-}
+/* ---- edit modal ---- */
+.modal-bg{position:absolute;inset:0;background:rgba(10,13,17,.55);z-index:20;display:flex;
+  align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-lg);
+  width:100%;max-width:400px;max-height:100%;overflow:auto}
+.modal-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.modal-h h4{margin:0;font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;font-weight:700}
+.modal-h button{font:inherit;font-size:18px;line-height:1;border:0;background:transparent;color:var(--muted);cursor:pointer;padding:0 4px}
+.modal-b{padding:14px}
+.etable{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px}
+.etable th{text-align:left;color:var(--muted);font-weight:500;padding:4px 10px 4px 0;white-space:nowrap;vertical-align:middle;width:1%}
+.etable td{padding:4px 0}
+.etable input{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:12px;width:100%;padding:5px 7px;
+  border:1px solid var(--line);border-radius:4px;background:var(--surface-2);color:var(--ink)}
+.etable input:disabled{color:var(--muted);background:var(--surface)}
+.etable input:focus{outline:none;border-color:var(--accent)}
+.modal hr{border:0;border-top:1px solid var(--line-2);margin:12px 0}
+.modal-f{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.modal-f .btn.danger{margin-right:auto}
+.note-inline{font-size:11.5px;color:var(--muted);background:var(--warn-wash);border-left:2px solid var(--warn);
+  padding:7px 9px;border-radius:0 4px 4px 0;margin-bottom:12px}
+
+.legend{display:flex;flex-wrap:wrap;gap:5px 14px;padding:8px 12px;border-top:1px solid var(--line-2);
+  font-size:11px;color:var(--ink-2)}
 .legend .it{display:flex;align-items:center;gap:5px}
-.legend .stripes{
-  width:16px;height:10px;border-radius:2px;border:1.5px solid var(--warn);
-  background:repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 6px),var(--warn-wash)
-}
+.legend .stripes{width:16px;height:10px;border-radius:2px;border:1.5px solid var(--warn);
+  background:repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 6px),var(--warn-wash)}
+.legend .devkey{background:var(--ink);color:var(--surface)}
 
-/* ---------- notes ---------- */
 .notes{margin-top:44px;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
 .note{border-top:2px solid var(--ink);padding-top:12px}
 .note.warnbar{border-top-color:var(--warn)}
-.note h4{
-  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;margin:0 0 6px;
-  font-weight:700;letter-spacing:-.01em;text-wrap:balance
-}
+.note h4{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;margin:0 0 6px;font-weight:700;text-wrap:balance}
 .note p{margin:0 0 8px;font-size:13px;color:var(--ink-2)}
 .note p:last-child{margin-bottom:0}
-.note .k{
-  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px
-}
-.note code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface);padding:1px 4px;border-radius:3px;border:1px solid var(--line-2)}
-
+.note .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:4px}
+.note code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface);padding:1px 4px;
+  border-radius:3px;border:1px solid var(--line-2)}
 footer.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 footer.foot b{color:var(--ink-2)}
-
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
 <div class="wrap">
 
 <header class="masthead">
-  <p class="eyebrow">aw-android · roadmap 3.5b · layout study</p>
+  <p class="eyebrow">aw-android · roadmap 3.5b · layout study v2</p>
   <h1>A timeline that survives a phone</h1>
   <p class="standfirst">
     Twenty-four hours across 340&nbsp;pt of phone width gives each hour <b>14&nbsp;points</b>, so a
-    ten-minute session renders 2.4&nbsp;points wide — thinner than the line under this sentence.
-    No font fixes that. Below: the same real data, drawn both ways, at three widths.
-    Turn the axis to <b>Horizontal</b> at phone width to watch it fail.
+    ten-minute session renders 2.4&nbsp;points wide. No font fixes that. Below: the same real data,
+    drawn both ways, at three widths — now with <b>every block tappable</b>, contended blocks showing
+    <b>both apps in both colours</b>, renameable devices, and the theme, Mode and Range controls the
+    original app already has.
   </p>
 </header>
 
@@ -302,7 +320,7 @@ footer.foot b{color:var(--ink-2)}
       <button data-z="128" aria-pressed="false">Close</button>
     </div>
   </div>
-  <div class="ctl" style="flex:1 1 220px">
+  <div class="ctl" style="flex:1 1 210px">
     <span class="lbl">Behaviour</span>
     <div class="checks">
       <label><input type="checkbox" id="cCollapse" checked> Collapse quiet time</label>
@@ -317,18 +335,54 @@ footer.foot b{color:var(--ink-2)}
 <div class="stage">
   <div class="frame" id="frame">
     <div class="frame-bar">
-      <span class="mono" id="frameLabel">412 × 780</span>
+      <span class="mono" id="frameLabel">412 × 560</span>
       <span class="mono" id="frameScale">64 px / hour</span>
     </div>
 
     <div class="appbar">
       <h2>Combined</h2>
-      <div class="daynav">
-        <button type="button" aria-label="Previous day">‹</button>
-        <button type="button" class="today">TUE 9 SEP</button>
-        <button type="button" aria-label="Next day">›</button>
+      <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
+        <div class="themeseg" id="segTheme" role="group" aria-label="Theme">
+          <button data-t="light" aria-pressed="false">Light</button>
+          <button data-t="auto" aria-pressed="true">Auto</button>
+          <button data-t="dark" aria-pressed="false">Dark</button>
+        </div>
+        <div class="daynav">
+          <button type="button" aria-label="Previous day">‹</button>
+          <button type="button" class="today">TUE 9 SEP</button>
+          <button type="button" aria-label="Next day">›</button>
+        </div>
       </div>
     </div>
+
+    <details class="tools" id="tools">
+      <summary><b>Range &amp; devices</b><span class="sum" id="toolSum"></span></summary>
+      <div class="toolpanel">
+        <div class="trow">
+          <span class="lbl">Mode</span>
+          <div class="seg" id="segMode" style="align-self:flex-start" role="group" aria-label="Mode">
+            <button data-m="last" aria-pressed="true">Last duration</button>
+            <button data-m="range" aria-pressed="false">Date range</button>
+          </div>
+        </div>
+        <div class="trow" id="rowRange">
+          <span class="lbl">Range</span>
+          <div class="qdur" id="qdur"></div>
+        </div>
+        <div class="trow" id="rowDates" hidden>
+          <span class="lbl">Dates</span>
+          <div class="daterange">
+            <input type="date" value="2026-09-09" aria-label="Start date">
+            <span>→</span>
+            <input type="date" value="2026-09-09" aria-label="End date">
+          </div>
+        </div>
+        <div class="trow">
+          <span class="lbl">Devices — untick to exclude, click a name to rename</span>
+          <div class="devlist" id="devlist"></div>
+        </div>
+      </div>
+    </details>
 
     <div class="summary" id="summary"></div>
 
@@ -353,67 +407,65 @@ footer.foot b{color:var(--ink-2)}
     <p>Scrolling down is free and native on a phone; horizontal width is fixed and scarce. So time —
     which needs unbounded room — goes on the free axis, and the app name goes on the scarce one,
     where text reads anyway.</p>
-    <p>At 64&nbsp;px/hour that same ten-minute session is <code>11 × 250</code> instead of
+    <p>At 64&nbsp;px/hour a ten-minute session is <code>11 × 250</code> instead of
     <code>340 × 2.4</code>. Room for a name, a duration, and the shading.</p>
   </div>
 
   <div class="note">
-    <span class="k">Decision 02</span>
-    <h4>Devices are a gutter, not equal columns</h4>
-    <p>R11 says the raw per-device tracks are always available underneath. But they are
-    <em>reference</em>, not the thing you read. Three equal columns on a 412&nbsp;pt phone gives
-    everything 130&nbsp;pt and ruins all three.</p>
-    <p>Narrow: a 10&nbsp;pt stripe per device says <em>who was awake here</em> at a glance. Wide: the
-    stripes become full labelled columns. Same data, same component.</p>
+    <span class="k">Decision 02 · revised</span>
+    <h4>A contended block shows both apps, not a winner and a footnote</h4>
+    <p>The first draft painted the block in the winner's colour and mentioned the loser in text. That
+    reads as though one device was idle. Now the block is <b>split into a band per device</b>, each
+    in its own app colour, widest band = the one the time is provisionally counted to (<b>R17</b>).</p>
+    <p>The diagonal stripes still mean <em>unresolved</em>. What changed is that you can now see, at a
+    glance and without tapping, that two things were genuinely running.</p>
   </div>
 
   <div class="note">
-    <span class="k">Decision 03</span>
-    <h4>Collapse the dead time, keep the glance</h4>
-    <p>Most of a tracked day is nothing. Uncollapsed, you flick past sleep for six screens. Quiet
-    runs over 25 minutes become one <code>2h 14m quiet</code> divider — the day drops from ~20
-    screens to about 3.</p>
-    <p>Collapsing costs you <em>the whole day at once</em>, which horizontal gives free. The minimap
-    strip buys it back: full 24 hours, always visible, showing density and where you are.</p>
+    <span class="k">Decision 03 · revised</span>
+    <h4>Device stripes are labelled and tappable</h4>
+    <p>A 10&nbsp;pt anonymous stripe was the weakest part of v1 — you could see <em>that</em> a device
+    was awake but not which one, and could not tap it. Columns are now 22&nbsp;pt with a
+    <b>sticky rotated header</b> carrying the device's short name, and every stripe is tappable with
+    an expanded hit area.</p>
+    <p>They still do not get equal columns at phone width: <b>R11</b> wants them present, not
+    co-equal. On tablet and desktop they widen into full labelled columns automatically.</p>
+  </div>
+
+  <div class="note">
+    <span class="k">Decision 04</span>
+    <h4>Editing belongs to the device event, never the combined block</h4>
+    <p>The combined track is <b>derived</b> — it is computed from device events and stored nowhere.
+    There is no "combined event" to open in the original app's editor.</p>
+    <p>So the combined detail lists its source slices and each one gets its own <b>Edit</b> button,
+    opening the same editor the original app uses — bucket, id, start, end, and the editable
+    <code>data</code> keys. Edit the truth, and the combined view recomputes.</p>
   </div>
 
   <div class="note warnbar">
     <span class="k">Rejected</span>
     <h4>The chronological card list</h4>
     <p>Sessions in order, no time scale. Reads beautifully on a phone and is a fraction of the work.</p>
-    <p>It kills the feature. Contention shading is a claim about <em>area</em> — <em>these two
-    devices were both busy for this much of the same hour</em>. Drop proportional time and R8 has
-    nothing left to say. That settles it: proportionality is non-negotiable here.</p>
-  </div>
-
-  <div class="note">
-    <span class="k">Integration</span>
-    <h4>One component, orientation as a prop</h4>
-    <p>Upstream will not accept a second timeline page, and they'd be right. But vertical and
-    horizontal are not two pages — they are one mapping from time to distance, with the axis as a
-    variable. Data, colours, hit-testing and shading are identical.</p>
-    <p>So the PR is <em>“the timeline gains a vertical mode below ~700&nbsp;px”</em>. Desktop
-    unchanged, no migration, additive. The multi-device combined view stays in our fork, because
-    upstream has nothing to merge it into.</p>
+    <p>It kills the feature. Contention shading is a claim about <em>area</em>. Drop proportional time
+    and <b>R8</b> has nothing left to say. Proportionality is non-negotiable here.</p>
   </div>
 
   <div class="note warnbar">
     <span class="k">Honest cost</span>
     <h4>vis-timeline does not fully go away</h4>
-    <p><code>vis-timeline</code> is imported in seven files — Timeline, Bucket, Report, the two
-    selectable-view components, the label helper, and its own wrapper. Replacing all of it is a
-    bigger project than this one.</p>
-    <p>So two renderers coexist for a while: ours for the combined view and for Timeline at narrow
-    width, vis-timeline for everything else. That duplication sits behind one component boundary
-    rather than in a duplicated page — and it shrinks over time instead of growing.</p>
+    <p><code>vis-timeline</code> is imported in seven files. Replacing all of it is a bigger project
+    than this one, so two renderers coexist for a while — ours for the combined view and for Timeline
+    at narrow width, vis-timeline for everything else.</p>
+    <p>That sits behind one component boundary rather than in a duplicated page, and it shrinks over
+    time instead of growing.</p>
   </div>
 </section>
 
 <footer class="foot">
   <b>Example data, not your real day.</b> Two devices, hand-built to the shape of the 2026-09-09
-  verified run so the proportions and the contention are realistic. Durations, totals and the shaded
-  overlaps below are computed live from that data, not drawn by hand — the combined total is a true
-  union measure, never the sum of the devices (R6).
+  verified run so the proportions and the contention are realistic. Totals, durations and overlaps
+  are computed live — the combined total is a true union measure, never the sum of the devices (R6).
+  Renames and theme persist in this browser only.
 </footer>
 
 </div>
@@ -422,367 +474,459 @@ footer.foot b{color:var(--ink-2)}
 (function(){
 "use strict";
 
-/* ---------------- data: one example day, two devices ---------------- */
-const APPS = {
-  "Android Studio":"var(--app-1)", "Slack":"var(--app-2)", "Chrome":"var(--app-3)",
-  "YouTube":"var(--app-4)", "Kindle":"var(--app-5)", "Syncthing-Fork":"var(--app-6)"
+/* ================= data ================= */
+const APPS={
+  "Android Studio":"var(--app-1)","Slack":"var(--app-2)","Chrome":"var(--app-3)",
+  "YouTube":"var(--app-4)","Kindle":"var(--app-5)","Syncthing-Fork":"var(--app-6)"
 };
-const DEVICES = [
-  { id:"phone",  name:"Galaxy S25 Ultra",  short:"S25U", uuid:"ad0c6c34…60b22d", own:true  },
-  { id:"tablet", name:"Galaxy Tab S10 FE", short:"Tab",  uuid:"7b54cfe9…1111d8", own:false }
+const M=(h,m)=>h*60+m;
+const DEVICES=[
+  {id:"phone", key:"S25U", def:"Galaxy S25 Ultra",  uuid:"ad0c6c34-d388-4ef0-b906-976bd760b22d",
+   bucket:"aw-watcher-android_jude-s25u", own:true,  on:true},
+  {id:"tablet",key:"TAB",  def:"Galaxy Tab S10 FE", uuid:"7b54cfe9-ec39-4ec3-934c-67c81111d8e7",
+   bucket:"aw-watcher-android-synced-from-jude_s_tab_s10_fe", own:false, on:true}
 ];
-const M = (h,m)=>h*60+m;
-const RAW = {
-  phone:[
-    [M(8,12),M(8,38),"Slack"], [M(8,38),M(9,25),"Chrome"], [M(9,25),M(10,40),"Android Studio"],
-    [M(11,35),M(12,10),"YouTube"], [M(13,5),M(14,15),"Android Studio"], [M(14,15),M(14,45),"Slack"],
-    [M(16,20),M(17,0),"Chrome"], [M(19,40),M(20,25),"YouTube"], [M(21,5),M(21,40),"Syncthing-Fork"]
-  ],
-  tablet:[
-    [M(9,50),M(10,40),"Kindle"], [M(12,0),M(12,45),"Chrome"], [M(14,0),M(14,45),"Kindle"],
-    [M(15,10),M(16,35),"YouTube"], [M(20,0),M(20,55),"Syncthing-Fork"], [M(22,10),M(22,50),"Kindle"]
-  ]
-};
+let EV=[], _id=1;
+const add=(dev,a,b,app)=>EV.push({id:_id++,dev,start:a,end:b,app});
+[[M(8,12),M(8,38),"Slack"],[M(8,38),M(9,25),"Chrome"],[M(9,25),M(10,40),"Android Studio"],
+ [M(11,35),M(12,10),"YouTube"],[M(13,5),M(14,15),"Android Studio"],[M(14,15),M(14,45),"Slack"],
+ [M(16,20),M(17,0),"Chrome"],[M(19,40),M(20,25),"YouTube"],[M(21,5),M(21,40),"Syncthing-Fork"]
+].forEach(e=>add("phone",...e));
+[[M(9,50),M(10,40),"Kindle"],[M(12,0),M(12,45),"Chrome"],[M(14,0),M(14,45),"Kindle"],
+ [M(15,10),M(16,35),"YouTube"],[M(20,0),M(20,55),"Syncthing-Fork"],[M(22,10),M(22,50),"Kindle"]
+].forEach(e=>add("tablet",...e));
+
+/* ---- persisted rename + theme ---- */
+const LS=(k,v)=>{try{return v===undefined?localStorage.getItem(k):localStorage.setItem(k,v)}catch(e){return null}};
+DEVICES.forEach(d=>{d.name=LS("awname_"+d.id)||d.def});
+const dev=id=>DEVICES.find(d=>d.id===id);
 
 const fmt=s=>{const h=Math.floor(s/60),m=Math.round(s%60);return h?`${h}h ${String(m).padStart(2,"0")}m`:`${m}m`};
-const clock=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.round(s%60)).padStart(2,"0")}`;
+const clock=s=>`${String(Math.floor(s/60)%24).padStart(2,"0")}:${String(Math.round(s%60)).padStart(2,"0")}`;
+const iso=s=>`2026-09-09T${clock(s)}:00`;
 
-/* ------- build combined segments: cut at every boundary, pick a winner ------- */
+/* ================= state ================= */
+const st={w:412,axis:"auto",zoom:64,collapse:true,devices:true,fit:false,
+  mode:"last",dur:1440,sel:null,editing:null,theme:LS("awtheme")||"auto"};
+const $=id=>document.getElementById(id);
+const DURS=[[60,"1h"],[120,"2h"],[240,"4h"],[360,"6h"],[720,"12h"],[1440,"24h"]];
+const DAY_END=1440;
+
+const winStart=()=>st.mode==="range"?0:Math.max(0,DAY_END-st.dur);
+const activeEv=()=>EV.filter(e=>dev(e.dev).on && e.end>winStart());
+
+/* ---- segment builder ---- */
 function buildSegments(){
-  const cuts=new Set();
-  for(const d of DEVICES) for(const [a,b] of RAW[d.id]){cuts.add(a);cuts.add(b);}
-  const pts=[...cuts].sort((x,y)=>x-y);
-  const segs=[];
+  const evs=activeEv(), cuts=new Set([winStart()]);
+  for(const e of evs){cuts.add(Math.max(e.start,winStart()));cuts.add(e.end)}
+  const pts=[...cuts].sort((a,b)=>a-b), segs=[];
   for(let i=0;i<pts.length-1;i++){
-    const a=pts[i], b=pts[i+1];
-    const active=[];
-    for(const d of DEVICES)
-      for(const [s,e,app] of RAW[d.id])
-        if(s<b && e>a) active.push({device:d, app, srcStart:s, srcEnd:e});
+    const a=pts[i],b=pts[i+1];
+    const active=evs.filter(e=>e.start<b&&e.end>a);
     if(!active.length) continue;
-    // R17: longest originating activity wins; ties break on device id, then app.
-    active.sort((x,y)=>(y.srcEnd-y.srcStart)-(x.srcEnd-x.srcStart)
-      || x.device.id.localeCompare(y.device.id) || x.app.localeCompare(y.app));
+    active.sort((x,y)=>(y.end-y.start)-(x.end-x.start)||x.dev.localeCompare(y.dev)||x.app.localeCompare(y.app));
     segs.push({start:a,end:b,fg:active[0],active,contended:active.length>1});
   }
-  // coalesce touching segments that agree on foreground app + device + state
   const out=[];
   for(const s of segs){
     const p=out[out.length-1];
-    if(p && p.end===s.start && p.fg.app===s.fg.app && p.fg.device.id===s.fg.device.id
-       && p.contended===s.contended){ p.end=s.end; continue; }
-    out.push({...s,active:s.active.slice()});
+    const same=p&&p.end===s.start&&p.fg.app===s.fg.app&&p.fg.dev===s.fg.dev&&p.contended===s.contended
+      &&p.active.length===s.active.length&&p.active.every((x,i)=>x.id===s.active[i].id);
+    if(same){p.end=s.end;continue}
+    out.push({start:s.start,end:s.end,fg:s.fg,active:s.active.slice(),contended:s.contended});
   }
   return out;
 }
-const SEGS=buildSegments();
-const COMBINED=SEGS.reduce((n,s)=>n+(s.end-s.start),0);
-const DEVTOTAL=DEVICES.reduce((n,d)=>n+RAW[d.id].reduce((m,[a,b])=>m+(b-a),0),0);
-const NCONT=SEGS.filter(s=>s.contended).length;
-const CONTSECS=SEGS.filter(s=>s.contended).reduce((n,s)=>n+(s.end-s.start),0);
 
-/* ---------------- state ---------------- */
-const st={w:412,axis:"auto",zoom:64,collapse:true,devices:true,fit:false,sel:null};
-const $=id=>document.getElementById(id);
-
-/* --- piecewise minute→px map, so collapsed quiet runs cost a fixed stub --- */
-const QUIET_MIN=25, QUIET_PX=40;
-function buildMap(pxh){
-  const per=pxh/60, spans=[]; let p=0, cur=0;
-  const push=(t0,t1,quiet)=>{
-    const len=quiet?QUIET_PX:(t1-t0)*per;
-    spans.push({t0,t1,p0:p,p1:p+len,quiet}); p+=len;
-  };
+/* ---- piecewise minute → px ---- */
+const QUIET_MIN=25,QUIET_PX=40;
+function buildMap(pxh,SEGS){
+  const per=pxh/60,spans=[];let p=0,cur=winStart();
+  const push=(t0,t1,q)=>{const len=q?QUIET_PX:(t1-t0)*per;spans.push({t0,t1,p0:p,p1:p+len,quiet:q});p+=len};
   for(const s of SEGS){
-    if(s.start>cur){
-      const gap=s.start-cur;
-      if(st.collapse && gap>=QUIET_MIN) push(cur,s.start,true);
-      else push(cur,s.start,false);
-    }
-    push(s.start,s.end,false); cur=s.end;
+    if(s.start>cur) push(cur,s.start,st.collapse&&(s.start-cur)>=QUIET_MIN);
+    push(s.start,s.end,false);cur=s.end;
   }
-  if(cur<1440){
-    const gap=1440-cur;
-    if(st.collapse && gap>=QUIET_MIN) push(cur,1440,true); else push(cur,1440,false);
-  }
+  if(cur<DAY_END) push(cur,DAY_END,st.collapse&&(DAY_END-cur)>=QUIET_MIN);
   const pos=t=>{
-    for(const s of spans){
-      if(t<=s.t1){
-        if(s.quiet) return s.p0+(s.t1>s.t0?(t-s.t0)/(s.t1-s.t0)*QUIET_PX:0);
-        return s.p0+(t-s.t0)*per;
-      }
-    }
+    for(const s of spans) if(t<=s.t1)
+      return s.quiet ? s.p0+(s.t1>s.t0?(t-s.t0)/(s.t1-s.t0)*QUIET_PX:0) : s.p0+(t-s.t0)*per;
     return p;
   };
   return {pos,total:p,spans};
 }
+const invert=(map,px)=>{
+  for(const s of map.spans) if(px<=s.p1)
+    return s.t0+(s.p1>s.p0?(px-s.p0)/(s.p1-s.p0)*(s.t1-s.t0):0);
+  return DAY_END;
+};
 
-/* ---------------- render ---------------- */
+/* ================= render ================= */
 function render(){
-  const cap=Math.min(st.w, document.querySelector(".wrap").clientWidth);
+  document.documentElement.setAttribute("data-theme",st.theme==="auto"?"":st.theme);
+  if(st.theme==="auto") document.documentElement.removeAttribute("data-theme");
+  [...$("segTheme").children].forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.t===st.theme)));
+
+  const SEGS=buildSegments();
+  const COMBINED=SEGS.reduce((n,s)=>n+(s.end-s.start),0);
+  const DEVTOTAL=activeEv().reduce((n,e)=>n+(e.end-Math.max(e.start,winStart())),0);
+  const NCONT=SEGS.filter(s=>s.contended).length;
+  const CONTSECS=SEGS.filter(s=>s.contended).reduce((n,s)=>n+(s.end-s.start),0);
+
+  /* --- toolbar --- */
+  $("qdur").innerHTML=DURS.map(([v,t])=>
+    `<button data-d="${v}" aria-pressed="${st.dur===v}">${t}</button>`).join("");
+  $("rowRange").hidden=st.mode!=="last"; $("rowDates").hidden=st.mode==="last";
+  const onDev=DEVICES.filter(d=>d.on);
+  $("toolSum").textContent=(st.mode==="last"?(DURS.find(d=>d[0]===st.dur)||[,"—"])[1]:"9 Sep")
+    +" · "+(onDev.length===DEVICES.length?"all devices":onDev.map(d=>d.key).join("+")||"none");
+  $("devlist").innerHTML=DEVICES.map(d=>`
+    <div class="devrow">
+      <input type="checkbox" data-dev="${d.id}" ${d.on?"checked":""} aria-label="Include ${d.name}">
+      <span class="devkey">${d.key}</span>
+      <input type="text" data-rename="${d.id}" value="${d.name.replace(/"/g,"&quot;")}" aria-label="Rename device">
+      ${d.own?'<span class="own">THIS</span>':""}
+      <span class="uuid">${d.uuid.slice(0,8)}…</span>
+    </div>`).join("");
+
+  /* --- frame geometry --- */
+  const cap=Math.min(st.w,document.querySelector(".wrap").clientWidth);
   $("frame").style.maxWidth=cap+"px";
-  const narrow = cap<640, wide = cap>=980;
-  const axis = st.axis==="auto" ? (narrow?"v":"h") : st.axis;
-  const vert = axis==="v";
-  const viewH = narrow?560:520;
+  const narrow=cap<640, wide=cap>=980;
+  const axis=st.axis==="auto"?(narrow?"v":"h"):st.axis, vert=axis==="v";
+  const viewH=narrow?520:500;
+  let pxh=st.zoom;
+  if(st.fit) pxh=(vert?viewH:(cap-(wide&&st.sel?300:0)-46))/(st.dur/60);
+  const map=buildMap(pxh,SEGS);
+  $("frameLabel").textContent=`${cap} × ${viewH} · ${vert?"vertical":"horizontal"}`;
+  $("frameScale").textContent=`${pxh.toFixed(1)} px / hour`;
 
-  let pxh = st.zoom;
-  if(st.fit){
-    const avail = vert ? viewH : (cap - (wide&&st.sel?294:0) - 46);
-    pxh = avail/24;
-  }
-  const map=buildMap(pxh);
+  /* --- verdict --- */
+  const v=$("verdict"),ten=pxh/6;
+  if(!onDev.length){v.className="verdict bad";
+    v.innerHTML="<span>⚠︎</span><span><b>No devices selected.</b> Tick at least one under <b>Range &amp; devices</b>.</span>";}
+  else if(!vert&&ten<8){v.className="verdict bad";
+    v.innerHTML=`<span>⚠︎</span><span><b>This is the failure.</b> One hour is <b>${pxh.toFixed(1)}px</b>,
+      so a ten-minute session is <b>${ten.toFixed(1)}px</b> wide — unlabelable and far below a 44px
+      touch target. Switch the axis to <b>Vertical</b>.</span>`;}
+  else if(!vert){v.className="verdict";
+    v.innerHTML=`<span>→</span><span>Horizontal works here: one hour is <b>${pxh.toFixed(1)}px</b>.
+      This is the mode upstream desktop keeps.</span>`;}
+  else{v.className="verdict";
+    v.innerHTML=`<span>→</span><span>Vertical: one hour is <b>${pxh.toFixed(1)}px</b> tall.
+      A ten-minute session is <b>${ten.toFixed(1)}px</b> tall — thin, but it has the full width for its name.</span>`;}
 
-  $("frameLabel").textContent = `${cap} × ${viewH}   ·   ${vert?"vertical":"horizontal"}`;
-  $("frameScale").textContent = `${pxh.toFixed(1)} px / hour`;
-
-  /* ---- verdict ---- */
-  const perHour=pxh, tenMin=perHour/6;
-  const v=$("verdict");
-  if(!vert && tenMin<8){
-    v.className="verdict bad";
-    v.innerHTML=`<span>⚠︎</span><span><b>This is the failure.</b> One hour is
-      <b>${perHour.toFixed(1)}px</b>, so a ten-minute session is <b>${tenMin.toFixed(1)}px</b> wide —
-      unlabelable and below a 44px touch target. Every block collapses to a hairline.
-      Switch the axis to <b>Vertical</b>.</span>`;
-  } else if(!vert){
-    v.className="verdict";
-    v.innerHTML=`<span>→</span><span>Horizontal works here because the viewport is wide enough:
-      one hour is <b>${perHour.toFixed(1)}px</b>. This is the mode upstream desktop keeps.</span>`;
-  } else {
-    v.className="verdict";
-    v.innerHTML=`<span>→</span><span>Vertical: one hour is <b>${perHour.toFixed(1)}px</b> tall and a
-      block is <b>${(cap-(wide&&st.sel?294:0)-46-(st.devices?DEVICES.length*14:0)).toFixed(0)}px</b>
-      wide. A ten-minute session is <b>${tenMin.toFixed(1)}px</b> tall — thin, but it has the full
-      width for its name.</span>`;
-  }
-
-  /* ---- summary ---- */
+  /* --- summary --- */
   $("summary").innerHTML=[
     `<div class="stat"><span class="v">${fmt(COMBINED)}</span><span class="k">combined</span></div>`,
     `<div class="stat"><span class="v">${fmt(DEVTOTAL)}</span><span class="k">device sum</span></div>`,
-    `<div class="stat"><span class="v">${DEVICES.length}</span><span class="k">devices</span></div>`,
+    `<div class="stat"><span class="v">${onDev.length}</span><span class="k">devices</span></div>`,
     `<div class="stat flag"><span class="v">${NCONT}</span><span class="k">unresolved</span></div>`
   ].join("");
 
-  /* ---- minimap ---- */
-  const mm=$("mmTrack"); mm.innerHTML="";
+  /* --- minimap --- */
+  const mm=$("mmTrack");mm.innerHTML="";
   for(const s of SEGS){
     const b=document.createElement("div");
     b.className="mm-b"+(s.contended?" c":"");
-    b.style.left=(s.start/1440*100)+"%";
-    b.style.width=Math.max(0.25,(s.end-s.start)/1440*100)+"%";
+    b.style.left=(s.start/DAY_END*100)+"%";
+    b.style.width=Math.max(.25,(s.end-s.start)/DAY_END*100)+"%";
     if(!s.contended) b.style.background=APPS[s.fg.app];
     mm.appendChild(b);
   }
-  const mv=document.createElement("div"); mv.className="mm-view"; mv.id="mmView"; mm.appendChild(mv);
-  $("mmTicks").innerHTML=[0,6,12,18,24].map(h=>
-    `<span style="left:${h/24*100}%">${String(h).padStart(2,"0")}</span>`).join("");
+  const mv=document.createElement("div");mv.className="mm-view";mv.id="mmView";mm.appendChild(mv);
+  $("mmTicks").innerHTML=[0,6,12,18,24].map(h=>`<span style="left:${h/24*100}%">${String(h).padStart(2,"0")}</span>`).join("");
 
-  /* ---- body ---- */
-  const scroll=$("tlScroll"), inner=$("tlInner"), detail=$("detail"), body=$("tlBody");
-  const showPanel = wide && !!st.sel;
-  detail.style.display = st.sel ? "block" : "none";
-  detail.className = "detail" + (showPanel ? "" : " sheet");
-  body.style.flexDirection = showPanel ? "row" : "column";
-  scroll.style.height = viewH+"px";
-  scroll.style.overflowX = vert?"hidden":"auto";
-  scroll.style.overflowY = vert?"auto":"hidden";
-
-  const HOURW = vert?38:0, HOURH = vert?0:20;
-  const gutW = st.devices ? (wide?0:DEVICES.length*14) : 0;
+  /* --- body --- */
+  const scroll=$("tlScroll"),inner=$("tlInner"),detail=$("detail"),body=$("tlBody");
+  const showPanel=wide&&!!st.sel;
+  detail.style.display=st.sel?"block":"none";
+  detail.className="detail"+(showPanel?"":" sheet");
+  body.style.flexDirection=showPanel?"row":"column";
+  scroll.style.height=viewH+"px";
+  scroll.style.overflowX=vert?"hidden":"auto";
+  scroll.style.overflowY=vert?"auto":"hidden";
   inner.innerHTML="";
-  inner.style.setProperty("--hourw",HOURW+"px");
 
-  const trackW = cap - (showPanel?294:0);
+  const trackW=cap-(showPanel?300:0);
+  const HOURW=vert?38:0;
+
+  const mkBands=(slices,fgId)=>slices.map(sl=>{
+    const d=dev(sl.dev);
+    return `<div class="band" style="background:${APPS[sl.app]};flex:${sl.id===fgId?1.7:1} 1 0">
+      <div class="row1"><span class="nm">${sl.app}</span>${sl.id===fgId?`<span class="du mono"></span>`:""}</div>
+      <span class="dvtag">${d.key}</span></div>`;
+  }).join("");
+
   if(vert){
-    inner.style.width="100%"; inner.style.height=map.total+"px";
-    const laneX = HOURW+6;
-    const devColW = wide && st.devices ? Math.min(190,(trackW-laneX-16)/(DEVICES.length+1.6)) : 0;
-    // 18px keeps the device gutter clear of the scrollbar, which otherwise sits on top of it.
-    const combW = trackW - laneX - 18 - (wide?devColW*DEVICES.length+8:gutW+8);
+    inner.style.width="100%";inner.style.height=map.total+"px";
+    const laneX=HOURW+6;
+    const nDev=st.devices?onDev.length:0;
+    const colW=nDev?(wide?Math.min(180,(trackW-laneX-30)/(nDev+1.7)):22):0;
+    const combW=trackW-laneX-18-(nDev?colW*nDev+8:0);
 
-    // hour labels + gridlines (skip inside collapsed quiet)
     for(let h=0;h<=24;h++){
-      const t=h*60, inQuiet=map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1);
-      if(inQuiet) continue;
+      const t=h*60;if(t<winStart())continue;
+      if(map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1))continue;
       const y=map.pos(t);
       const lb=document.createElement("div");
-      lb.className="hr mono"; lb.style.top=y+"px"; lb.style.width=HOURW+"px";
-      lb.style.position="absolute"; lb.style.left="0"; lb.style.textAlign="right";
-      lb.style.paddingRight="6px"; lb.textContent=String(h).padStart(2,"0");
-      inner.appendChild(lb);
-      const gl=document.createElement("div");
-      gl.className="gridline"; gl.style.left=laneX+"px"; gl.style.right="8px";
-      gl.style.top=y+"px"; gl.style.height="1px"; inner.appendChild(gl);
+      lb.className="hr mono";Object.assign(lb.style,{top:y+"px",left:"0",width:HOURW+"px",
+        textAlign:"right",paddingRight:"6px"});
+      lb.textContent=String(h%24).padStart(2,"0");inner.appendChild(lb);
+      const gl=document.createElement("div");gl.className="gridline";
+      Object.assign(gl.style,{left:laneX+"px",right:"8px",top:y+"px",height:"1px"});inner.appendChild(gl);
     }
-    // quiet dividers
     for(const s of map.spans) if(s.quiet){
-      const q=document.createElement("div"); q.className="quiet";
-      q.style.left=laneX+"px"; q.style.width=combW+"px";
-      q.style.top=s.p0+"px"; q.style.height=QUIET_PX+"px";
-      q.textContent=`${fmt(s.t1-s.t0)} quiet`;
-      inner.appendChild(q);
+      const q=document.createElement("div");q.className="quiet";
+      Object.assign(q.style,{left:laneX+"px",width:combW+"px",top:s.p0+"px",height:QUIET_PX+"px"});
+      q.textContent=`${fmt(s.t1-s.t0)} quiet`;inner.appendChild(q);
     }
-    // combined blocks
     for(const s of SEGS){
-      const y0=map.pos(s.start), y1=map.pos(s.end), h=Math.max(3,y1-y0-1);
+      const y0=map.pos(s.start),h=Math.max(3,map.pos(s.end)-y0-1);
       const el=document.createElement("div");
-      el.className="blk v"+(s.contended?" contended":"")+(h<20?" tiny":"")+(st.sel===s?" sel":"");
-      el.style.left=laneX+"px"; el.style.width=combW+"px";
-      el.style.top=y0+"px"; el.style.height=h+"px";
-      el.style.background=APPS[s.fg.app];
-      el.tabIndex=0;
-      el.innerHTML=`<div class="row1"><span class="nm">${s.fg.app}</span>
-        <span class="du mono">${fmt(s.end-s.start)}</span></div>`+
-        (h>=48&&s.contended?`<span class="sub">also on ${s.active.filter(a=>a.device.id!==s.fg.device.id)
-          .map(a=>a.device.short).join(", ")||s.fg.device.short}</span>`:"");
-      el.onclick=()=>{st.sel=(st.sel===s?null:s);render()};
+      el.className="blk"+(s.contended?" contended":"")+(h<20?" tiny":h<34?" short":"")
+        +(st.sel&&st.sel.seg===s?" sel":"");
+      Object.assign(el.style,{left:laneX+"px",width:combW+"px",top:y0+"px",height:h+"px"});
+      el.tabIndex=0;el.innerHTML=mkBands(s.active,s.fg.id);
+      const duEl=el.querySelector(".du");if(duEl)duEl.textContent=fmt(s.end-s.start);
+      el.onclick=()=>{st.sel=(st.sel&&st.sel.seg===s)?null:{seg:s};render()};
       el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}};
       inner.appendChild(el);
     }
-    // device tracks
-    if(st.devices) DEVICES.forEach((d,i)=>{
-      const x = wide ? laneX+combW+8+i*devColW : laneX+combW+8+i*14;
-      const w = wide ? devColW-6 : 10;
-      if(wide){
-        const hd=document.createElement("div");
-        hd.className="lane-head"; hd.style.position="absolute"; hd.style.left=x+"px";
-        hd.style.width=w+"px"; hd.style.top="0"; hd.style.zIndex="4";
-        hd.textContent=d.name; inner.appendChild(hd);
-      }
-      for(const [a,b,app] of RAW[d.id]){
-        const y0=map.pos(a),y1=map.pos(b);
+    if(st.devices) onDev.forEach((d,i)=>{
+      const x=laneX+combW+8+i*(wide?colW:colW+2), w=wide?colW-6:colW;
+      const hd=document.createElement("div");
+      hd.className="devcol-head"+(wide?"":" vert");
+      Object.assign(hd.style,{left:x+"px",width:w+"px",height:wide?"22px":"64px"});
+      hd.textContent=wide?d.name:d.key;hd.title=d.name;inner.appendChild(hd);
+      for(const e of EV.filter(e=>e.dev===d.id&&e.end>winStart())){
+        const a=Math.max(e.start,winStart());
+        const y0=map.pos(a),hh=Math.max(3,map.pos(e.end)-y0-1);
         const el=document.createElement("div");
-        const cont=SEGS.some(s=>s.contended&&s.start<b&&s.end>a);
-        el.className= wide ? "blk v"+(h_tiny(y1-y0)?" tiny":"") : "gutter-b"+(cont?" contended":"");
-        el.style.left=x+"px"; el.style.width=w+"px";
-        el.style.top=y0+"px"; el.style.height=Math.max(2,y1-y0-1)+"px";
-        el.style.background=APPS[app];
-        if(wide){
-          el.innerHTML=`<div class="row1"><span class="nm">${app}</span></div>`;
-          el.style.marginTop=(y0<26?26:0)+"px";
-        }
+        const cont=SEGS.some(s=>s.contended&&s.start<e.end&&s.end>a);
+        el.className="gutter-b"+(cont?" contended":"")+(st.sel&&st.sel.ev===e?" sel":"");
+        Object.assign(el.style,{left:x+"px",width:w+"px",top:Math.max(y0,wide?24:66)+"px",
+          height:hh+"px",background:APPS[e.app]});
+        el.tabIndex=0;el.title=`${e.app} · ${d.name} · ${fmt(e.end-a)}`;
+        el.onclick=()=>{st.sel=(st.sel&&st.sel.ev===e)?null:{ev:e};render()};
+        el.onkeydown=ev2=>{if(ev2.key==="Enter"||ev2.key===" "){ev2.preventDefault();el.click()}};
         inner.appendChild(el);
       }
     });
-    function h_tiny(x){return x<20}
   } else {
-    // horizontal
-    const laneY=HOURH+4, rowH=st.devices?46:70, devH=18;
-    const totalH=laneY+rowH+(st.devices?DEVICES.length*(devH+4)+6:0);
-    inner.style.width=Math.max(trackW,map.total)+"px";
+    const laneY=22,rowH=st.devices?54:74,devH=20,labW=52;
+    inner.style.width=Math.max(trackW,map.total+labW)+"px";
+    const totalH=laneY+rowH+(st.devices?onDev.length*(devH+5)+8:0);
     inner.style.height=Math.max(totalH,viewH-8)+"px";
     for(let h=0;h<=24;h++){
-      const t=h*60; if(map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1)) continue;
-      const x=map.pos(t);
-      const lb=document.createElement("div");
-      lb.className="hr mono"; lb.style.position="absolute"; lb.style.left=x+"px";
-      lb.style.top="0"; lb.style.width="auto"; lb.style.textAlign="left";
-      lb.style.transform="translateX(-50%)"; lb.textContent=String(h).padStart(2,"0");
-      inner.appendChild(lb);
-      const gl=document.createElement("div");
-      gl.className="gridline"; gl.style.left=x+"px"; gl.style.width="1px";
-      gl.style.top=laneY+"px"; gl.style.bottom="4px"; inner.appendChild(gl);
+      const t=h*60;if(t<winStart())continue;
+      if(map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1))continue;
+      const x=map.pos(t)+labW;
+      const lb=document.createElement("div");lb.className="hr mono";
+      Object.assign(lb.style,{left:x+"px",top:"2px",transform:"translateX(-50%)"});
+      lb.textContent=String(h%24).padStart(2,"0");inner.appendChild(lb);
+      const gl=document.createElement("div");gl.className="gridline";
+      Object.assign(gl.style,{left:x+"px",width:"1px",top:laneY+"px",bottom:"4px"});inner.appendChild(gl);
     }
     for(const s of map.spans) if(s.quiet){
-      const q=document.createElement("div"); q.className="quiet h";
-      q.style.left=s.p0+"px"; q.style.width=QUIET_PX+"px";
-      q.style.top=laneY+"px"; q.style.height=rowH+"px";
-      q.textContent=fmt(s.t1-s.t0); inner.appendChild(q);
+      const q=document.createElement("div");q.className="quiet h";
+      Object.assign(q.style,{left:(s.p0+labW)+"px",width:QUIET_PX+"px",top:laneY+"px",height:rowH+"px"});
+      q.textContent=fmt(s.t1-s.t0);inner.appendChild(q);
     }
     for(const s of SEGS){
-      const x0=map.pos(s.start),x1=map.pos(s.end),w=Math.max(1,x1-x0-1);
+      const x0=map.pos(s.start)+labW,w=Math.max(1,map.pos(s.end)-map.pos(s.start)-1);
       const el=document.createElement("div");
-      el.className="blk h"+(s.contended?" contended":"")+(w<54?" tiny":"")+(st.sel===s?" sel":"");
-      el.style.left=x0+"px"; el.style.width=w+"px";
-      el.style.top=laneY+"px"; el.style.height=rowH+"px";
-      el.style.background=APPS[s.fg.app]; el.tabIndex=0;
-      el.innerHTML=`<span class="nm">${s.fg.app}</span><span class="du mono">${fmt(s.end-s.start)}</span>`;
-      el.onclick=()=>{st.sel=(st.sel===s?null:s);render()};
+      el.className="blk horiz"+(s.contended?" contended":"")+(w<60?" tiny":"")+(st.sel&&st.sel.seg===s?" sel":"");
+      Object.assign(el.style,{left:x0+"px",width:w+"px",top:laneY+"px",height:rowH+"px"});
+      el.tabIndex=0;el.innerHTML=mkBands(s.active,s.fg.id);
+      const duEl=el.querySelector(".du");if(duEl)duEl.textContent=fmt(s.end-s.start);
+      el.onclick=()=>{st.sel=(st.sel&&st.sel.seg===s)?null:{seg:s};render()};
       el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}};
       inner.appendChild(el);
     }
-    if(st.devices) DEVICES.forEach((d,i)=>{
-      const y=laneY+rowH+6+i*(devH+4);
-      for(const [a,b,app] of RAW[d.id]){
-        const x0=map.pos(a),x1=map.pos(b);
+    if(st.devices) onDev.forEach((d,i)=>{
+      const y=laneY+rowH+8+i*(devH+5);
+      const hd=document.createElement("div");hd.className="devcol-head";
+      Object.assign(hd.style,{left:"0",top:y+"px",width:(labW-6)+"px",height:devH+"px",
+        borderLeft:"0",borderBottom:"0",borderRight:"2px solid var(--ink)",position:"absolute"});
+      hd.textContent=d.key;hd.title=d.name;inner.appendChild(hd);
+      for(const e of EV.filter(e=>e.dev===d.id&&e.end>winStart())){
+        const a=Math.max(e.start,winStart()),x0=map.pos(a)+labW;
         const el=document.createElement("div");
-        el.className="gutter-b"; el.style.left=x0+"px"; el.style.width=Math.max(1,x1-x0-1)+"px";
-        el.style.top=y+"px"; el.style.height=devH+"px"; el.style.background=APPS[app];
+        const cont=SEGS.some(s=>s.contended&&s.start<e.end&&s.end>a);
+        el.className="gutter-b"+(cont?" contended":"")+(st.sel&&st.sel.ev===e?" sel":"");
+        Object.assign(el.style,{left:x0+"px",width:Math.max(2,map.pos(e.end)-map.pos(a)-1)+"px",
+          top:y+"px",height:devH+"px",background:APPS[e.app]});
+        el.tabIndex=0;el.title=`${e.app} · ${d.name} · ${fmt(e.end-a)}`;
+        el.onclick=()=>{st.sel=(st.sel&&st.sel.ev===e)?null:{ev:e};render()};
+        el.onkeydown=ev2=>{if(ev2.key==="Enter"||ev2.key===" "){ev2.preventDefault();el.click()}};
         inner.appendChild(el);
       }
     });
   }
 
-  /* ---- minimap viewport indicator ---- */
   const syncView=()=>{
-    const mvEl=document.getElementById("mmView"); if(!mvEl) return;
-    const len=vert?map.total:map.total, off=vert?scroll.scrollTop:scroll.scrollLeft;
+    const mvEl=$("mmView");if(!mvEl)return;
+    const off=vert?scroll.scrollTop:scroll.scrollLeft;
     const win=vert?scroll.clientHeight:scroll.clientWidth;
-    const t0=invert(map,off), t1=invert(map,off+win);
-    mvEl.style.left=(t0/1440*100)+"%";
-    mvEl.style.width=Math.max(2,(t1-t0)/1440*100)+"%";
+    const t0=invert(map,off),t1=invert(map,off+win);
+    mvEl.style.left=(t0/DAY_END*100)+"%";
+    mvEl.style.width=Math.max(2,(t1-t0)/DAY_END*100)+"%";
   };
-  scroll.onscroll=syncView; syncView();
+  scroll.onscroll=syncView;syncView();
 
-  /* ---- detail ---- */
-  if(st.sel){
-    const s=st.sel, others=s.active.filter(a=>a!==s.fg);
+  /* --- detail --- */
+  if(st.sel&&st.sel.seg){
+    const s=st.sel.seg;
     detail.innerHTML=`
-      <h3>${s.fg.app}</h3>
+      <h3>${s.contended?s.active.map(a=>a.app).join(" + "):s.fg.app}</h3>
       <p class="when mono">${clock(s.start)} – ${clock(s.end)} · ${fmt(s.end-s.start)}</p>
       <span class="pill ${s.contended?"contended":"settled"}">${s.contended?"Unresolved overlap":"Settled"}</span>
       <dl class="dl" style="margin-top:12px">
-        <dt>Counted to</dt><dd>${s.fg.device.name}</dd>
-        <dt>Device id</dt><dd>${s.fg.device.uuid}</dd>
-        <dt>Why it won</dt><dd>longest run (${fmt(s.fg.srcEnd-s.fg.srcStart)})</dd>
+        <dt>Counted to</dt><dd>${dev(s.fg.dev).name}</dd>
+        <dt>Why it won</dt><dd>longest run · ${fmt(s.fg.end-s.fg.start)}</dd>
       </dl>
-      ${others.length?`<span class="k mono" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Also running</span>
-      <ul class="also" style="margin-top:6px">${others.map(o=>
-        `<li><span class="swatch" style="background:${APPS[o.app]}"></span>${o.app}
-         <span class="dev">${o.device.name}</span></li>`).join("")}</ul>`:""}
+      <span class="klabel">Source events — ${s.active.length} slice${s.active.length>1?"s":""}</span>
+      <ul class="slices">${s.active.map(sl=>`
+        <li class="${sl.id===s.fg.id?"fg":""}">
+          <span class="swatch" style="background:${APPS[sl.app]}"></span>
+          <span>${sl.app}</span>
+          <span class="dev">${dev(sl.dev).name}<br>${fmt(sl.end-sl.start)}</span>
+          <button data-edit="${sl.id}">Edit</button>
+        </li>`).join("")}</ul>
+      <div class="note-inline">The combined track is <b>derived</b> — it is computed, never stored,
+        so there is no combined event to edit. Edit a source event above and this recomputes.</div>
       ${s.contended?`<div class="resolve"><b>Resolve this overlap</b>
         Both devices claim this time. Pick what actually counted — once, or as a standing rule.
         <em>(roadmap 4.1)</em></div>`:""}`;
+  } else if(st.sel&&st.sel.ev){
+    const e=st.sel.ev,d=dev(e.dev);
+    detail.innerHTML=`
+      <h3>${e.app}</h3>
+      <p class="when mono">${clock(e.start)} – ${clock(e.end)} · ${fmt(e.end-e.start)}</p>
+      <span class="pill settled">Raw device event</span>
+      <dl class="dl" style="margin-top:12px">
+        <dt>Device</dt><dd>${d.name}</dd>
+        <dt>Device id</dt><dd>${d.uuid}</dd>
+        <dt>Bucket</dt><dd>${d.bucket}</dd>
+        <dt>Event id</dt><dd>${e.id}</dd>
+      </dl>
+      <div class="btnrow"><button class="btn primary" data-edit="${e.id}">Edit event</button></div>
+      <div class="note-inline">This is stored truth (<b>R11</b>) — per-device tracks are never
+        modified by the pipeline, so this is the one you can edit.</div>`;
   } else detail.innerHTML="";
 
-  /* ---- legend ---- */
-  $("legend").innerHTML =
+  /* --- legend --- */
+  $("legend").innerHTML=
     Object.keys(APPS).map(a=>`<span class="it"><span class="swatch" style="background:${APPS[a]}"></span>${a}</span>`).join("")
-    + `<span class="it"><span class="stripes"></span>Unresolved overlap · ${fmt(CONTSECS)}</span>`;
+    +`<span class="it"><span class="stripes"></span>Unresolved · ${fmt(CONTSECS)}</span>`
+    +onDev.map(d=>`<span class="it"><span class="devkey">${d.key}</span>${d.name}</span>`).join("");
+
+  renderModal();
 }
 
-function invert(map,px){
-  for(const s of map.spans)
-    if(px<=s.p1) return s.t0+(s.p1>s.p0?(px-s.p0)/(s.p1-s.p0)*(s.t1-s.t0):0);
-  return 1440;
+/* ================= edit modal ================= */
+function renderModal(){
+  const old=document.querySelector(".modal-bg");if(old)old.remove();
+  if(st.editing==null)return;
+  const e=EV.find(x=>x.id===st.editing);if(!e)return;
+  const d=dev(e.dev);
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Edit event">
+      <div class="modal-h"><h4>Edit event</h4><button data-close aria-label="Close">×</button></div>
+      <div class="modal-b">
+        <table class="etable">
+          <tr><th>Bucket</th><td><input value="${d.bucket}" disabled></td></tr>
+          <tr><th>ID</th><td><input value="${e.id}" disabled></td></tr>
+          <tr><th>Start</th><td><input type="datetime-local" value="${iso(e.start)}" data-f="start"></td></tr>
+          <tr><th>End</th><td><input type="datetime-local" value="${iso(e.end)}" data-f="end"></td></tr>
+          <tr><th>Duration</th><td><input value="${fmt(e.end-e.start)}" disabled></td></tr>
+        </table>
+        <hr>
+        <table class="etable">
+          <tr><th style="width:38%">Key</th><th>Value</th></tr>
+          <tr><td><input value="app" disabled></td><td><input value="${e.app}" data-f="app"></td></tr>
+          <tr><td><input value="$aw.origin.device" disabled></td><td><input value="${d.uuid}" disabled></td></tr>
+        </table>
+        <hr>
+        <div class="modal-f">
+          <button class="btn danger" data-del>Delete</button>
+          <button class="btn" data-close>Cancel</button>
+          <button class="btn primary" data-save>Save</button>
+        </div>
+      </div>
+    </div>`;
+  $("frame").appendChild(bg);
+  const q=s=>bg.querySelector(s);
+  bg.addEventListener("click",ev=>{if(ev.target===bg)close()});
+  bg.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);
+  q("[data-del]").onclick=()=>{EV=EV.filter(x=>x.id!==e.id);st.sel=null;close()};
+  q("[data-save]").onclick=()=>{
+    const app=q('[data-f="app"]').value.trim();
+    if(app&&APPS[app]) e.app=app;
+    const mins=v=>{const m=/T(\d\d):(\d\d)/.exec(v);return m?(+m[1])*60+(+m[2]):null};
+    const a=mins(q('[data-f="start"]').value),b=mins(q('[data-f="end"]').value);
+    if(a!=null&&b!=null&&b>a){e.start=a;e.end=b}
+    st.sel=null;close();
+  };
+  function close(){st.editing=null;render()}
+  const first=q('[data-f="start"]');if(first)first.focus();
 }
 
-/* ---------------- wiring ---------------- */
+/* ================= wiring ================= */
 function segWire(id,key,cast){
   $(id).addEventListener("click",e=>{
-    const b=e.target.closest("button"); if(!b) return;
-    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
-    st[key]=cast(b.dataset[Object.keys(b.dataset)[0]]); render();
+    const b=e.target.closest("button");if(!b)return;
+    st[key]=cast(Object.values(b.dataset)[0]);render();
   });
 }
-segWire("segWidth","w",Number);
-segWire("segAxis","axis",String);
-segWire("segZoom","zoom",Number);
-$("cCollapse").onchange=e=>{st.collapse=e.target.checked;render()};
-$("cDevices").onchange=e=>{st.devices=e.target.checked;render()};
-$("cFit").onchange=e=>{st.fit=e.target.checked;render()};
+segWire("segWidth","w",Number);segWire("segAxis","axis",String);segWire("segZoom","zoom",Number);
+$("segTheme").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  st.theme=b.dataset.t;LS("awtheme",st.theme);render();
+});
+$("segMode").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  st.mode=b.dataset.m;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  render();
+});
+$("qdur").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;st.dur=+b.dataset.d;st.sel=null;render();
+});
+$("devlist").addEventListener("change",e=>{
+  const cb=e.target.closest("[data-dev]");if(!cb)return;
+  dev(cb.dataset.dev).on=cb.checked;st.sel=null;render();
+});
+$("devlist").addEventListener("input",e=>{
+  const t=e.target.closest("[data-rename]");if(!t)return;
+  const d=dev(t.dataset.rename);d.name=t.value||d.def;LS("awname_"+d.id,d.name);
+  const keep=document.activeElement===t,pos=t.selectionStart;
+  render();
+  if(keep){const n=document.querySelector(`[data-rename="${d.id}"]`);
+    if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}}
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-edit]");if(!b)return;
+  st.editing=+b.dataset.edit;renderModal();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&st.editing!=null){st.editing=null;render()}});
+["cCollapse","cDevices","cFit"].forEach((id,i)=>{
+  const k=["collapse","devices","fit"][i];
+  $(id).onchange=e=>{st[k]=e.target.checked;render()};
+});
 $("minimap").onclick=e=>{
   const r=$("mmTrack").getBoundingClientRect();
-  const t=Math.max(0,Math.min(1440,(e.clientX-r.left)/r.width*1440));
-  const sc=$("tlScroll"), map=buildMap(st.fit?sc.clientHeight/24:st.zoom);
-  const p=map.pos(t);
-  if(sc.scrollHeight>sc.clientHeight) sc.scrollTo({top:Math.max(0,p-80),behavior:"smooth"});
+  const t=Math.max(0,Math.min(DAY_END,(e.clientX-r.left)/r.width*DAY_END));
+  const sc=$("tlScroll"),map=buildMap(st.zoom,buildSegments()),p=map.pos(t);
+  if(sc.scrollHeight>sc.clientHeight+2) sc.scrollTo({top:Math.max(0,p-80),behavior:"smooth"});
   else sc.scrollTo({left:Math.max(0,p-80),behavior:"smooth"});
 };
 window.addEventListener("resize",render);
-st.sel=SEGS.find(s=>s.contended)||SEGS[0];
+$("tools").open=false;
+const first=buildSegments().find(s=>s.contended);
+st.sel=first?{seg:first}:null;
 render();
 })();
 </script>

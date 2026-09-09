@@ -1503,6 +1503,33 @@ Four supporting decisions, all demonstrated in that study:
    were busy for this much of the same hour"), so dropping proportional time leaves **R8** with
    nothing to say. Proportional time is non-negotiable on this screen.
 
+##### Acceptance list, from the owner's review of the layout study *(2026-09-09)*
+
+The owner reviewed v1 (*"that look good"*) and named eight things. All eight are built into the
+checked-in study and are **binding on 3.5b**:
+
+| # | Requirement | Why it matters |
+|---|---|---|
+| 1 | **Every block tappable, not just the combined track.** Device events open a detail too. | v1 made the raw truth (**R11**) look like decoration. |
+| 2 | **An `Edit` button carrying the original app's editor** — bucket, id, start, end, and the editable `data` keys, with Delete / Cancel / Save. | The owner already edits events in the original app and will not accept losing that. |
+| 3 | **A contended block shows *both* apps in *both* colours**, split into a band per device — not a winner's colour with the other named in text. | v1 read as though one device was idle. The widest band is still the **R17** pick. |
+| 4 | **Device picker** — choose which devices are counted. | |
+| 5 | **Device stripes tappable**, with an expanded hit area at phone width. | |
+| 6 | **Stripes identify their device** — sticky rotated column header carrying the short name, plus a legend entry. | v1's anonymous 10&nbsp;pt stripe was its weakest part: you could see *that* a device was awake, not which. |
+| 7 | **Devices are renameable.** Today they show raw uuids. | Persisted per-device; in the real view this belongs in the settings store, not localStorage. |
+| 8 | **Theme, Mode and Range must match the original.** Theme is `light \| dark \| auto` (`stores/settings.ts`, default `auto`, mirrored to localStorage); Mode is `Last duration \| Date range`; Range is the quick-duration row. | Not new features — the surrounding app already has them, and a screen that omits them reads as broken. |
+
+⚠️ **Item 2 has a wrinkle worth knowing before it looks like a bug.** The combined track is
+**derived** — computed from device events and stored nowhere — so there is **no combined event to
+open in the editor**. The combined detail therefore lists its *source slices* and gives each its own
+Edit button; editing the underlying device event recomputes the combined view. The study says this
+in the UI rather than leaving it to be discovered.
+
+⚠️ **Device stripes still do not get equal columns at phone width.** **R11** wants the per-device
+tracks *present*, not co-equal; three equal columns on a 412&nbsp;pt phone ruins all three. They are
+22&nbsp;pt labelled columns at phone width and widen into full labelled columns on tablet and
+desktop. If the owner disagrees after using it, this is the knob to turn.
+
 ##### Upstream integration — one component, orientation as a prop *(owner: "they would hav eot maintain two pages? therre is no escape from that right?")*
 
 **There is an escape, but only by not building a page.** Upstream would rightly refuse a second
