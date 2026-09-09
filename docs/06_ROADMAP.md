@@ -1460,7 +1460,7 @@ map lives in the Syncthing folder behind SAF, which only Kotlin can open.
 ⚠️ **The JNI entry point and the 3.4 native screen deliberately stay for now.** Deleting a working
 screen before its replacement exists would leave the owner with none. They come out in 3.5c.
 
-#### 3.5b — The Vue view ⏳ BUILT (2026-09-09) — verified in a browser, ⚠️ NOT on device, ⚠️ blocked on a fork
+#### 3.5b — The Vue view ⏳ BUILT (2026-09-09) — verified in a browser, ⚠️ NOT on device
 Build `CombinedTimeline.vue` in aw-webui, reusing the Activity view's components so it inherits the
 look. Must fix, at minimum, every defect listed under 3.4 — device **names** not raw uuids, a tap
 detail that says *which device* each side was on, a legend — and must read well at phone, tablet and
@@ -1516,24 +1516,20 @@ the absolutely-centred navbar brand into the left nav at ~1180px, so the brand m
 - **Device names show raw uuids by default.** The view does not pass the optional `hostnames` map,
   so an untagged peer has no friendly name until renamed. Rename works; the default is poor.
 
-##### 🚧 Blocked: there is no `aw-webui` fork to push to
+##### ✅ Unblocked: the `aw-webui` fork exists
 
-`aw-server-rust/aw-webui` is a submodule pointing at **`ActivityWatch/aw-webui`**, checked out
-detached at `a2ca625`. **`Judemasic/aw-webui` does not exist.** The work is committed locally on a
-new `beta` branch but **cannot be pushed**, and CI clones with `submodules: recursive`, so **no APK
-can contain this screen until the fork exists.**
+`Judemasic/aw-webui` was created 2026-09-09 and `beta` (`cb3b0c3`) pushed to it. The submodule
+chain now resolves entirely against the fork:
 
-Unblocking is one command, but it **creates a public repository** under the owner's GitHub account,
-so it is deliberately left to them:
+| Repo | `beta` commit | Records |
+|---|---|---|
+| `Judemasic/aw-webui` | `cb3b0c3` | the Combined view + `GET /api/0/combined/timeline` webui side |
+| `Judemasic/aw-server-rust` | `57a29f6` | `.gitmodules` → `Judemasic/aw-webui`, submodule pinned to `cb3b0c3` |
+| `Judemasic/aw-android` | (this commit) | `aw-server-rust` submodule bumped to `57a29f6` |
 
-```sh
-gh repo fork ActivityWatch/aw-webui --clone=false --remote=false
-cd "aw-server-rust/aw-webui" && git remote add fork https://github.com/Judemasic/aw-webui.git
-git push -u fork beta
-# then point the submodule at the fork and bump the pointers
-cd "aw-server-rust" && git config -f .gitmodules submodule.aw-webui.url https://github.com/Judemasic/aw-webui.git
-git add .gitmodules aw-webui && git commit -m "chore: point aw-webui at the fork" && git push origin beta
-```
+In the `aw-webui` checkout, `origin` is the fork and `upstream` is `ActivityWatch/aw-webui`, so
+`master` still tracks upstream for merges. CI clones `submodules: recursive` and reads the fork URL
+from each `.gitmodules`, so a CI build can now contain this screen.
 
 ⚠️ **Local toolchain note:** `npm install` fails on **npm 12** (`EALLOWSCRIPTS` preparing the
 `vue-d3-sunburst` git dependency). `npx npm@10 install` works, and CI is unaffected — the workflow
@@ -1978,13 +1974,14 @@ per device, with unresolved contention striped (**R8**).
   legibly, which was the case flagged as unverified in the layout study. Three device-class bugs
   were caught by actually looking: white-on-dark gutter headers, duration text leaking into 22px
   stripes, and a navbar brand collision my new nav entry caused at 1180px.
-- ⚠️ **Blocked on a fork.** `aw-webui` is a submodule of upstream and `Judemasic/aw-webui` does not
-  exist, so the commit cannot be pushed and **CI cannot build an APK containing this screen**.
-  Creating the fork makes a public repo on the owner's account, so it is left to them — the exact
-  commands are in [3.5b](#35b--the-vue-view).
+- ✅ **Fork created (2026-09-09).** `Judemasic/aw-webui` now exists; `beta` (`cb3b0c3`) is pushed.
+  `Judemasic/aw-server-rust@beta` (`57a29f6`) repoints `.gitmodules` at the fork and pins `cb3b0c3`;
+  `aw-android@beta` bumps its `aw-server-rust` submodule to match. CI reads the fork URL from each
+  `.gitmodules`, so a build can now contain this screen. In the webui checkout `origin` is the fork
+  and `upstream` is `ActivityWatch/aw-webui`.
 - ⚠️ **True phone width (412px) is still untested**: headless Edge will not go below a 510px
   viewport. The vertical layout is exercised at 510; the narrowest case waits for hardware.
-- Next: **the fork, then a CI build and a device test.** Then 3.5c retires the native screen, and
+- Next: **a CI build and a device test.** Then 3.5c retires the native screen, and
   only then **4.1 — Resolution sheet**, which must also be built in aw-webui since it opens from a
   shaded block.
 
