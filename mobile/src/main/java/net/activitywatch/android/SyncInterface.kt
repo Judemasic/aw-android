@@ -424,6 +424,44 @@ class SyncInterface(context: Context) {
     }
 
     /**
+     * Apply shared settings that are already sitting in the sync folder, without running a sync.
+     *
+     * The full cycle in [syncBothMultiDeviceAsync] only reaches its settings step every 15 minutes,
+     * so a rename made on another device sat unapplied until the next cycle even though Syncthing
+     * had already delivered the file — verified on device 2026-09-09, where the tablet's own sync
+     * happened to run four seconds *before* the file landed and then waited a quarter of an hour.
+     * This is the same step on its own: no native call, no database transfer, just a few small text
+     * files read through SAF and any changed values written to the datastore.
+     *
+     * Cheap enough to call on every app resume and on every folder change, which is what
+     * [SyncFolderWatcher] and `MainActivity.onResume` do.
+     *
+     * Skipped while a full sync is running: that sync ends with the same step, so doing it twice
+     * would at best duplicate work and at worst have the two racing to write the same keys.
+     */
+    fun refreshSharedSettingsAsync(callback: ((Boolean) -> Unit)? = null) {
+        if (syncInFlight.get()) {
+            Log.i(TAG, "Settings refresh skipped: a full sync is already running")
+            callback?.invoke(false)
+            return
+        }
+        val executor = Executors.newSingleThreadExecutor()
+        executor.execute {
+            try {
+                val deviceId = resolveDeviceId() ?: UNKNOWN_DEVICE_ID
+                val problem = syncSharedSettings(deviceId)
+                if (problem != null) Log.w(TAG, "Settings refresh: $problem")
+                callback?.invoke(problem == null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Settings refresh failed", e)
+                callback?.invoke(false)
+            } finally {
+                executor.shutdown()
+            }
+        }
+    }
+
+    /**
      * Publish this device's changed shared settings and accept every other device's
      * (`05_DATA_MODEL.md` §5, **R25/R29**).
      *

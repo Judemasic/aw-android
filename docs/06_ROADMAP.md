@@ -882,7 +882,7 @@ fails rather than passing by luck.
 files, so the app behaves exactly as it did before. 2.3 is this store's first on-device exercise.
 Compaction (§5) is still not built.
 
-### 2.3 — Settings sync ✅ DONE IN CODE 2026-09-09 — ⬜ UNVERIFIED ON DEVICE
+### 2.3 — Settings sync ✅ VERIFIED ON DEVICE 2026-09-09
 Route `category.*` / `label.*` through the shared store; keep device-local keys in `AWPreferences`.
 **Check:** rename YouTube to "fun" on device A; device B shows "fun" after a sync. *(R25, R28)*
 
@@ -923,9 +923,56 @@ feed each plan's result back in as the next cycle's state and assert the second 
 because a settings sync that republishes every cycle would look fine from outside while growing the
 log forever.
 
-**Unverified on device**, and it needs a CI build first: the JNI additions are in the file the
-local checks cannot type-check (`THE ANDROID GAP` in `scripts/check-local.sh`). Nothing in the
-routing has run against a real datastore or a real SAF folder.
+**Verified on device 2026-09-09**, phone `SM-S938B` → tablet `SM-X520`, CI build `22a9d09`.
+The owner renamed `Media > Video` to `Media > Fun` on the phone and saved. Both halves passed:
+
+- **It propagates.** The phone logged `Published 8 changed setting(s): active_set_ids,
+  always_active_pattern, category_sets, classes, durationDefault, privacy_filters, startOfDay,
+  startOfWeek` at `12:00:40`. After Syncthing delivered the file, the tablet logged
+  `Applied 'classes' from another device` (and the other seven) and its datastore then held
+  `['Media', 'Fun']`. The tablet's settings store had been completely empty before this — it is
+  the fresh-device adoption path, not just an overwrite.
+- **It goes quiet, which is the half that could have failed silently.** The next sync on the
+  tablet logged nothing at all: no `Applied`, no `Published`. The phone's `settings.jsonl` still
+  held exactly 8 lines, and the tablet had still not created a `settings.jsonl` of its own — so it
+  did not echo back what it accepted. `AWPreferences.appliedSharedSettings` held all 8 keys, which
+  is what makes that true.
+
+**⚠️ Found during the test: correct data on disk can sit unapplied for 15 minutes.** The tablet's
+own sync cycle ran at `12:00:44`, four seconds *after* the phone published — but before Syncthing
+had delivered the file. The next cycle was not due for a quarter of an hour, so the rename was
+invisible on the tablet while the correct value sat in its sync folder the whole time. Nothing was
+wrong with 2.3's routing; the trigger was simply too rare. Fixed immediately after, see below.
+
+**A note for the next test, and a correction to an assumption made during this one.** Syncthing
+preserves the *source's* modification time on the files it delivers, so `stat` on the receiving
+device says when the sender wrote the file, not when it arrived. It cannot be used to establish
+propagation timing, and briefly was.
+
+### 2.3a — Apply settings when they arrive, not on the next cycle ⬜ UNVERIFIED ON DEVICE
+Direct follow-up to the latency found verifying 2.3, at the owner's request ("it needs a sync after
+the file's already on the tablet — trigger it automatically, no closing and reopening").
+
+`SyncInterface.refreshSharedSettingsAsync` is 2.3's settings step on its own: no native call, no
+database transfer, just the small text files read through SAF and any changed values written to the
+datastore. It is skipped while a full sync is running, since that cycle ends with the same step.
+Two things call it:
+
+1. **`SyncFolderWatcher`** — a `ContentObserver` on the sync folder's document tree, so a change
+   is applied within seconds of Syncthing writing it. Notifications arrive as a burst per delivery,
+   so they are coalesced behind a 4-second quiet period rather than acted on individually.
+2. **`MainActivity.onResume`** — the same refresh every time the app is opened or resumed.
+
+**The two are deliberately redundant.** Android has never promised that `ExternalStorageProvider`
+notifies on *another* app's writes, and Syncthing is another app; whether the observer fires may be
+OEM-specific. The resume path does not assume it did. If the observer works, a rename lands while
+the owner watches; if it does not, opening the app is still enough — which is the case the owner
+actually complained about.
+
+**Check:** `scripts/check-local.sh kotlin` and the full unit suite pass. **Not verified on device
+and not unit-tested** — both triggers are Android lifecycle and content-provider plumbing that a
+JVM test cannot reach, so this is exactly the kind of change only a device test can confirm. In
+particular *whether the ContentObserver fires at all on this hardware is unknown*.
 
 ---
 
@@ -1157,6 +1204,31 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (evening) — 2.3 verified on two devices, and the trigger was too rare
+The rename went from phone to tablet: `Media > Video` → `Media > Fun`, saved on the phone, applied
+on the tablet, confirmed in the tablet's own datastore. The tablet's settings store had been
+completely empty beforehand, so this exercised the fresh-device path — a device adopting an
+established one's categories, not merely overwriting its own.
+
+**The half worth having tested is the quiet one.** A settings sync that republishes what it accepts
+looks identical to a working one from the outside, and only shows itself as a log file that grows
+forever and two devices trading one edit back and forth. The tablet's next sync logged nothing at
+all, the phone's `settings.jsonl` still held its original 8 lines, and the tablet never created a
+`settings.jsonl` of its own. That is the `appliedSharedSettings` snapshot doing exactly the job it
+was added for.
+
+**What the test caught that no unit test could.** The tablet's sync cycle ran four seconds *after*
+the phone published — and still saw nothing, because Syncthing had not delivered the file yet. The
+next cycle was fifteen minutes away, so for a quarter of an hour the tablet showed the old name
+while the new one sat in its own sync folder. Nothing in 2.3's routing was wrong; it simply was not
+asked often enough. 2.3a adds a folder watcher and a refresh on app resume, which is the owner's
+requirement in their words: no manual sync, no closing and reopening the app.
+
+**A measurement trap, recorded because it wasted a diagnosis.** Syncthing preserves the source's
+modification time on delivered files, so `stat` on the receiving device reports when the *sender*
+wrote it. It says nothing about arrival, and it was briefly read as though it did — which made a
+real race look impossible. Arrival time has to come from the receiver's own logs.
 
 ### 2026-09-09 (later still) — 2.3: settings sync, and the key space the doc had wrong
 The shared store from 2.2 has its first user. Step 7 of every sync cycle publishes the shared
