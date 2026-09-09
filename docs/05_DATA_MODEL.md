@@ -31,13 +31,30 @@ Two structural consequences:
   devices/
     <device_uuid>/
       meta.json                    ← replaced wholesale by its owner only
-      events.db                    ← SQLite snapshot, owner only
       decisions.jsonl              ← append-only
       settings.jsonl               ← append-only
+  <hostname>/
+    <device_uuid>/
+      test.db                      ← SQLite snapshot, owner only — written by aw-sync, see below
 ```
 
 `<device_uuid>` is the persisted `UUID.randomUUID()` from
 [`03_SYNC.md` §2.3](03_SYNC.md) — unique by construction (**R22**).
+
+> **⚠️ Corrected 2026-09-09 (roadmap 2.1): the database is not inside `devices/`.** This section
+> used to draw `events.db` next to `meta.json`, which was never what shipped. aw-sync's
+> `setup_local_remote` (`aw-sync/src/sync.rs`) chooses `<hostname>/<device_id>/test.db`, and
+> `find_remotes` (`aw-sync/src/util.rs`) walks that same shape on the way back in — the layout
+> Phase 1 verified on two devices. Moving it is a Rust change that would invalidate every one of
+> those checks and buy nothing, so `devices/` was added **beside** the per-hostname directories
+> rather than replacing them.
+>
+> Two consequences to keep in mind:
+> - The device appears twice at the root: once as its hostname, once as its uuid under `devices/`.
+>   `hostname` is a display name that can change; the uuid is the identity (**R22**), and
+>   `devices/<uuid>/meta.json` is what ties one to the other.
+> - `devices/` sits at the same level as the hostname directories, so the SAF import must not walk
+>   into it as though it were one (`isSharedStateDir` in `SharedFolder.kt`).
 
 ---
 
@@ -167,6 +184,14 @@ Stays in `AWPreferences`, never in the shared folder:
 > writing one directory. **Guard:** on first run after a restore, if `meta.json` for our UUID exists
 > in the shared folder and reports a different `platform`/`app_version` lineage than ours, mint a new
 > UUID.
+>
+> ⚠️ **Half-built as of 2.1 (2026-09-09): it detects, it does not mint.** `looksLikeForeignLineage`
+> (`SharedFolder.kt`) fires on a differing `platform` under our uuid and logs at error level before
+> `meta.json` is overwritten. It cannot do the second half: the uuid is minted and persisted by the
+> **embedded server**, not by `AWPreferences` as this section assumes, so re-minting needs a call
+> the Rust side does not have yet. `app_version` is also not usable as a signal on its own — it
+> changes on every ordinary app update, so it would fire on a single device that merely updated
+> between two syncs.
 
 ---
 
@@ -176,5 +201,11 @@ Stays in `AWPreferences`, never in the shared folder:
 
 - A device reading a **higher** version must refuse to merge and warn, rather than silently
   misreading. Silent misreads across devices are unrecoverable; a refusal is not.
+- An **unparseable or empty** `VERSION` refuses the same way (2.1). Junk in that file is likelier
+  to have been written by something newer than to be an accident, and guessing is the one outcome
+  this section rules out.
+- An **absent** `VERSION` means we are the first device here: write our own version and continue.
+- A **lower** version is fine to read — this build knows every earlier layout — and is left
+  untouched until we actually add something to the layout.
 - Unknown JSONL line types are **ignored, not dropped** — never rewritten away by compaction, so an
   older device cannot destroy a newer device's data it does not understand.

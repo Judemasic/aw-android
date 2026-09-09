@@ -1,7 +1,10 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** ✅ **Phase 1 is done and the `aw-webui` bump is verified on both devices.
-> Begin Phase 2 — [2.1](#21--shared-folder-layout--version).**
+> **👉 START HERE:** ✅ **Phase 1 is done, and [2.1](#21--shared-folder-layout--version)
+> landed in code on 2026-09-09 — `VERSION`, `devices/<uuid>/meta.json`, and the
+> refuse-a-newer-folder rule. Next: [2.2](#22--append-only-jsonl-store) — and carry 2.1's
+> three on-device checks with you next time a device is in hand, because none of 2.1 has
+> run on hardware.**
 >
 > **The 4.2% ceiling is gone, measured not assumed (2026-09-04, step
 > [1.11](#111--bump-aw-webui-past-the-960-fix)).** `aw-webui` moved `3cbe349 → a2ca625`, carried
@@ -23,7 +26,7 @@
 > | Repo | Branch | At | Note |
 > |---|---|---|---|
 > | `Judemasic/aw-server-rust` | `beta` | `b462665` | upstream `master` merged in — category-rule priority ([#663]) and query changes. `cargo check` + 76 tests pass locally |
-> | `Judemasic/aw-android` | `beta` | `0820e69` | docs only: 1.9 closed, D25–D27 added |
+> | `Judemasic/aw-android` | `beta` | see the 2026-09-09 log | 2.1 landed (`SharedFolder.kt` + docs); the server pin is untouched |
 >
 > ⚠️ **`aw-android` still pins `aw-server-rust` at `9e01fab`, deliberately — one commit behind that
 > merge.** The merge brought in **zero** Android-relevant code (four files, all `aw-query` /
@@ -792,8 +795,39 @@ above.
 
 ## Phase 2 — Shared state
 
-### 2.1 — Shared folder layout + `VERSION` ⬜
+### 2.1 — Shared folder layout + `VERSION` ✅ DONE 2026-09-09 (code; ⚠️ not yet on device)
 Create `devices/<uuid>/`, write `meta.json`, add version read/refuse. *(R20)*
+
+**Result.** `SharedFolder.kt` is new and owns all three. Every sync cycle now:
+
+1. reads the root `VERSION` first, **writing `1` if the folder has none**, and **ends the cycle
+   before the import** if it cannot be understood — the refusal [`05`](05_DATA_MODEL.md) §8 asks
+   for, reported to the user as
+   `sync folder refused: its VERSION was written by a newer version of ActivityWatch`;
+2. rewrites `devices/<our uuid>/meta.json` wholesale after the export (**R20** — we are its only
+   writer), carrying `display_name` (the hostname, so peers label us the way we label ourselves),
+   `role` (`phone`/`tablet` by `smallestScreenWidthDp`), `platform`, `app_version`, `last_seen`;
+3. skips `devices/` when walking the root for peer databases — without that it is treated as a
+   hostname and every peer's `meta.json` is copied into app-private storage.
+
+**⚠️ `events.db` did *not* move into `devices/<uuid>/`, deliberately.** [`05`](05_DATA_MODEL.md) §2
+drew it there; aw-sync's `setup_local_remote` actually writes `<hostname>/<device_id>/test.db` and
+`find_remotes` reads that same shape back. That is the layout Phase 1 verified on two devices, so
+`devices/` was added **beside** the hostname directories instead, and §2 was corrected to match
+what ships rather than the other way round.
+
+**⚠️ The restore guard is half-built.** §7's debt (flagged by 1.1) is *detected*, not fixed:
+`looksLikeForeignLineage` logs at error level when a `meta.json` under our uuid reports another
+`platform`, but it cannot mint a new uuid — the uuid comes from the embedded server, not from
+`AWPreferences` as §7 assumed, so re-minting needs a Rust call that does not exist. `app_version`
+is deliberately not part of the test: it changes on every ordinary app update.
+
+**Check:** `scripts/check-local.sh kotlin` and `:mobile:testDebugUnitTest` pass; 11 new tests in
+`SharedFolderTest.kt` cover the version verdicts (absent / older / ours / newer / junk), the
+`meta.json` round-trip and field names, unknown-field tolerance, and the lineage test's false
+positives. **Not run on a device.** On the next device pass confirm: `VERSION` at the shared-folder
+root, `devices/<uuid>/meta.json` for *both* devices, and `SAF import:` still reporting `peers=1`
+(not 2 — which is what `devices/` walked as a hostname would look like).
 
 ### 2.2 — Append-only JSONL store ⬜
 Read/write/merge for `decisions.jsonl` and `settings.jsonl`, including tombstones and the
@@ -1035,6 +1069,37 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 — 2.1: the shared folder gained a version, and each device a name
+Phase 2 has code. `SharedFolder.kt` writes the root `VERSION`, publishes
+`devices/<uuid>/meta.json` at the end of every cycle, and refuses the whole cycle — before the
+import, not after — when `VERSION` is newer than this build or unreadable.
+
+**The spec was wrong about where the database lives, and the spec lost.** `05` §2 drew
+`events.db` inside `devices/<uuid>/`. Nothing has ever written it there: aw-sync's
+`setup_local_remote` picks `<hostname>/<device_id>/test.db` and `find_remotes` reads it back from
+the same place — the layout 1.2–1.5 verified on hardware. Moving it is a Rust change that would
+cost every one of those verifications, so `devices/` went in beside the hostname directories and
+§2 was corrected. The device now appears twice at the root — once by hostname, once by uuid — and
+`meta.json` is what ties the two together.
+
+**The consequence that would have bitten silently:** `devices/` sits at exactly the level the SAF
+import walks looking for hostnames, so without `isSharedStateDir` every peer's `meta.json` would
+be copied into app-private storage as though it were a peer's database directory, and `peers=`
+would count one too many. Worth checking on device precisely because nothing would break — it
+would just quietly do the wrong thing.
+
+**A malformed `VERSION` refuses, the same as a newer one.** §8 only asked for the newer case, but
+junk in that file is likelier to be a newer writer than an accident, and the point of the section
+is that guessing is unrecoverable where refusing is not. §8 now says so.
+
+**`parseDeviceMeta` deliberately has no `android.util.Log` call.** The first version logged the
+unparseable case, and every JVM unit test touching it threw `RuntimeException` — this project has
+no Robolectric, so `android.util.Log` is not mocked. The parse is pure now and the caller says what
+a null means, which is better separation anyway.
+
+**Owed on the next device pass:** `VERSION` at the root, `devices/<uuid>/meta.json` for both
+devices, `SAF import: peers=1`. None of 2.1 has run on hardware.
 
 ### 2026-09-08 — 1.9's failure path finally ran, and it was adb-drivable after all
 The last hole in Phase 1 is closed. On the tablet (`SM-X520`, `jude_s_tab_s10_fe`), a sync against

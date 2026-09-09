@@ -1,6 +1,7 @@
 package net.activitywatch.android
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -8,6 +9,7 @@ import android.system.Os
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONObject
+import org.threeten.bp.Instant
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -25,6 +27,9 @@ private const val SYNC_CONFLICT_MARKER = ".sync-conflict-"
 /** Suffix of a peer file being copied in. It is not `.db`, so the Rust side's extension filter
  *  ignores it if a process death ever leaves one behind. */
 private const val IMPORT_TMP_SUFFIX = ".aw-import-tmp"
+
+/** Stand-in used where a device id is required before the server has minted one. */
+private const val UNKNOWN_DEVICE_ID = "unknown"
 
 class SyncInterface(context: Context) {
 
@@ -222,7 +227,7 @@ class SyncInterface(context: Context) {
     // Async wrapper for Push with per-device staging (Phase 1)
     fun syncPushWithDeviceIdAsync(callback: (Boolean, String) -> Unit) {
         val hostname = getDeviceName()
-        val deviceId = resolveDeviceId() ?: "unknown"
+        val deviceId = resolveDeviceId() ?: UNKNOWN_DEVICE_ID
         performSyncAsync("Push (device-specific)", callback) {
             nativeOutcome(syncPushWithDeviceId(5600, hostname, deviceId))
         }
@@ -252,7 +257,7 @@ class SyncInterface(context: Context) {
         }
 
         val hostname = getDeviceName()
-        val deviceId = resolveDeviceId() ?: "unknown"
+        val deviceId = resolveDeviceId() ?: UNKNOWN_DEVICE_ID
 
         performSyncAsync(
             "Multi-Device Sync",
@@ -267,6 +272,12 @@ class SyncInterface(context: Context) {
             // Native failures are different: they end the cycle, because nothing after them can
             // succeed.
             val problems = mutableListOf<String>()
+
+            // Step 0: the shared folder's schema version gates everything that touches it
+            // (05_DATA_MODEL.md §8). A folder written by a newer build must not be merged --
+            // misreading it silently is unrecoverable, refusing is not -- so this ends the cycle
+            // before the import rather than joining `problems`.
+            checkSharedSchema()?.let { return@performSyncAsync it }
 
             // Step 2 of the cycle in 03_SYNC.md §3.2: bring every *other* device's database into
             // app-private storage before the pull. The engine only ever scans AW_SYNC_DIR, so
@@ -287,6 +298,11 @@ class SyncInterface(context: Context) {
             // callback -- see the note on this function.
             val exported = mirrorSyncFilesToSafDir()
             if (!exported.ok) problems += "export failed: ${exported.reason()}"
+
+            // Step 6: say who we are. `devices/<uuid>/meta.json` is what lets peers label this
+            // device and match decision signatures against its role (05_DATA_MODEL.md §3), and
+            // `last_seen` only means anything if it is rewritten every cycle.
+            if (!publishDeviceMeta(deviceId)) problems += "could not publish meta.json"
 
             if (problems.isEmpty()) {
                 SyncOutcome(true, "Successfully completed multi-device sync")
@@ -349,6 +365,67 @@ class SyncInterface(context: Context) {
             }
         }
     }
+
+    /**
+     * Read (or create) the shared folder's `VERSION` file, per `05_DATA_MODEL.md` §8.
+     *
+     * @return null when the cycle may continue -- including when there is no shared folder at
+     *   all, or its `VERSION` was written by an older build -- and a failing [SyncOutcome] when it
+     *   must not, so that no part of this cycle reads or writes a layout we do not understand.
+     */
+    private fun checkSharedSchema(): SyncOutcome? {
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return null
+        // An unreachable folder is not a schema problem; the import that follows reports it once.
+        val shared = SharedFolder.open(appContext, uriStr) ?: return null
+        val verdict = shared.ensureVersion()
+        if (!verdict.blocksMerge) return null
+        val detail = if (verdict == SchemaVerdict.TOO_NEW) {
+            "was written by a newer version of ActivityWatch"
+        } else {
+            "is unreadable"
+        }
+        return SyncOutcome(
+            false,
+            "sync folder refused: its $SHARED_VERSION_FILE $detail (this app speaks " +
+                "v$SHARED_SCHEMA_VERSION). Update the app rather than merging blind.",
+        )
+    }
+
+    /**
+     * Rewrite `devices/<our uuid>/meta.json` in the shared folder (`05_DATA_MODEL.md` §3).
+     *
+     * @return false only when we should have written it and could not. No shared folder, or an
+     *   id the server has not minted yet, are not failures *here* -- the latter is already
+     *   reported by the export, and reporting it twice in one message helps nobody.
+     */
+    private fun publishDeviceMeta(deviceId: String): Boolean {
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return true
+        if (deviceId == UNKNOWN_DEVICE_ID) {
+            Log.w(TAG, "meta.json skipped: this device's id is not known yet")
+            return true
+        }
+        val shared = SharedFolder.open(appContext, uriStr) ?: return true
+        val meta = DeviceMeta(
+            deviceUuid = deviceId,
+            // The hostname is what the Timeline already labels this device with, so sharing it
+            // keeps the two names from disagreeing across devices (R25).
+            displayName = getDeviceName(),
+            role = deviceRole(appContext),
+            platform = "android",
+            appVersion = appVersion(),
+            lastSeen = Instant.now().toString(),
+        )
+        return shared.writeMeta(meta)
+    }
+
+    /** This build's `versionName`, or empty if the package manager will not say. */
+    private fun appVersion(): String =
+        try {
+            appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName.orEmpty()
+        } catch (e: PackageManager.NameNotFoundException) {
+            Log.w(TAG, "Could not read app version: ${e.message}")
+            ""
+        }
 
     private fun mirrorSyncFilesToSafDir(): TransferResult =
         runTransfer("SAF export") { copySyncFilesToSafDir() }
@@ -502,6 +579,10 @@ class SyncInterface(context: Context) {
             }
             val hostName = safHostDir.name
             if (!safHostDir.isDirectory || hostName == null || !isSafeEntryName(hostName)) continue
+            // `devices/` sits alongside the per-hostname directories and holds shared state, not
+            // peer databases (05_DATA_MODEL.md §2). Walking into it would copy every peer's
+            // meta.json into app-private storage as though it were a device's sync output.
+            if (isSharedStateDir(hostName)) continue
 
             for (safDeviceDir in safHostDir.listFiles()) {
                 val deviceId = safDeviceDir.name
