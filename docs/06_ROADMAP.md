@@ -949,7 +949,7 @@ preserves the *source's* modification time on the files it delivers, so `stat` o
 device says when the sender wrote the file, not when it arrived. It cannot be used to establish
 propagation timing, and briefly was.
 
-### 2.3a — Apply settings while the app is open ✅ MEASURED ON DEVICE 2026-09-09
+### 2.3a — Apply settings while the app is open ✅ VERIFIED ON DEVICE 2026-09-09
 Direct follow-up to the latency found verifying 2.3, at the owner's request ("it needs a sync after
 the file's already on the tablet — trigger it automatically, no closing and reopening").
 
@@ -975,10 +975,25 @@ Android has never promised it would. An observer that reports only our own write
 so it was removed rather than kept as decoration. **A 30-second poll while visible is duller and
 works.**
 
-**Check:** `scripts/check-local.sh kotlin` and the full unit suite pass. The observer's behaviour
-above was measured on hardware. **The polling replacement is not yet verified on device** — it
-compiles and the refresh it calls is the same code path 2.3 verified, but that it fires on the
-right lifecycle events has not been watched on a phone.
+**Verified on device 2026-09-09**, both directions, using `startOfWeek` rather than a category so
+the owner's own data was never the test subject (restored to `Monday` afterwards; the categories
+were untouched throughout).
+
+- **Publishes without a sync.** Changed on the tablet at `12:32:47`; the tablet logged
+  `Published 1 changed setting(s): startOfWeek` at `12:32:52` with no sync cycle running.
+- **Applies without a sync — the half that needed a clean window.** The first round proved nothing
+  about applying: a scheduled sync on the phone fired one second before the poll would have and
+  took the credit (`Applied 'startOfWeek' from another device`, `12:33:19`). The second round was
+  run in a window where the tablet had no sync due for another 13 minutes: the phone published at
+  `12:33:49`, the tablet applied at `12:34:22`, and the tablet ran **zero** sync operations in
+  between. 33 seconds end to end, consistent with the 30-second poll plus Syncthing's delivery.
+- **The race guard fires.** `Settings refresh skipped: a full sync is already running` appeared
+  exactly where the poll collided with a cycle, which is what stops the two writing the same keys
+  at once.
+
+**Check:** `scripts/check-local.sh kotlin` and the full unit suite pass. Neither trigger is
+unit-tested — both are Android lifecycle plumbing a JVM test cannot reach, which is precisely why
+the first attempt's failure had to be found on hardware.
 
 ---
 
@@ -1210,6 +1225,25 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (evening, later) — the elegant fix did not work; the dull one does
+The `ContentObserver` added an hour earlier never fired for the writes that matter. It registers
+without complaint and does fire — for this app's own writes — which is exactly the shape of failure
+that gets shipped: nothing throws, a log line appears during testing, and the feature does nothing.
+Two measurements settled it. Syncthing delivering `meta.json` from the phone produced no
+notification on the tablet in 75 seconds, though the file had demonstrably arrived. Writing into the
+folder from `adb shell`, a different uid just like Syncthing's, produced none in 40 seconds.
+`ExternalStorageProvider` does not tell an app about other apps' writes to a document tree and never
+promised to.
+
+It was removed rather than kept as decoration that might work on some other OEM, and replaced by a
+30-second poll while the app is on screen, plus an immediate refresh on resume. Verified both
+directions on hardware, including one round deliberately run in a window with no sync due, because
+the first round proved only that a scheduled sync could do the job — the phone's cycle beat the poll
+by one second and took the credit.
+
+**Worth keeping in mind for Phase 3 onward:** a JVM test suite cannot reach any of this. The merge
+logic behind it has 39 tests and all of them passed while the trigger in front of it did nothing.
 
 ### 2026-09-09 (evening) — 2.3 verified on two devices, and the trigger was too rare
 The rename went from phone to tablet: `Media > Video` → `Media > Fun`, saved on the phone, applied
