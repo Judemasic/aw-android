@@ -1288,13 +1288,10 @@ drawn above one row per device, unresolved contention striped and outlined.
   because **R11** says those rows are unmodified truth kept underneath for comparison. They call
   `aw_combined::resolve_device` (newly public) so origin is decided by the same rule (**R19**) the
   pipeline uses rather than a second copy that can drift.
-- **The hostname→uuid map is passed empty (`{}`).** Since 3.1 every imported event carries
-  `$aw.origin.device`; an event predating that is attributed to the hostname captured from its
-  bucket id, which keeps it visible as its own device instead of being folded into ours. A real map
-  needs a `hostname` field in `devices/<uuid>/meta.json` — a shared **schema** change, which does
-  not belong in a view step. Consequence to watch for on device: a peer with pre-3.1 history may
-  appear as *two* rows, one uuid and one hostname. That is honest, not a totals bug (they never
-  overlap in time), but it is the first thing to look at if the device list looks too long.
+- ~~**The hostname→uuid map is passed empty (`{}`)** … a peer with pre-3.1 history may appear as
+  *two* rows … That is honest, not a totals bug (they never overlap in time).~~ **⚠️ This was
+  wrong, and the device test proved it — see "What the hardware found" below.** The map is still
+  passed empty, but the split it caused is now fixed at the source.
 - **Shading is diagonal stripes, not a lighter tint.** A tint reads as "less of this activity",
   which is the opposite of what the flag means — the block's time *is* counted (**R17**); what is
   uncertain is which competitor deserved it.
@@ -1305,9 +1302,43 @@ drawn above one row per device, unresolved contention striped and outlined.
 including the new `aw-server --lib`. `cargo test -p aw-combined` 42 green, plus 3 new `aw-server`
 unit tests for the label/idle helpers.
 
-⚠️ **Not verified on device.** Nothing here has run on hardware: no APK has been built from this
-commit, so the JNI symbol has never been resolved, the datastore has never been read through it,
-and no pixel of the view has been drawn. **This needs a CI build**, then install on both devices.
+**What the hardware found.** Two real bugs, neither reachable from a type check:
+
+1. **The Activity crashed on every launch.** `private var day: LocalDate = LocalDate.now()` is a
+   property initialiser, so it ran inside `<init>` — before `onCreate`, and therefore before
+   anything could call `AndroidThreeTen.init`. Result:
+   `ZoneRulesException: No time-zone data files registered`. This app has no `Application`
+   subclass; every entry point registers the timezone data itself (`CategoryTimeWidgetUpdater`,
+   `NotifyWorker`) and this one did not. `day` is now `lateinit`, assigned in `onCreate` after an
+   `AndroidThreeTen.init(this)` of its own.
+2. **The tablet was contending with itself.** Tapping a shaded block gave *"Syncthing-Fork counted
+   for 10m 00s — also running: Syncthing-Fork"*. The tablet appeared twice: as
+   `jude_s_tab_s10_fe` (1h 23m) and as `7b54cfe9-ec39-4ec3-934c-67c81111d8e7` (15m 57s), which is
+   that tablet's own `device_id`. **Both came from one bucket.** A `-synced-from-<peer>` bucket
+   accumulates: events merged before 3.1 are untagged and fell to the hostname rule, events merged
+   after carry `$aw.origin.device` and hit the uuid rule. Resolved *per event*, one bucket yielded
+   two device strings over the same instants, `classify` counted two devices, and the view invented
+   contention. Most of the 16 shaded blocks on that first screenshot were this, not real overlap.
+   **Fixed by resolving origin per bucket** (`aw_combined::resolve_bucket_device`): a bucket only
+   ever holds one peer's events, so one tagged event settles all of them. No hostname map and no
+   schema change needed, and it heals existing databases with no migration — which the map
+   approach would *not* have, since a map only helps once every device has rewritten its
+   `meta.json`. Three regression tests in `adversarial.rs`, the first reproducing the symptom.
+
+**What "multiple lines" means and why it does not bite.** One device produces several concurrent
+bucket streams — the S25U alone shows `android` (apps), `android-media` (playback) and
+`android-synced-from-jude…` in the webui timeline. `android-media` is type `media.playback`, and
+the adapter reads only `currentwindow`, so the phone does **not** contend with itself over music.
+⚠️ **Consequence, recorded rather than hidden: music playing while another app is in front is
+invisible in the combined track.** Whether "Spotify while reading" is one activity or two is a real
+design question this step answered conservatively without asking.
+
+⚠️ **Still not fully verified.** The screen has run on the **phone** (SM-S938B) and shows real
+data — *"7h 22m combined, from 9h 02m across 3 device(s)"*, i.e. **R6 holding: 7h 22m < 9h 02m**.
+It has **not** been driven on the tablet (SM-X520), and the post-fix build has not been checked on
+either. **The UI is a first pass and is known to be poor** — raw UUIDs as device names (colliding
+with the duration text), no legend, no visual design. A design pass is owed and is deliberately
+deferred; do not treat the current screen as the intended one.
 
 ---
 
