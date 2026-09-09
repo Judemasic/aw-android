@@ -29,7 +29,8 @@
 > `GET /api/0/combined/timeline`, verified against a running server (R6 and R8 both hold over
 > HTTP). **3.5b is verified on device** (the owner confirmed pinch-zoom works), and **3.5c has taken
 > the native screen out** — there is now exactly one combined view, the Vue one, and the drawer's
-> "Combined timeline" entry opens it. **4.1, the resolution sheet, is next.**
+> "Combined timeline" entry opens it. **4.1, the resolution sheet, is built** and verified in a
+> browser at phone and desktop width; **4.2, persisting decisions, is next.**
 >
 > ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
 > now 3.5b's acceptance list. Separately,
@@ -1677,7 +1678,7 @@ exactly the zoom that makes it necessary.
 
 ## Phase 4 — Manual resolution
 
-### 4.1 — Resolution sheet ⬜ **← next**
+### 4.1 — Resolution sheet ⏳ BUILT (2026-09-09) — browser-verified, ⚠️ NOT on device
 Tap-to-open, the four outcomes, and the `once` / `always` scope control.
 *(R9, R11, R16)*
 
@@ -1685,9 +1686,66 @@ Tap-to-open, the four outcomes, and the `once` / `always` scope control.
 combined timeline, which [3.5](#35--rebuild-the-combined-timeline-in-aw-webui) is moving into
 aw-webui to satisfy **R35** (PC, tablet and phone). A native `BottomSheet` would be stranded on
 Android and would have to be written twice. **Do 3.5b first** — a sheet needs a block to open from.
-*(3.5b is done; the block to open from is the shaded segment in `CombinedTimeline.vue`, whose detail
-aside already carries a `div.resolve` placeholder reading "Resolve this overlap … (roadmap 4.1)".
-That placeholder is where the sheet goes.)*
+*(3.5b is done. The block to open from is the shaded segment in `CombinedTimeline.vue`; its detail
+aside's `div.resolve` placeholder is now a **Resolve…** button that opens the sheet.)*
+
+##### What was built
+
+In **`aw-server-rust/aw-webui`** (branch `beta`, commit `8282a53`):
+
+| File | What it is |
+|---|---|
+| `src/visualizations/ResolutionSheet.vue` | **New.** The sheet: the competing activities side by side, the four outcomes, the scope control. Bottom-anchored under 576px, a centred dialog above it — one component, not two. |
+| `src/util/ulid.ts` | **New.** Decision/tombstone ids. A **ULID, not a UUID**: `id` is the final tiebreak in the `decisions.jsonl` merge ([`05_DATA_MODEL.md`](05_DATA_MODEL.md) §4.2), and sorting by creation time makes that tiebreak stable rather than arbitrary. |
+| `src/views/CombinedTimeline.vue` | Opens the sheet, assembles the participant list, handles the emitted decision. |
+
+**The four outcomes and how they are reached.** `foreground` — pick one of the competing
+activities. `relabel` — "Something else…", which reveals a text field and refuses to save while it
+is empty. `ignore` — "Neither — I was away". `concurrent` — a **checkbox**, "I really was doing
+both", not a fifth radio: **R6** says exactly one activity counts, so "both" is a statement about
+the *loser* (it lands in `deliberate_background`), not a different winner. Making it a radio would
+have implied the totals could split.
+
+**The default pick is the provisional attribution.** That is already what the totals use (**R10**),
+so an owner who agrees confirms in one tap; one who disagrees still sees every option.
+
+⚠️ **4.1 stops before writing anything.** The sheet builds a complete decision record — full
+**R14** signature included, because **R15** makes today's decisions tomorrow's rules and a signature
+not captured now cannot be recovered later — and emits it. Persisting it and recomputing the day is
+**4.2**. Until then the sheet says "Not written yet" and shows the record it would append, so the
+format is exercised before anything depends on it being right.
+
+`signature.participants[].category` is **null** throughout: `/api/0/combined/timeline` does not
+surface a category yet. The field is written anyway, so a later version that does know the category
+produces records of the same shape rather than a new one.
+
+##### Verified 2026-09-09 in headless Edge, against a live `aw-server --testing`
+
+Five seeded devices, 16 combined segments, 7 of them contended — driven at **412 × 915** (phone) and
+**1280 × 900** (desktop), by script rather than by eye:
+
+| Check | Result |
+|---|---|
+| Reach a contended block using **only** the stepper, open the sheet | ✅ |
+| Sheet scrolls sideways at 412px | ❌ none — `scrollWidth == clientWidth` |
+| Smallest option row height (**R34**, one thumb) | **44px**, all of them |
+| Both scope buttons the same height | ✅ 44 / 44 |
+| Save with `always` + "both" ticked | record has `scope: "always"`, `outcome: "foreground"`, `deliberate_background: ["com.amazon.kindle"]` |
+| Save disabled with "Something else…" and an empty label | ✅ |
+| Escape closes the sheet | ✅ |
+| Console errors | **0** |
+
+**Three defects that run caught**, all fixed in the same commit:
+
+1. **`deviceLabel` fell back to the raw 36-character uuid** — the exact 3.4 defect this view exists
+   to fix, and glaring in a sheet whose whole question is *which device*. Now "This device" or
+   "Device 823F".
+2. **A heartbeat-split event put the same device and app into `background` twice**, so the sheet
+   offered two identical radio options — an unanswerable question — and wrote the app into
+   `deliberate_background` twice. Participants are deduplicated on `(device, label)`.
+3. **Device-track row keys collided** when a device had two events on one timestamp. Vue warned
+   about it, and the 3.5c block stepper's key lookup would have landed on the wrong one of the pair.
+   The row index is part of the key now.
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -2076,8 +2134,15 @@ per device, with unresolved contention striped (**R8**).
 - ➕ **Owner request, landed with 3.5c:** Prev/Next buttons to step between timeline blocks, because
   *"some of them are small and can't be tapped reliably"*. Arrow keys too on a desktop. The renderer
   gained `revealRange()` so the stepped-to block is scrolled into view.
-- Next: **4.1 — Resolution sheet**, in aw-webui, replacing the placeholder already sitting in the
-  detail aside.
+- ⏳ **4.1 built (2026-09-09), browser-verified, not on device.** `ResolutionSheet.vue` plus
+  `util/ulid.ts`. Driven by script in headless Edge at 412px and 1280px against a live server: no
+  horizontal scroll, every option row 44px, both scope buttons equal height, zero console errors,
+  and the emitted record carries the full R14 signature. It **does not write yet** — that is 4.2.
+- 🐛 That run caught three real defects, fixed in the same commit: a raw-uuid device label (the 3.4
+  defect, back again), duplicate participants from a heartbeat-split background event, and colliding
+  row keys that the new stepper would have resolved to the wrong block.
+- Next: **4.2 — Persist + apply decisions.** Append to `decisions.jsonl`, apply exact matches then
+  `always` rules, mark `auto_resolved`.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
