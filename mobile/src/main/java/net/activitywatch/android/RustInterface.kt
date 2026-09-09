@@ -78,6 +78,22 @@ class RustInterface(context: Context? = null) {
     external fun query(query: String, timeperiods: String): String
     external fun androidQuery(timeperiods: String): String
     external fun getSetting(key: String): String
+
+    /**
+     * Every stored setting as one JSON object, keyed as `GET /api/0/settings` keys them.
+     *
+     * Only settings the user actually saved are in there -- a key still on aw-webui's default is
+     * simply absent -- which is what lets [SharedSettings] publish what it finds without publishing
+     * this build's defaults over another device's choices.
+     */
+    external fun getSettings(): String
+
+    /**
+     * Write one setting, as `POST /api/0/settings/<key>` would. [value] is the raw JSON body, so a
+     * string value must arrive quoted. Returns `{"success": true}` or `{"error": ...}`.
+     */
+    external fun setSetting(key: String, value: String): String
+
     external fun migrateHostname(hostname: String): String
     external fun migrateWatcherAndroidBucketNames(): String
 

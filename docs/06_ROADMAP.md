@@ -882,9 +882,50 @@ fails rather than passing by luck.
 files, so the app behaves exactly as it did before. 2.3 is this store's first on-device exercise.
 Compaction (§5) is still not built.
 
-### 2.3 — Settings sync ⬜
+### 2.3 — Settings sync ✅ DONE IN CODE 2026-09-09 — ⬜ UNVERIFIED ON DEVICE
 Route `category.*` / `label.*` through the shared store; keep device-local keys in `AWPreferences`.
 **Check:** rename YouTube to "fun" on device A; device B shows "fun" after a sync. *(R25, R28)*
+
+**Result.** Every sync cycle now has a step 7: publish the shared settings the owner changed on
+this device, and apply the ones they changed on another.
+
+1. **The keys are aw-webui's, not `category.<app>`.** aw-webui keeps the whole categorisation in
+   one `classes` value and posts it whole, so renaming YouTube *is* an edit to `classes`. Routing
+   its own keys avoids inventing a parallel key space and translating between the two forever.
+   [`05`](05_DATA_MODEL.md) §5 is corrected to match, with the full allowlist and the reasoning for
+   every key left out.
+2. **An allowlist, in `SharedSettings.kt`.** Shared: `classes`, `category_sets`, `active_set_ids`,
+   `privacy_filters`, `always_active_pattern`, `startOfDay`, `startOfWeek`, `durationDefault`, plus
+   the `category.` / `label.` / `rule.` namespaces for Phase 4. Everything else stays local (R28) —
+   including `views` and `saved_queries`, which name buckets whose ids carry a hostname and would
+   point at nothing on the receiving device.
+3. **`planSettingsSync` is pure**, so the whole decision is unit-tested: publish when the local
+   value differs from what we last agreed to, otherwise accept the merge's winner.
+4. **Two new JNI calls** in `aw-server/src/android/mod.rs`: `getSettings` (every stored setting,
+   values **as raw strings**, deliberately unlike the HTTP endpoint) and `setSetting`. JNI rather
+   than HTTP for the reason the existing `getSetting` gives — API-key auth is on by default, so an
+   unauthenticated local GET 401s and reads as "no settings".
+5. **`AWPreferences.appliedSharedSettings`** remembers the last-agreed value per key. Without it,
+   "the owner changed this here" and "a peer changed it and we have not applied it yet" are
+   indistinguishable, and each device would republish everything it accepted, forever.
+
+**Judgment calls.** Sharing `startOfDay` / `startOfWeek` / `durationDefault` — they are not
+categories, but they change what a day's totals *mean*, and Phase 3 sums across devices. Keeping
+`views` and `saved_queries` local, for the bucket-id reason above. Reading the `.jsonl` files in
+place rather than copying them first: **R24**'s copy-before-open rule exists because SQLite cannot
+survive a mid-read replacement, and a line-oriented text file can — a torn read costs one truncated
+line, which the parser keeps as `Unknown` and the next cycle reads whole.
+
+**Check:** `scripts/check-local.sh` passes in all four modes — and `aw-server/src/android/mod.rs`
+is now in the `syntax` mode's list, since it is cfg-gated exactly like `aw-sync/src/android.rs` and
+2.3 put two new JNI functions in it. 13 new tests in `SharedSettingsTest.kt`; the scenario ones
+feed each plan's result back in as the next cycle's state and assert the second cycle does nothing,
+because a settings sync that republishes every cycle would look fine from outside while growing the
+log forever.
+
+**Unverified on device**, and it needs a CI build first: the JNI additions are in the file the
+local checks cannot type-check (`THE ANDROID GAP` in `scripts/check-local.sh`). Nothing in the
+routing has run against a real datastore or a real SAF folder.
 
 ---
 
@@ -1116,6 +1157,42 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (later still) — 2.3: settings sync, and the key space the doc had wrong
+The shared store from 2.2 has its first user. Step 7 of every sync cycle publishes the shared
+settings changed on this device and applies the ones changed elsewhere.
+
+**The design document was wrong about the key space, and the code follows aw-webui instead.**
+[`05`](05_DATA_MODEL.md) §5 assumed one shared key per categorised app — `category.com.google.
+android.youtube` → `"fun"`. aw-webui has no such thing: the entire categorisation is one `classes`
+value, an array of `{id, name, rule}` posted whole to `/api/0/settings/classes`. Renaming YouTube
+*is* an edit to `classes`. Building the doc's key space would have meant translating in both
+directions forever, against a format aw-webui is free to change, so §5 was corrected to describe
+what ships. The `category.*` / `label.*` / `rule.*` namespaces are still routed — Phase 4's rules
+are ours to write and will use them — they are simply empty today.
+
+**What is shared is an allowlist, not a denylist.** R28 is the direction where a mistake is
+expensive: aw-webui gains keys on its own schedule, and one about *this device* that leaked by
+default would be noticed only after it had overwritten a peer's copy. `views` and `saved_queries`
+were the interesting exclusions — they read like shared meaning, but they name buckets, and a
+bucket id carries the hostname of the device that produced it, so copied across they point at
+nothing.
+
+**One piece of state the design had not anticipated.** "The owner changed this here" and "a peer
+changed it and we have not applied it yet" are the same observation — local differs from the merge.
+Only a record of what this device last *agreed to* separates them, so `AWPreferences` gained
+`appliedSharedSettings`. Without it every device republishes every value it accepts, and two
+devices trade one edit back and forth forever. The scenario tests exist mainly to hold that line:
+each one runs a cycle, feeds the result back in as the next cycle's state, and asserts the second
+cycle does nothing at all.
+
+**Two new JNI functions** (`getSettings`, `setSetting`) in `aw-server/src/android/mod.rs`, which
+means CI has to build before any of this can be tested — that file is behind
+`#[cfg(target_os = "android")]` and the local checks cannot type-check it. It is now at least
+covered by `check-local.sh syntax`, which parses cfg-gated files with rustfmt; it was only checking
+`aw-sync`'s files and had no reason not to check this one too. `getSettings` hands values back as
+raw strings rather than parsed JSON on purpose: parse-and-reprint would reorder object keys, and
+two devices holding the same setting would then disagree forever about whether it had changed.
 
 ### 2026-09-09 (later) — 2.2: the shared logs, and a merge that does not care what order it reads
 `SharedStore.kt` holds the append-only side of the shared folder: the record types for

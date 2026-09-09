@@ -76,6 +76,21 @@ class AWPreferences(context: Context) {
         sharedPreferences.edit().putString("syncDirUri", uri).apply()
     }
 
+    // The shared settings this device last agreed with the others about, as a JSON object of
+    // key -> raw stored value (see SharedSettings.planSettingsSync).
+    //
+    // Device-local by nature and therefore here rather than in the shared folder (R28): it records
+    // what *this* device has already seen, which is the only way to tell "the owner changed this
+    // here" apart from "a peer changed it and we have not applied it yet". Both look identical in
+    // the settings themselves.
+    fun getAppliedSharedSettings(): String {
+        return sharedPreferences.getString("appliedSharedSettings", "{}") ?: "{}"
+    }
+
+    fun setAppliedSharedSettings(json: String) {
+        sharedPreferences.edit().putString("appliedSharedSettings", json).apply()
+    }
+
     // Dashboard authentication. Defaults to true so first-run gets a key generated
     // automatically. Set to false when the user explicitly disables auth in settings;
     // ensureDashboardApiKey() checks this before generating a new key so that the

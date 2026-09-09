@@ -165,6 +165,42 @@ the same rule as §4.2, deliberately.
 **Never shared** (**R28**): sync folder path, notification settings, battery/scheduling options,
 per-device toggles. These stay in `AWPreferences`.
 
+> **⚠️ Corrected 2026-09-09 (roadmap 2.3): the shared keys are aw-webui's, not `category.<app>`.**
+> This section assumed one key per categorised app. aw-webui does not work that way: the entire
+> categorisation lives in a single `classes` value (a JSON array of `{id, name, rule}`), posted
+> whole to `POST /api/0/settings/classes` and stored as `settings.classes` in the datastore.
+> Renaming YouTube to "fun" therefore *is* an edit to `classes`. Rather than invent a parallel key
+> space and translate between the two, 2.3 routes aw-webui's own keys through this log.
+>
+> The shared set is an **allowlist** (`SharedSettings.kt`), because **R28** is the direction where
+> a mistake costs something: aw-webui adds keys on its own schedule, and one about *this device*
+> that leaked by default would be found only after it had overwritten a peer's copy.
+>
+> | Shared | Why |
+> |---|---|
+> | `classes`, `category_sets`, `active_set_ids` | what counts as what — the point of **R25** |
+> | `privacy_filters`, `always_active_pattern` | what is deliberately not counted, or always counted |
+> | `startOfDay`, `startOfWeek`, `durationDefault` | where a day begins, which changes what a day's totals *mean* |
+>
+> Kept local, with the reasoning recorded in `DELIBERATELY_LOCAL_SETTING_KEYS`: `theme`,
+> `landingpage`, `locale`, `useColorFallback` (how this screen looks); `views`, `saved_queries`
+> (they name buckets, whose ids carry the producing device's hostname); `devmode`,
+> `requestTimeout`, `hideUnsupportedVisualizations`, `showYearly`, `useMultidevice` (per-device
+> toggles); the `*Data` prompt schedules (sharing them fires one prompt on every device at once).
+> `category.*` / `label.*` / `rule.*` are still routed, unused, for Phase 4's rules.
+>
+> **Values are copied byte for byte.** The JNI `getSettings` hands back the stored bodies as
+> strings rather than parsed JSON, and nothing on the path re-serialises them: a parse-and-reprint
+> would reorder object keys, and two devices holding the same setting would then disagree forever
+> about whether it had changed.
+>
+> **One piece of state this section did not anticipate.** "The owner changed this here" and "a peer
+> changed it and we have not applied it yet" look identical in the settings themselves — both are
+> just *local ≠ merged*. Telling them apart needs a record of what this device last agreed to, so
+> `AWPreferences.appliedSharedSettings` holds the last-agreed value per shared key. It is
+> device-local by nature (§7), and without it a device would republish every value it accepted and
+> the two would trade edits back and forth forever.
+
 > **Compaction:** the log grows without bound. When it exceeds a threshold, its owner — and only its
 > owner (**R20**) — may rewrite *its own* file to the effective values it contributed, preserving
 > `updated_at`. Safe precisely because no other device writes that file.
@@ -199,6 +235,7 @@ Stays in `AWPreferences`, never in the shared folder:
 | `device_uuid` | Identity — generated once, must never be copied to another device. |
 | `sync_dir_uri` | A SAF URI, meaningless on any other device. |
 | `sync_enabled` | Per-device choice. |
+| `appliedSharedSettings` | What this device last agreed to, per shared setting key (§5). A record of *our* view, not shared state. |
 | notification / battery prefs | Per-device (**R28**). |
 
 > `device_uuid` being local-only is load-bearing. Restoring an app backup onto a second device would

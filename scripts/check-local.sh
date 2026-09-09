@@ -104,7 +104,10 @@ check_syntax() {
     export PATH="$HOME/.cargo/bin:$PATH"
     cd "$REPO_ROOT/aw-server-rust"
     local rc=0
-    for f in aw-sync/src/android.rs aw-sync/src/sync_wrapper.rs aw-sync/src/dirs.rs aw-sync/src/util.rs; do
+    # aw-server/src/android/mod.rs is here for the same reason: it is behind
+    # #[cfg(target_os = "android")] too, so `cargo check` never parses it either. Added
+    # 2026-09-09 with roadmap 2.3, which put two new JNI functions in it.
+    for f in aw-sync/src/android.rs aw-sync/src/sync_wrapper.rs aw-sync/src/dirs.rs aw-sync/src/util.rs aw-server/src/android/mod.rs; do
         printf '  %-30s ' "$f"
         if rustfmt --edition 2021 --emit stdout "$f" >/dev/null 2>/tmp/aw-rustfmt.err; then
             echo "ok"

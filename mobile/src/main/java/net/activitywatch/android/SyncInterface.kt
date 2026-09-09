@@ -304,6 +304,11 @@ class SyncInterface(context: Context) {
             // `last_seen` only means anything if it is rewritten every cycle.
             if (!publishDeviceMeta(deviceId)) problems += "could not publish meta.json"
 
+            // Step 7: shared *meaning* -- categories, labels, where a day starts (R25). Publish
+            // what the owner changed here, accept what they changed elsewhere. Independent of the
+            // database transfer above, so its failures are collected rather than fatal.
+            syncSharedSettings(deviceId)?.let { problems += it }
+
             if (problems.isEmpty()) {
                 SyncOutcome(true, "Successfully completed multi-device sync")
             } else {
@@ -417,6 +422,104 @@ class SyncInterface(context: Context) {
         )
         return shared.writeMeta(meta)
     }
+
+    /**
+     * Publish this device's changed shared settings and accept every other device's
+     * (`05_DATA_MODEL.md` §5, **R25/R29**).
+     *
+     * The decision of what to publish and what to accept is [planSettingsSync], which is pure and
+     * unit-tested; everything here is the plumbing around it -- read the datastore, read the shared
+     * folder, carry out the plan, remember what we agreed to.
+     *
+     * **The `.jsonl` files are read in place, not copied first.** **R24** requires copying
+     * `events.db` before opening it, because SQLite reading a file Syncthing is replacing mid-read
+     * is undefined. A line-oriented text file is not: a torn read costs us at worst a truncated
+     * final line, which the parser keeps as `SharedRecord.Unknown` and the next cycle reads whole.
+     * Copying them would buy nothing and add a failure mode.
+     *
+     * @return null when there is nothing to report, or a short problem string for the cycle's
+     *   message. No shared folder and no device id are not problems -- there is simply nowhere to
+     *   publish to yet.
+     */
+    private fun syncSharedSettings(deviceId: String): String? {
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return null
+        if (deviceId == UNKNOWN_DEVICE_ID) return null
+        val shared = SharedFolder.open(appContext, uriStr) ?: return null
+        val prefs = AWPreferences(appContext)
+
+        // One instance for the whole pass: constructing it loads the native library and re-runs
+        // the server's init, which is cheap but pointless to repeat per key.
+        val rust = RustInterface(appContext)
+
+        val local = readLocalSettings(rust) ?: return "could not read this device's settings"
+        val records = shared.readAllShared(SHARED_SETTINGS_FILE)
+        val plan = planSettingsSync(
+            local = local,
+            merged = effectiveSettings(records),
+            applied = jsonToMap(prefs.getAppliedSharedSettings()),
+            now = Instant.now().toString(),
+            deviceUuid = deviceId,
+        )
+
+        val problems = mutableListOf<String>()
+        if (plan.linesToAppend.isNotEmpty()) {
+            if (shared.appendShared(deviceId, SHARED_SETTINGS_FILE, plan.linesToAppend)) {
+                Log.i(
+                    TAG,
+                    "Published ${plan.linesToAppend.size} changed setting(s): " +
+                        plan.linesToAppend.joinToString { it.key },
+                )
+            } else {
+                problems += "could not publish settings"
+            }
+        }
+        for ((key, value) in plan.valuesToApply) {
+            val result = JSONObject(rust.setSetting(key, value))
+            if (result.optBoolean("success")) {
+                Log.i(TAG, "Applied '$key' from another device")
+            } else {
+                Log.w(TAG, "Could not apply '$key': ${result.optString("error")}")
+                problems += "could not apply setting $key"
+            }
+        }
+        // Only after the writes: remembering an agreement we failed to carry out would make the
+        // next cycle believe the value had been changed here, and republish it over the peer's.
+        if (problems.isEmpty()) {
+            prefs.setAppliedSharedSettings(JSONObject(plan.applied as Map<*, *>).toString())
+        }
+        return problems.takeIf { it.isNotEmpty() }?.joinToString("; ")
+    }
+
+    /**
+     * This device's stored settings, values as the raw JSON bodies the datastore holds -- never
+     * re-serialised, so a value copied between devices compares byte for byte (see the Rust side's
+     * `getSettings`).
+     *
+     * @return null if the server would not answer; an empty map is a legitimate answer meaning the
+     *   owner has never changed a setting.
+     */
+    private fun readLocalSettings(rust: RustInterface): Map<String, String>? =
+        try {
+            val json = JSONObject(rust.getSettings())
+            if (json.has("error")) {
+                Log.w(TAG, "Could not read settings: ${json.optString("error")}")
+                null
+            } else {
+                json.keys().asSequence().associateWith { json.getString(it) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read settings: ${e.message}")
+            null
+        }
+
+    private fun jsonToMap(text: String): Map<String, String> =
+        try {
+            val json = JSONObject(text)
+            json.keys().asSequence().associateWith { json.getString(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Ignoring unreadable applied-settings snapshot: ${e.message}")
+            emptyMap()
+        }
 
     /** This build's `versionName`, or empty if the package manager will not say. */
     private fun appVersion(): String =
