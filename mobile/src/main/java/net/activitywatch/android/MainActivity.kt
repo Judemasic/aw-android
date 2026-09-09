@@ -21,7 +21,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.activitywatch.android.databinding.ActivityMainBinding
 import net.activitywatch.android.fragments.TestFragment
@@ -52,6 +51,12 @@ internal fun shouldOpenActivityViewImmediately(openActivityView: Boolean, isResu
 
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, WebUIFragment.OnFragmentInteractionListener {
+
+    /**
+     * Keeps categories and other shared settings current while the app is on screen
+     * (`05_DATA_MODEL.md` §5). Started on resume, stopped on pause.
+     */
+    private val settingsRefresher by lazy { SharedSettingsRefresher(this) }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var dashboardApiKey: String
@@ -220,34 +225,18 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         Log.i("MainActivity", "Using $mode mode for event tracking")
         lifecycleScope.launch { usw.sendHeartbeatsSuspend() }
 
-        // Same idea for shared settings: a category renamed on another device may already be in the
-        // sync folder, and waiting for the next 15-minute cycle to notice means opening the app and
-        // being shown a name you changed elsewhere an hour ago. SyncFolderWatcher usually catches
-        // this first, but it depends on a storage-provider notification Android does not guarantee
-        // for another app's writes, so this path does not assume it fired.
-        refreshSharedSettingsOnResume()
+        // Same idea for shared settings: a category renamed on another device may already be in
+        // the sync folder, and waiting for the next 15-minute cycle to notice means opening the app
+        // and being shown a name you changed elsewhere an hour ago. This refreshes immediately and
+        // then keeps checking while the app is on screen; see SharedSettingsRefresher for why it
+        // polls rather than watching the folder.
+        settingsRefresher.start()
     }
 
-    /**
-     * Apply any shared settings already waiting in the sync folder (`05_DATA_MODEL.md` §5).
-     *
-     * Reads a few small text files and writes only what changed, so it is cheap enough to run on
-     * every resume. Off the main thread because it touches SAF and the datastore; silent when there
-     * is nothing to do, and when sync is switched off it does not run at all.
-     */
-    private fun refreshSharedSettingsOnResume() {
-        if (!AWPreferences(this).isSyncEnabled()) return
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                SyncInterface(this@MainActivity).refreshSharedSettingsAsync()
-            } catch (e: UnsatisfiedLinkError) {
-                // Same failure SyncScheduler guards against: without the native library there is
-                // no device id to attribute a change to, and nothing here can run.
-                Log.w("MainActivity", "Cannot refresh shared settings: aw-sync unavailable")
-            } catch (e: Exception) {
-                Log.w("MainActivity", "Could not refresh shared settings", e)
-            }
-        }
+    override fun onPause() {
+        super.onPause()
+        // Nothing polls in the background: a stale category name matters only while it is on screen.
+        settingsRefresher.stop()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

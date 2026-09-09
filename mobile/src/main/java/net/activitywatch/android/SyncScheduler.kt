@@ -20,12 +20,6 @@ class SyncScheduler(private val context: Context) {
     private lateinit var syncInterface: SyncInterface
     private var isRunning = false
 
-    /**
-     * Applies settings changes as Syncthing delivers them, rather than at the next 15-minute cycle.
-     * Lives here because this is what already owns [syncInterface] and already knows when sync is
-     * switched on and off.
-     */
-    private val folderWatcher = SyncFolderWatcher(context)
 
     private val syncRunnable = object : Runnable {
         override fun run() {
@@ -55,7 +49,6 @@ class SyncScheduler(private val context: Context) {
                 // Handler and AlarmManager calls are thread-safe; post from IO is fine.
                 handler.postDelayed(syncRunnable, 60 * 1000L)
                 scheduleAlarm()
-                folderWatcher.start(syncInterface)
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "aw-sync native library unavailable; sync scheduler disabled", e)
                 isRunning = false
@@ -70,7 +63,6 @@ class SyncScheduler(private val context: Context) {
         Log.i(TAG, "Stopping sync scheduler (Handler chain stopped; AlarmManager fallback kept alive)")
         isRunning = false
         handler.removeCallbacks(syncRunnable)
-        folderWatcher.stop()
         // Intentionally do NOT cancel the AlarmManager alarm here: if the service is killed by
         // the OS (including on OEM devices that suppress START_STICKY restarts), the alarm must
         // survive to fire SyncAlarmReceiver. The alarm is only ever registered once (in start())

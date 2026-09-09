@@ -949,30 +949,36 @@ preserves the *source's* modification time on the files it delivers, so `stat` o
 device says when the sender wrote the file, not when it arrived. It cannot be used to establish
 propagation timing, and briefly was.
 
-### 2.3a — Apply settings when they arrive, not on the next cycle ⬜ UNVERIFIED ON DEVICE
+### 2.3a — Apply settings while the app is open ✅ MEASURED ON DEVICE 2026-09-09
 Direct follow-up to the latency found verifying 2.3, at the owner's request ("it needs a sync after
 the file's already on the tablet — trigger it automatically, no closing and reopening").
 
 `SyncInterface.refreshSharedSettingsAsync` is 2.3's settings step on its own: no native call, no
 database transfer, just the small text files read through SAF and any changed values written to the
 datastore. It is skipped while a full sync is running, since that cycle ends with the same step.
-Two things call it:
+`SharedSettingsRefresher` runs it immediately when the app is resumed and every 30s while it stays
+on screen, and stops on pause — nothing polls in the background, where nobody is looking.
 
-1. **`SyncFolderWatcher`** — a `ContentObserver` on the sync folder's document tree, so a change
-   is applied within seconds of Syncthing writing it. Notifications arrive as a burst per delivery,
-   so they are coalesced behind a 4-second quiet period rather than acted on individually.
-2. **`MainActivity.onResume`** — the same refresh every time the app is opened or resumed.
+**⚠️ The first implementation of this used a `ContentObserver` and did not work.** It is worth
+recording why, because it is the obvious design and it fails silently:
 
-**The two are deliberately redundant.** Android has never promised that `ExternalStorageProvider`
-notifies on *another* app's writes, and Syncthing is another app; whether the observer fires may be
-OEM-specific. The resume path does not assume it did. If the observer works, a rename lands while
-the owner watches; if it does not, opening the app is still enough — which is the case the owner
-actually complained about.
+- Registering an observer on the sync folder's document tree **succeeds** — no exception — and it
+  does fire, for writes by *this* app.
+- Syncthing delivering `meta.json` from the phone produced **no** notification on `SM-X520` in the
+  following 75 seconds, though the file demonstrably arrived (its mtime matched the phone's new
+  one).
+- Writing a file into the folder from `adb shell` — a different uid, like Syncthing — produced
+  **no** notification in 40 seconds either.
 
-**Check:** `scripts/check-local.sh kotlin` and the full unit suite pass. **Not verified on device
-and not unit-tested** — both triggers are Android lifecycle and content-provider plumbing that a
-JVM test cannot reach, so this is exactly the kind of change only a device test can confirm. In
-particular *whether the ContentObserver fires at all on this hardware is unknown*.
+`ExternalStorageProvider` does not notify document-tree observers about other apps' writes, and
+Android has never promised it would. An observer that reports only our own writes tells us nothing,
+so it was removed rather than kept as decoration. **A 30-second poll while visible is duller and
+works.**
+
+**Check:** `scripts/check-local.sh kotlin` and the full unit suite pass. The observer's behaviour
+above was measured on hardware. **The polling replacement is not yet verified on device** — it
+compiles and the refresh it calls is the same code path 2.3 verified, but that it fires on the
+right lifecycle events has not been watched on a phone.
 
 ---
 
