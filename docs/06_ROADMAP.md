@@ -11,13 +11,21 @@
 > `aw-server-rust@beta` `a39f52e`, which carries only the (still unused) crate — no CI build or APK
 > needed.
 >
-> ⏳ **[3.4](#34--combined-view-with-shading) is done in code and NOT yet verified on device**
-> (2026-09-09). The crate is finally wired to something: a **Combined timeline** screen in the nav
-> drawer, drawing the combined track above the per-device tracks with unresolved contention shaded
-> (**R8**), fed by a new `getCombinedTimeline` JNI call. Kotlin and host Rust both type-check;
-> `aw-server-rust@beta` is now `e2e7db3`. **This step needs a CI build and an APK**, and it is the
-> first Phase 3 step whose result can actually be seen. Until it has run on hardware, treat the
-> screen as unproven.
+> ✅ **[3.4](#34--combined-view-with-shading) is verified on both devices (2026-09-09**, CI
+> [34366963972] / `9f6f855`). The crate is wired to something at last: a **Combined timeline**
+> screen in the nav drawer, the combined track above the per-device tracks with unresolved
+> contention shaded (**R8**). **R6 is visibly holding** — the phone reads *"7h 50m combined, from
+> 9h 29m across 2 device(s)"*. Two device-only bugs were found and fixed on hardware (a
+> ThreeTenABP init-order crash, and a device contending with *itself* because origin was resolved
+> per event rather than per bucket); both are written up in 3.4. `aw-server-rust@beta` is
+> `9f6f855`.
+>
+> ⚠️ **The 3.4 screen works but looks bad, by the owner's judgement and mine** — raw UUIDs
+> colliding with the duration text at phone width, no legend, tap-detail that names apps but not
+> devices. **A design pass is owed and was deliberately deferred** at the owner's instruction; the
+> defect list is in 3.4. Do not treat the current screen as the intended one. Separately,
+> [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width) now tracks the owner's request that
+> the **aw-webui** Timeline be made usable at phone width.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -1247,7 +1255,7 @@ device count, `coalesce` refusing to merge across a flag change, and determinism
 nothing calls the crate yet. No CI build or APK; the submodule pointer moves forward carrying only
 the unused crate. The first Phase 3 device test is 3.4.
 
-### 3.4 — Combined view with shading ⏳ DONE IN CODE (2026-09-09) — ⚠️ NOT verified on device
+### 3.4 — Combined view with shading ✅ DONE (2026-09-09) — verified on both devices; ⚠️ UI pass owed
 Render the combined track above per-device tracks; shade unresolved contention. *(R8)*
 **Q4 is resolved (2026-09-02): native, phone-first, on top of the Rust pipeline from 3.2.** An
 aw-webui view comes later for desktop. Born mobile-first per **R33** — it never joins Phase 5's
@@ -1333,12 +1341,49 @@ the adapter reads only `currentwindow`, so the phone does **not** contend with i
 invisible in the combined track.** Whether "Spotify while reading" is one activity or two is a real
 design question this step answered conservatively without asking.
 
-⚠️ **Still not fully verified.** The screen has run on the **phone** (SM-S938B) and shows real
-data — *"7h 22m combined, from 9h 02m across 3 device(s)"*, i.e. **R6 holding: 7h 22m < 9h 02m**.
-It has **not** been driven on the tablet (SM-X520), and the post-fix build has not been checked on
-either. **The UI is a first pass and is known to be poor** — raw UUIDs as device names (colliding
-with the duration text), no legend, no visual design. A design pass is owed and is deliberately
-deferred; do not treat the current screen as the intended one.
+**✅ Verified on both devices 2026-09-09** (CI build [34366963972], `9f6f855`), driven over adb.
+Opened from the nav drawer on each, no crash on either.
+
+| | Phone `SM-S938B` (17:15) | Tablet `SM-X520` (17:17) |
+|---|---|---|
+| Combined total | **7h 50m** | **8h 15m** |
+| Sum of device totals | 9h 29m | 9h 53m |
+| Devices listed | **2** (was 3 before the fix) | **2** |
+| Shaded blocks | 16 | 15 |
+
+- **R6 holds on both:** the combined total is below the sum of the devices' totals — 7h 50m < 9h 29m
+  and 8h 15m < 9h 53m. That gap (1h 39m / 1h 38m) is the double-counting the whole feature exists
+  to remove.
+- **The self-contention fix is confirmed by arithmetic, not just by the count dropping.** Before,
+  the tablet appeared as two rows of 15m 57s and 1h 23m; after, it is a single row of exactly
+  **1h 39m** — their sum.
+- **The remaining shaded blocks are real.** Tapping them still gives *"Syncthing-Fork counted for
+  10m 00s — also running: Syncthing-Fork"*, but with only two devices left that is now the truth:
+  the same app genuinely was foreground on the phone **and** the tablet at once. One block reported
+  three slices across two devices (*"… also running: Syncthing-Fork, One UI Home"*), which is the
+  phone's two `currentwindow` buckets — `SessionEventWatcher` and `UsageStatsWatcher` both create
+  one — correctly counted as one device.
+
+⚠️ **The two devices disagree, legitimately.** The phone credits the tablet 1h 39m while the tablet
+credits itself 4h 46m, because each device only holds as much of its peer's history as its last
+sync brought over. **R18 promises identical output for identical *input*** — it does not promise two
+devices mid-sync agree, and this is not evidence against it. Worth remembering before reading a
+disagreement as a bug.
+
+⚠️ **UI: known bad, design pass deliberately deferred** (owner, 2026-09-09: *"the ui is so so
+bad"*, and *"if you know you will fix the ui later then later"*). Confirmed defects, worst first:
+
+1. **Device names are raw UUIDs**, and on the phone the name **collides with the duration text**
+   (`ad0c6c34-…-976bd760b22d (this devic7h)23m`). The tablet has the width to avoid the collision,
+   so this is narrow-width layout, not a data problem.
+2. **The tap detail names apps but not devices**, so genuine cross-device contention reads as
+   nonsense: *"Syncthing-Fork — also running: Syncthing-Fork"* is correct but unreadable. It must
+   say *which device* each side was on.
+3. No legend — the colour of a block is unexplained until tapped.
+4. Oversized default `‹` / `›` / `TODAY` controls; a paragraph where the summary wants figures.
+5. The tablet rendering is already decent (see the 17:17 screenshot); the work is at phone width.
+
+[34366963972]: https://github.com/Judemasic/aw-android/actions/runs/34366963972
 
 ---
 
@@ -1614,8 +1659,21 @@ per device, with unresolved contention striped (**R8**).
   than a tint for shading.
 - `check-local.sh` gained `cargo check -p aw-server --lib`. All local checks green.
 - `aw-server-rust@beta` → `e2e7db3`; submodule pointer moved.
-- ⚠️ **Nothing has run on hardware.** Next: CI build, install on both devices, then check the R6
-  summary against the per-device totals and that a contended block is actually striped.
+- ✅ **Verified on both devices** (CI [34366963972] / `9f6f855`). Phone: *"7h 50m combined, from
+  9h 29m across 2 device(s), 16 shaded"*; tablet: *"8h 15m from 9h 53m, 2 devices, 15 shaded"*.
+  **R6 holds on both.** Two device-only bugs were found and fixed on the way: the Activity crashed
+  on every launch (`LocalDate.now()` in a property initialiser, before `AndroidThreeTen.init`), and
+  the tablet contended with **itself** because origin was resolved per event rather than per bucket
+  — it appeared as `jude_s_tab_s10_fe` *and* `7b54cfe9…`, which is its own `device_id`. After the
+  fix it is one row of exactly 1h 39m, the sum of the two it was split into.
+- The two devices report different totals, legitimately: each holds only as much of its peer's
+  history as its last sync brought over. **R18 is about identical input**, not about two devices
+  agreeing mid-sync.
+- ⚠️ **UI is known bad and the design pass is deferred** at the owner's instruction. Worst first:
+  raw UUIDs colliding with the duration text at phone width; tap detail that names apps but not
+  devices (so real cross-device contention reads as *"Syncthing-Fork — also running:
+  Syncthing-Fork"*); no legend. Full list in 3.4.
+- Next: **4.1 — Resolution sheet**, or the 3.4 UI pass first if the owner prefers.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
