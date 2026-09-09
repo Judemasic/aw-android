@@ -1,9 +1,15 @@
 # 06 — Roadmap
 
-> **👉 START HERE:** ✅ **Phase 1 is done, and [2.1](#21--shared-folder-layout--version)
-> is verified on both devices as of 2026-09-09 — `VERSION`, `devices/<uuid>/meta.json`, and
-> the refuse-a-newer-folder rule, plus a SAF extension-renaming bug (`VERSION` becoming
-> `VERSION.txt`) found and fixed during that pass. Next: [2.2](#22--append-only-jsonl-store).**
+> **👉 START HERE:** ✅ **Phase 1 and Phase 2 are done and verified on both devices as of
+> 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 has started:
+> [3.1](#31--origin-tagging-at-merge) is done in code and unverified on device** — imported
+> events now carry the UUID of the device that collected them. It needs a CI build and one adb
+> check on the tablet before 3.2; the instructions are in the 2026-09-09 log entry.
+>
+> **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
+> button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
+> settings and its cycle ends with the settings step. What is missing is *visibility*, so 2.3b is
+> a line of text, not a button. It can be done any time; it does not block 3.2.
 >
 > **The 4.2% ceiling is gone, measured not assumed (2026-09-04, step
 > [1.11](#111--bump-aw-webui-past-the-960-fix)).** `aw-webui` moved `3cbe349 → a2ca625`, carried
@@ -995,19 +1001,92 @@ were untouched throughout).
 unit-tested — both are Android lifecycle plumbing a JVM test cannot reach, which is precisely why
 the first attempt's failure had to be found on hardware.
 
+### 2.3b — Show when settings last synced ⬜ DECIDED 2026-09-09, NOT BUILT
+Settings propagation is invisible: it works, and the only evidence is a logcat line. The owner
+asked whether to spend a step on a manual trigger or on an indicator. **Decided: the indicator.**
+
+- **No new button.** [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put
+  **Sync Now** in Sync settings, and since 2.3 that cycle ends with the settings step — so the
+  manual trigger the question asks for exists and already does the job. A second button for
+  settings alone would be two controls doing one thing, and would need its own guard against
+  colliding with the first.
+- **What is actually missing is an answer to "did it work?"** — which today requires
+  `adb logcat`. So: a line under Sync settings reading e.g. *"Settings: 8 shared, last applied
+  12:34 from Tab-S10FE"*, plus *"never"* when nothing has ever been applied — the state that
+  currently looks identical to a broken sync.
+- **Where the values come from:** `syncSharedSettings` already knows all of it — the size of
+  `plan.linesToAppend`, the keys in `plan.valuesToApply`, and the device that wrote the winning
+  record. It needs storing in `AWPreferences` (device-local, [`05`](05_DATA_MODEL.md) §7) and
+  rendering; no new sync machinery.
+
+**Check:** change a category on device A; device B's Sync settings shows a fresh "last applied"
+time within a minute of the file arriving, without opening logcat.
+
 ---
 
 ## Phase 3 — Combined timeline (read-only)
 
-### 3.1 — Origin tagging at merge ⬜
+### 3.1 — Origin tagging at merge ✅ DONE IN CODE 2026-09-09 — ⬜ NOT VERIFIED ON DEVICE
 Tag imported events with their source device UUID. *(R11 — raw data untouched)*
+
+**Result.** Every event copied in from another device now carries `$aw.origin.device` in its
+`data`, holding the **UUID** of the device that collected it. The tag is derived at merge time from
+the directory the database was read out of — the shared folder is laid out
+`<hostname>/<device uuid>/test.db`, so the path already knows the answer and the writing device
+never has to stamp anything into its own events (**R11**).
+
+1. **`origin_from_db_path`** (`aw-sync/src/util.rs`) is the one place that turns a path into a
+   device. It returns nothing rather than guessing when there is no parent directory name: an
+   untagged event can still be attributed from its bucket, a *wrongly* tagged one cannot be told
+   apart from a correct one.
+2. **`sync_run` carries the origin alongside each remote datastore**, because that is the only
+   point where the file's path is still in hand. `sync_datastores`' existing `src_did` argument
+   — until now always `None` on the import path — is what delivers it, so no public
+   signature changed.
+3. **`sync_one` tags each event as it is read**, before any of the three write paths (paged
+   insert, last-page insert, boundary heartbeat), so none of them can forget to.
+4. **Export is untouched.** A staging copy is this device's own first-hand data; a tag on it would
+   reach a peer as provenance it never had. An existing tag is also never overwritten, so data
+   relayed through a third device keeps its true origin.
+5. **A latent panic went with it.** The "bucket hostname is `unknown`" fixup did
+   `src_did.unwrap()`, and `src_did` was always `None` on import — one malformed bucket in a
+   peer's database would have taken the sync down. It now warns and carries on.
+
+**Judgment calls.**
+
+- **The tag is a UUID, not a hostname**, and it is a *new* key rather than a reuse of the
+  bucket-level `$aw.sync.origin` (which is a hostname, and builds the `-synced-from-<host>` bucket
+  id). Sharing one key name for two kinds of value is how the pair would eventually be misread
+  — and touching the bucket id would split history, which
+  [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_) already warns about.
+- **On the event, not on the bucket.** Step ① of the pipeline in
+  [`04`](04_COMBINED_TIMELINE.md) §2 flattens every device's events into one list, at which
+  point the bucket is gone. Tagging the bucket would also have been half-useless in practice:
+  bucket data is only written at creation, so the buckets already imported on the tablet could
+  never gain it.
+- **No backfill.** The merge resumes from the newest event it already holds and never revisits
+  older ones, so the phone history already on the tablet stays untagged. Rewriting hundreds of
+  thousands of existing rows on a phone to add a field that is recoverable another way is a bad
+  trade — 3.2 resolves an untagged event through its bucket's `-synced-from-<hostname>` suffix
+  and `devices/<uuid>/meta.json`'s `displayName`. See [`05`](05_DATA_MODEL.md) §6.
+
+**Check:** `scripts/check-local.sh` passes in all four modes; `cargo test -p aw-sync` passes
+(28 tests, 5 new). The new tests assert that imported events carry the origin, that the *source*
+events are not modified, that staged/exported events carry no tag, and that an existing tag
+survives a relay — plus two on the path→UUID derivation.
+
+**⚠️ Not verified on device.** Nothing here can be verified off one: it needs two real
+devices and a shared folder. See "How to test this" in the 2026-09-09 log entry below.
 
 ### 3.2 — Segmentation + classification ⬜
 Implement pipeline steps ①–③ from [`04`](04_COMBINED_TIMELINE.md) §2, **in Rust** so a future
 desktop client and a future aw-webui view reuse it (R2, Q4). Include idle exclusion and the
 minimum-duration threshold (Q1).
 **Check:** golden tests — known event sets produce known segments. Include a three-device case; a
-two-device-only implementation will pass a two-device test and still violate **R1**.
+two-device-only implementation will pass a two-device test and still violate **R1**. Include an
+**untagged** event too: everything imported before 3.1 has no `$aw.origin.device`, and step ①
+must fall back to the bucket's `-synced-from-<hostname>` suffix resolved through
+`devices/<uuid>/meta.json` rather than dropping it.
 
 ### 3.3 — Provisional attribution ⬜
 Pipeline steps ⑤–⑥ with the deterministic tiebreak. *(R17, R18)*
@@ -1225,6 +1304,91 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (night) — 3.1: imported events now say which device they came from
+Phase 3's first step, and the smallest one: an event copied in from another device carries the
+UUID of the device that collected it, in `$aw.origin.device`. Everything after it in Phase 3 rests
+on being able to ask an event "whose is this?" without parsing a bucket id or trusting a hostname.
+
+The device is worked out from **where the file was**, not from anything the sending device wrote.
+The shared folder is `<hostname>/<device uuid>/test.db`, so by the time a peer's database is opened
+the answer is already in the path — `origin_from_db_path` in `aw-sync/src/util.rs` reads it, and
+`sync_run` carries it alongside each remote datastore because that is the last point where the path
+still exists. It travels down through `sync_datastores`' existing `src_did` argument, which the
+import path had always passed `None`, so no public signature changed. Export is untouched: a device
+never tags its own data, which is what keeps its raw record pristine (**R11**).
+
+Two things fell out of it. `src_did.unwrap()` in the "bucket hostname is `unknown`" fixup would have
+panicked on any import that hit it — `src_did` was always `None` there — and now warns instead.
+And the import log line grew the origin: `= Synced 42 new events, tagged origin <uuid>`. That line
+exists specifically so this step can be checked on a device at all; the tag lives inside event data,
+which nothing in the UI is guaranteed to show, and app-private storage cannot be read over adb.
+
+**What was decided and not built.** The owner asked whether to spend a step on a Sync Now button for
+settings or a "last synced" indicator. It is the indicator: [1.7](#17--sync-settings-reachability-and-a-manual-trigger)'s
+**Sync Now** already exists and, since 2.3, its cycle ends with the settings step — so the button
+is there and works. What nobody can see is whether it did anything. Written up as
+[2.3b](#23b--show-when-settings-last-synced); it does not block 3.2.
+
+**Repos:** `aw-server-rust@beta` first, then the pointer in `aw-android@beta` — the habit the
+submodule has already broken once.
+
+#### How to test this
+
+Nothing here is dangerous: no file is renamed, moved or deleted, and nothing writes to the
+Syncthing folder that was not written every cycle already. **Do not rename the sync folder** —
+the standing rule from D25/D26 — and nothing below asks you to.
+
+**Only newly imported events get tagged.** The merge resumes from the newest event it already holds,
+so history already on the tablet stays untagged by design. If you sync without making new activity
+on the phone first, there will be nothing to see and that is not a failure. Step 2 exists for this.
+
+1. Wait for the CI build of `aw-android@beta` to finish, and install that APK on **both** the phone
+   (`SM-S938B`) and the tablet (`SM-X520`).
+2. On the **phone**, open some app you do not normally use — anything — and use it for about
+   three minutes, so there is fresh activity that has never been synced.
+3. On the **phone**: open ActivityWatch ▸ **Settings** ▸ **Sync** ▸ tap **Sync Now**. Wait for it
+   to finish.
+4. Give Syncthing a minute to carry the file to the tablet.
+5. Plug the **tablet** in and start watching its log. Run this on the PC, and leave it running:
+
+   ```
+   adb logcat -c && adb logcat -s aw-sync SyncInterface
+   ```
+
+6. On the **tablet**: open ActivityWatch ▸ **Settings** ▸ **Sync** ▸ tap **Sync Now**.
+7. **PASS** is a line in that log reading, with a real UUID in place of the last field:
+
+   ```
+   = Synced 42 new events, tagged origin 3f1c9a20-....
+   ```
+
+   Any number of events is fine. What matters is that `tagged origin` is present and the UUID is
+   the **phone's**, not the tablet's.
+8. Confirm it is the phone's UUID. On the **phone**, with the phone plugged in:
+
+   ```
+   adb logcat -d -s SyncInterface | grep "Device id"
+   ```
+
+   **PASS**: the UUID it prints matches the one in step 7 exactly.
+9. **FAIL** looks like any of these, and they mean different things — please say which one:
+   - `= Synced 42 new events` with **no** `tagged origin` — the origin was not derived; the
+     warning `Cannot tell which device ... belongs to` should be in the same log.
+   - `✓ Already up to date!` and no synced line at all — nothing new arrived; step 2 or step 4
+     did not do their job. Not a 3.1 failure.
+   - `tagged origin` showing the **tablet's** own UUID — that would be a real bug and the most
+     important thing to catch.
+   - `Sync failed:` — unrelated breakage; send the whole line.
+10. Optional, and the nicest confirmation if the view cooperates: on the **tablet**, open
+    ActivityWatch ▸ the web view ▸ **Raw Data**, choose the bucket ending
+    `-synced-from-<phone hostname>`, and look at the newest event's data. If it lists
+    `$aw.origin.device`, that is the tag in the stored data rather than in a log line. If the view
+    does not show data fields at all, skip it — that is not a failure, it just means aw-webui
+    does not surface them.
+
+**What to send back:** the `= Synced ... tagged origin ...` line from step 7, the `Device id` line
+from step 8, and — if you did step 10 — a screenshot of the event's data.
 
 ### 2026-09-09 (evening, later) — the elegant fix did not work; the dull one does
 The `ContentObserver` added an hour earlier never fired for the writes that matter. It registers

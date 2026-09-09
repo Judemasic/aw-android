@@ -224,6 +224,28 @@ Events gain an origin tag during the merge so the combined timeline can attribut
 recorded at **merge** time from the containing directory rather than being written into each event
 at capture time, which keeps raw per-device data untouched (**R11**) and costs nothing at write.
 
+**Built in 3.1 (2026-09-09).** The tag is `$aw.origin.device` in the event's `data`, and its value
+is the **device UUID** — the name of the directory the database was read from
+(`aw-sync/src/util.rs`, `origin_from_db_path`). Three things about it are deliberate:
+
+- **UUID, not hostname.** `devices/<uuid>/meta.json` (§3) and every decision signature key on the
+  UUID, and a hostname is a display name the owner can change — and one aw-webui already truncates
+  (roadmap 1.10). The bucket-level `$aw.sync.origin`, which is a hostname, stays exactly as it was;
+  it exists to build the `-synced-from-<host>` bucket id, and changing it would split history
+  across two bucket ids for no gain.
+- **On the event, not only on the bucket.** The pipeline in [`04`](04_COMBINED_TIMELINE.md) §2 step
+  ① flattens every device's events into one list, at which point the bucket is gone. A tag on the
+  event survives that flattening; a tag on the bucket has to be threaded through every consumer.
+- **Never written on export.** A device's own staging copy is first-hand data it is offering to
+  peers, and the tag is only ever added to *this* device's imported copy. An existing tag is also
+  never overwritten, so if data is ever relayed through a third device the original origin wins.
+
+⚠️ **Events imported before 3.1 have no tag**, and nothing backfills them — the merge resumes from
+the newest event it already has and never revisits older ones. Their origin is still recoverable:
+their bucket id ends `-synced-from-<hostname>`, and `devices/<uuid>/meta.json` maps a hostname back
+to a UUID via `displayName`. Step 3.2 has to handle both, and its golden tests must include an
+untagged event.
+
 ---
 
 ## 7. Local-only state
