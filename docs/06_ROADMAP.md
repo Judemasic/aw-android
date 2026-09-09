@@ -1747,6 +1747,90 @@ Five seeded devices, 16 combined segments, 7 of them contended — driven at **4
    about it, and the 3.5c block stepper's key lookup would have landed on the wrong one of the pair.
    The row index is part of the key now.
 
+### 4.1b — Redesign the combined screen for the phone ⬜ ← **next, and it blocks nothing else**
+
+> **Decided by the owner 2026-09-09**, after driving the built app on the S25U. They rejected an
+> incremental fix and chose *"design the phone screen properly"* — treat the phone as its own screen
+> rather than the 1280px layout squeezed down. *"stop and think this through, the page is starting
+> to be a bit missing and hacking a solution is gonna make it worse."* **Do not patch this one
+> further. Design it.**
+
+#### The measurement that started it
+
+`412 × 915` in headless Edge, `/#/combined`. A real phone has **less** height than this — the native
+action bar takes another ~90px on top.
+
+| Band | Height |
+|---|---|
+| aw-webui navbar (**a second one**, inside the app's own action bar) | 58px |
+| `Combined` + day nav | 34px |
+| `Range & devices` fold-out | 36px |
+| `View` fold-out | 36px |
+| Stat tiles | 57px |
+| Minimap | 26px |
+| Prev/Next stepper | 31px |
+| **Chrome before any data** | **334px** |
+| Timeline (fixed `520px`, [`ProportionalTimeline.vue`](../../aw-server-rust/aw-webui/src/visualizations/ProportionalTimeline.vue) `timelineHeight`) | 520px |
+
+#### The actual defect — nested scrolling, not "the panel is too far down"
+
+The page **is** scrollable, by 78px. The owner still could not scroll it, because the timeline is
+520 of the ~580 visible pixels: **every drag a thumb makes starts inside the timeline's own scroll
+container and moves that instead of the page.** Anything below the timeline is therefore
+unreachable — which on device meant the 4.1 **Resolve…** button rendered correctly and could not be
+tapped.
+
+⚠️ **The stopgap in `aw-webui@751bf6e` is rejected.** It made `.detail.sheet` a fixed 60vh panel
+docked over the timeline. The owner: *"you are gonna make the whole details stay docked? that is
+like more than half of the screen."* They are right, and it also fixes neither the nested scrolling
+nor the 334px of chrome. **CI run 34405376414 is green and contains it; it was deliberately NOT
+installed.** Either fold it into the redesign or revert it — do not build on it.
+
+⚠️ **The headless run passed this screen.** It clicked elements through the DOM instead of scrolling
+to them, so it never discovered that a control could not be reached. **Reaching a control is part of
+whether the control works** — drive the real app.
+
+#### Owner's decisions for the redesign (2026-09-09)
+
+| Question | Answer |
+|---|---|
+| **Which of the two top bars survives** | **The aw-webui navbar.** Hide the **native** Android action bar instead. ⚠️ **Open problem:** Sync Settings and API Authentication exist *only* in the native drawer, and the web UI has no equivalent — the redesign must give them a home before that bar can go. |
+| **What the phone screen is for** | **Resolving overlaps**, **finding one specific stretch**, and **glancing at the day** — with a caveat, below. |
+| **Resolving on a phone** | **Full support.** *"Phone too."* Big targets, one decision per screen, comfortable to do ten in a row. This gets to shape the layout. |
+| **Day nav** | **Stays as it is, next to the title.** *"the day stays as it is next to the title no problem"* |
+| **Minimap** | **Stays, and gains dragging.** *"make the minimap strip not just tappable but also scrollable or like draggable"* — drag the viewport marker to scrub the day, not just tap to jump. |
+| **Stat tiles** | **Keep the numbers, shrink the furniture.** *"stat tiles are taking extra space they can be neater"* — not removed, made compact. |
+| **`Range & devices` + `View` fold-outs** | **Collapse both into a ⚙ button next to TODAY at the top.** *"make the range device and view into a gear button next to the today at the top"* |
+
+❓ **One answer still needs the owner, first thing:** on what this screen is for, they wrote *"maybe
+the glance is better represented on the Activity, which should also be in the map."* Two readings,
+and they change the design:
+1. **"Glance at the day" belongs to the Activity view, not Combined** — so Combined drops the
+   at-a-glance job and commits to resolving + finding, which would justify cutting the stat tiles
+   much harder than "neater".
+2. **The Activity view should also appear in the minimap** — i.e. the minimap gains a categorised
+   or Activity-style band alongside the contention band.
+
+**Ask which before designing the header.** Do not guess: reading (1) removes a whole job from the
+screen.
+
+#### What the redesign must fix, restated as acceptance criteria
+
+1. **One scroller, or none.** A thumb-drag anywhere on the screen must move something useful. No
+   nested scroll container competing with the page.
+2. **Every control reachable by thumb**, verified by *scrolling and tapping on hardware*, not by
+   DOM-clicking in a headless browser.
+3. **One top bar**, not two.
+4. **Chrome well under 334px** before the first block.
+5. **The resolution sheet is comfortable for ten decisions in a row** — that is now a primary job,
+   not an occasional one.
+6. Still **R35**: whatever this becomes must not break the tablet or the 1280px desktop layout.
+
+#### Not blocked by this
+
+4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout. If the
+redesign stalls on the open question above, **do 4.2 first**.
+
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
 **Check:** resolve on A → after sync, B shows the same resolution and no longer asks. *(R26)*
@@ -2141,8 +2225,19 @@ per device, with unresolved contention striped (**R8**).
 - 🐛 That run caught three real defects, fixed in the same commit: a raw-uuid device label (the 3.4
   defect, back again), duplicate participants from a heartbeat-split background event, and colliding
   row keys that the new stepper would have resolved to the wrong block.
-- Next: **4.2 — Persist + apply decisions.** Append to `decisions.jsonl`, apply exact matches then
-  `always` rules, mark `auto_resolved`.
+- 📱 **Installed on both devices and driven over adb.** 3.5c confirmed on hardware: the drawer entry
+  stays in `MainActivity` and swaps in the web view, and the stepper works — eight taps moved the
+  counter to **8 / 499**, and tapping a block jumped it to **148 / 499**, so taps and buttons share
+  one selection.
+- 🐛 **That run found a defect the headless run had passed:** on a phone the detail panel, and the
+  4.1 **Resolve…** button in it, could not be reached. The timeline is 520 of ~580 visible pixels
+  and is its own scroll container, so every thumb-drag scrolls it rather than the page. The headless
+  run missed it by clicking through the DOM instead of scrolling.
+- ✋ **The owner stopped the incremental fix** and chose a proper phone redesign — see
+  [4.1b](#41b--redesign-the-combined-screen-for-the-phone). The docked-sheet stopgap in
+  `aw-webui@751bf6e` is **rejected**; CI 34405376414 is green with it and was **not installed**.
+- Next: **4.1b**, once the owner answers the open question in it. **4.2 — Persist + apply
+  decisions** is not blocked by the layout and can go first if 4.1b stalls.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
