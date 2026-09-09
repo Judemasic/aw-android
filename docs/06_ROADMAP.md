@@ -2,9 +2,12 @@
 
 > **👉 START HERE:** ✅ **Phase 1 and Phase 2 are done and verified on both devices as of
 > 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 has started:
-> [3.1](#31--origin-tagging-at-merge) is done in code and unverified on device** — imported
-> events now carry the UUID of the device that collected them. It needs a CI build and one adb
-> check on the tablet before 3.2; the instructions are in the 2026-09-09 log entry.
+> [3.1](#31--origin-tagging-at-merge) is done in code, built by CI, and unverified on device** —
+> imported events now carry the UUID of the device that collected them. **The CI build is ready:
+> run [34343835497] built `feb127e` (both repos pushed) and is green; the `aw-android-apk`
+> artifact is downloadable and unexpired.** All that is left before 3.2 is the on-device adb
+> check — install that APK on both devices and follow "How to test this" in the 2026-09-09 (night)
+> log entry. 3.2 waits on that report.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -69,6 +72,7 @@
 [#663]: https://github.com/ActivityWatch/aw-server-rust/pull/663
 [#966]: https://github.com/ActivityWatch/aw-webui/pull/966
 [#956]: https://github.com/ActivityWatch/aw-webui/pull/956
+[34343835497]: https://github.com/Judemasic/aw-android/actions/runs/34343835497
 
 **How to work this document:** do one step, run its check, stop. Then update the step in place —
 mark it `✅ DONE (date)`, write a **Result** saying what is *actually true now*, and flag with ⚠️
@@ -1077,6 +1081,8 @@ survives a relay — plus two on the path→UUID derivation.
 
 **⚠️ Not verified on device.** Nothing here can be verified off one: it needs two real
 devices and a shared folder. See "How to test this" in the 2026-09-09 log entry below.
+**CI build ready:** run [34343835497] built `feb127e` and is green; the `aw-android-apk` artifact
+is downloadable and unexpired. The device test is the only thing left before 3.2.
 
 ### 3.2 — Segmentation + classification ⬜
 Implement pipeline steps ①–③ from [`04`](04_COMBINED_TIMELINE.md) §2, **in Rust** so a future
