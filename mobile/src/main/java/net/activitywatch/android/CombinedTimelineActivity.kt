@@ -9,6 +9,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.jakewharton.threetenabp.AndroidThreeTen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,7 +36,13 @@ class CombinedTimelineActivity : AppCompatActivity() {
     private lateinit var tvDetail: TextView
     private lateinit var progress: ProgressBar
 
-    private var day: LocalDate = LocalDate.now()
+    /**
+     * The day being shown. Assigned in [onCreate], **not** here: a property initialiser runs during
+     * `<init>`, before any of our code has had a chance to call `AndroidThreeTen.init`, and
+     * `LocalDate.now()` needs the timezone data that call registers. Doing it here crashed the
+     * Activity on launch with `ZoneRulesException: No time-zone data files registered`.
+     */
+    private lateinit var day: LocalDate
 
     /**
      * Built once and reused. Constructing it loads the native library and opens the datastore, which
@@ -45,6 +52,10 @@ class CombinedTimelineActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // This app has no Application subclass, so every entry point registers the timezone data
+        // itself (see CategoryTimeWidgetUpdater and NotifyWorker). It is idempotent.
+        AndroidThreeTen.init(this)
+        day = LocalDate.now()
         setContentView(R.layout.activity_combined_timeline)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         title = getString(R.string.combined_timeline)
