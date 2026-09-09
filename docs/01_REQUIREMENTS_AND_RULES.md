@@ -56,6 +56,12 @@ Two devices, same hour. The phone reports **YouTube playing**. The tablet report
 Background time is *not* deleted. It stays queryable ("how much YouTube was playing while I read?").
 It simply does not inflate the day.
 
+> **Enforced by a test since roadmap 3.3:** `aw-server-rust/aw-combined/tests/invariants.rs` asserts
+> R6 as a property over several shaped inputs — segments sorted and non-overlapping, exactly one
+> valid `foreground` per segment, and total duration equal to the measure of the *union* of the
+> post-idle activity intervals (computed by hand, not summed per device), preserved across
+> `coalesce`. It also exercises R17's provisional pick and R18's determinism.
+
 ### 3.3 Contention
 
 > **R7 — A *contention window* is any interval where two or more devices report simultaneous

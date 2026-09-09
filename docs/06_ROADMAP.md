@@ -3,12 +3,15 @@
 > **👉 START HERE:** ✅ **Phase 1 and Phase 2 are done and verified on both devices as of
 > 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 is under way:
 > [3.1](#31--origin-tagging-at-merge) is verified on both devices (2026-09-09, CI [34343835497] /
-> `feb127e`), and [3.2](#32--segmentation--classification) is done in code (2026-09-09)** — the
-> `aw-combined` crate in `aw-server-rust` now has the normalise/segment/classify pipeline with 29
-> passing tests. Nothing calls it yet, so there is nothing to verify on a device. The submodule
-> pointer moved to `aw-server-rust@beta` `ad0e2e5`, which carries only the new unused crate — no CI
-> build or APK needed. **The next step is [3.3](#33--provisional-attribution)** — provisional
-> attribution (pipeline steps ⑤–⑥), also pure Rust with no device test.
+> `feb127e`), and [3.2](#32--segmentation--classification) and
+> [3.3](#33--provisional-attribution) are done in code (2026-09-09)** — the `aw-combined` crate in
+> `aw-server-rust` now has the full normalise/segment/classify/**attribute** pipeline plus a
+> separate opt-in `coalesce`, with 42 passing tests including a direct R6 invariant suite. Nothing
+> calls it yet, so there is nothing to verify on a device. The submodule pointer moved to
+> `aw-server-rust@beta` `a39f52e`, which carries only the (still unused) crate — no CI build or APK
+> needed. **The next step is [3.4](#34--combined-view-with-shading)** — wire `aw-combined` to a
+> native phone-first view over JNI and shade unresolved contention; this one **does** need a CI
+> build and an APK, and it is the first Phase 3 device test.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -1144,9 +1147,11 @@ platform-agnostic (**R2**).
   contention "attaches to the neighbouring settled segment", which is undefined when both
   neighbours are settled with different activities, or when there is no settled neighbour at all.
   Demoting keeps the segment, its data, and determinism, and stops it being shaded or asked about —
-  which is what §2.2 is for. **Open point for 3.3:** whose activity a demoted
-  `absorbed_short_contention` segment's time is ultimately credited to. `state == Settled`
-  therefore does **not** imply ≤1 device — consumers must check `active`, not `state`.
+  which is what §2.2 is for. ~~**Open point for 3.3:** whose activity a demoted
+  `absorbed_short_contention` segment's time is ultimately credited to.~~ **Closed in 3.3:** it
+  still goes through the same provisional pick as any other segment, so its time is credited to its
+  longest-running activity — nobody's by decision, the longest activity's by placement. `state ==
+  Settled` therefore does **not** imply ≤1 device — consumers must check `active`, not `state`.
 
 **Check:** `cargo test -p aw-combined` — 29 tests, all green: 14 golden + 6 unit + 9 adversarial.
 The golden tests assert the
@@ -1177,10 +1182,64 @@ There is **nothing to test on a device** and nothing for the owner to do: this s
 over fixed inputs, and nothing depends on the new crate yet. No CI build or APK is needed — the
 `aw-server-rust` submodule pointer moves forward but carries only an unused crate.
 
-### 3.3 — Provisional attribution ⬜
+### 3.3 — Provisional attribution ✅ DONE (2026-09-09) — done in code, no device test
 Pipeline steps ⑤–⑥ with the deterministic tiebreak. *(R17, R18)*
 **Check:** the same input yields identical output across repeated runs and across devices; totals
 equal wall-clock (**R6**) — assert this directly, it is the invariant everything else rests on.
+
+**Result.** `aw-combined` gained ⑤ `attribute` (run by `compute_segments` straight after ③) and ⑥
+`coalesce` (a separate `pub fn` that `compute_segments` deliberately does **not** call). `Segment`
+gained `foreground: usize` (an index into `active`) and `unresolved: bool`, with
+`foreground_slice()` / `background_slices()` accessors for 3.4 to call.
+
+- **Why `ActiveSlice` grew `source_start` / `source_end`, and why this is the important part of the
+  entry.** `04` §2.4 rule 1 and **R17** both say "longest total duration in the segment wins". Read
+  literally against the old types **that rule was dead code**: every slice in a segment covers the
+  segment exactly (by construction in ②), so every candidate was the same length and *every* pick
+  fell through to the UUID tiebreak — "lowest device UUID" would have been the only real rule, and
+  every natural test would still pass. Rule 1 only means something if it compares the **originating
+  activity interval** — the phone's hour-long YouTube session versus the tablet's fifteen-minute
+  Kindle dip — so each slice now records that interval's span.
+- **The total order** ⑤ applies, in sequence: (1) longest `source_end - source_start`; (2) lowest
+  `device`; (3) lowest `bucket_id`; (4) lowest canonical `serde_json` string of `data`. Levels 3–4
+  exist because rule 2 cannot separate one device's two overlapping buckets and `data` is not in
+  ①'s sort key — without them the winner could depend on input order and break **R18**.
+- **`unresolved` = `state == Contended`.** Provisional attribution changes *which* activity counts;
+  it never clears the shading (**R8**). A segment demoted to `Settled` by the short-contention pass
+  is `unresolved = false`.
+- **`coalesce` is opt-in and lossy.** It merges adjacent segments whose **foreground `device` and
+  `data` match** and whose flags all match, contiguous only. Keyed on the foreground pair, not the
+  whole `active` vec: ActivityWatch splits one session into many heartbeat events carrying
+  different source spans, so keying on `active` equality would merge essentially nothing and leave
+  the view a wall of 30-second slivers. The merged `active` is the union of the parts', so
+  per-instant background detail is gone — which is why `compute_segments` stays lossless and Phase
+  4 keeps the atomic segments to attach decisions to.
+- **Judgment calls.** (a) The recorded source span is **post-idle**, not the raw event span: a
+  YouTube event that ran an hour with 40 minutes idle should not out-claim a tablet that read for
+  25 straight minutes. (b) An `absorbed_short_contention` segment still gets the same provisional
+  pick — see the next bullet.
+- **The open point 3.2 handed forward is now closed.** "Whose time is a demoted
+  `absorbed_short_contention` segment's?" — nobody's by decision, the **longest activity's by
+  placement**. It is `Settled` so it is never shaded or asked about, but it goes through the same
+  ⑤ pick as everything else, so its time is credited, not lost.
+
+**Check:** `cargo test -p aw-combined` — **42 tests green** (6 unit + 18 golden + 15 adversarial +
+3 invariants). The new `tests/invariants.rs` asserts **R6** as a property over several shaped
+inputs: segments sorted and non-overlapping, exactly one valid `foreground` each, and
+`Σ (end - start)` equal to the measure of the *union* of the post-idle activity intervals —
+hand-computed (overlapping devices + an idle hole + a gap → 5700 s), explicitly *not* the sum of
+the devices' durations — and that `coalesce` conserves it. Golden adds: rule 1 discriminates
+against an opposing tiebreak (the losing device's UUID sorts lower on purpose), and `coalesce`
+merges a heartbeat-split session while refusing to merge across an app change or a gap. Adversarial
+adds: all three tiebreak levels, idle shortening a claim, `unresolved` tracking `Contended` not
+device count, `coalesce` refusing to merge across a flag change, and determinism through
+`coalesce` with slices tied on duration *and* device. `cargo test -p aw-sync` still green;
+`cargo check --workspace` clean; `scripts/check-local.sh rust` passes. `aw-server-rust@beta` is
+`a39f52e`.
+
+**Nothing to test on a device and nothing for the owner to do** — pure Rust over fixed inputs, and
+nothing calls the crate yet. No CI build or APK; the submodule pointer moves forward carrying only
+the unused crate. The first Phase 3 device test is 3.4.
 
 ### 3.4 — Combined view with shading ⬜ ← *the screen the owner actually wants*
 Render the combined track above per-device tracks; shade unresolved contention. *(R8)*
@@ -1394,7 +1453,37 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 
 ## Progress log
 
-### 2026-09-09 (night, latest) — 3.2: the segmentation pipeline, in a crate of its own
+### 2026-09-09 (later, latest) — 3.3: provisional attribution + coalesce
+Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
+classify and picks, for every segment, the single slice that counts toward day totals (**R6/R17**);
+`aw-combined::coalesce` is a **separate opt-in** function that merges heartbeat-split slivers for
+the view.
+
+- **The catch this step existed to fix:** R17 rule 1 ("longest total duration in the segment wins")
+  was **dead code** against the old types — every slice covers its segment exactly, so every
+  candidate was the same length and every pick fell through to "lowest device UUID". `ActiveSlice`
+  now carries `source_start` / `source_end` — the span of the **originating** activity interval,
+  **post-idle** — so the phone's hour-long YouTube session actually beats the tablet's
+  fifteen-minute Kindle dip.
+- **Total order:** longest source span → lowest `device` → lowest `bucket_id` → lowest canonical
+  `data` string. The last two keep the result independent of input order (**R18**).
+- **`unresolved` = `Contended`**; a short-contention segment demoted to `Settled` is not shaded but
+  still gets a provisional pick — which **closes the open point 3.2 left**: its time goes to its
+  longest-running activity, by placement not by decision.
+- **`coalesce` keys on the foreground `(device, data)` pair**, not the whole `active` vec, because
+  a heartbeat-split session's slices differ by source span and would otherwise never merge. It is
+  lossy (merged `active` is the union), so `compute_segments` never calls it and Phase 4 keeps the
+  atomic segments.
+- **`tests/invariants.rs`** asserts **R6** directly: totals equal the union measure of the
+  post-idle intervals (hand-computed, not the device-duration sum), one foreground per segment,
+  non-overlapping, conserved by `coalesce`. 42 `aw-combined` tests green; `aw-sync` still green;
+  workspace check clean; `check-local.sh rust` passes.
+- `aw-server-rust@beta` → `a39f52e`; submodule pointer moved. Carries only the unused crate, so no
+  CI build and no APK — 1.11's and 3.1's hardware verification stand. Nothing to test on a device.
+- Next: **3.4** — wire `aw-combined` to a native phone-first view over JNI, shade `unresolved`
+  segments. First Phase 3 device test; needs a CI build and an APK.
+
+### 2026-09-09 (night) — 3.2: the segmentation pipeline, in a crate of its own
 The first half of the combined-timeline pipeline (`04` §2 steps ①②③) is now real Rust, in a new
 `aw-server-rust` workspace crate **`aw-combined`**. One pure function,
 `compute_segments(PipelineInput) -> Vec<Segment>`, turns every device's post-sync activity and idle

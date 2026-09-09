@@ -3,9 +3,11 @@
 > How the merged view is computed, how contention is detected and shown, and how the owner resolves
 > it. Implements [`01_REQUIREMENTS_AND_RULES.md` §3](01_REQUIREMENTS_AND_RULES.md).
 >
-> Pipeline steps ①–③ landed in code in roadmap 3.2 — the `aw-combined` crate in `aw-server-rust`
-> (`compute_segments`, modules `normalise` / `segment` / `classify`). Steps ④–⑥ and the resolution
-> UI (§3 onward) are not built yet. Annotations below mark what maps to code.
+> Pipeline steps ①–③ landed in code in roadmap 3.2 and ⑤–⑥ in 3.3 — the `aw-combined` crate in
+> `aw-server-rust` (`compute_segments`, modules `normalise` / `segment` / `classify` / `attribute`,
+> plus the separate opt-in `coalesce`). **Step ④ (apply decisions) is Phase 4 and is not built**;
+> `compute_segments` runs ①②③⑤ and leaves the gap for ④. The resolution UI (§3 onward) is not built
+> yet. Annotations below mark what maps to code.
 
 ---
 
@@ -57,6 +59,12 @@ per-device events (all devices, after sync)
   combined timeline: exactly one foreground per instant (R6) + background set + shaded flags
 ```
 
+> **In code (3.3):** ⑤ is `aw-combined::attribute` — run by `compute_segments` right after ③,
+> setting `Segment::foreground` and `Segment::unresolved`. ⑥ is `aw-combined::coalesce`, a
+> **separate public function `compute_segments` does not call** — the pipeline stays lossless so
+> Phase 4 can attach decisions to the atomic segments, and the view opts into coalescing. ④ is
+> Phase 4; ⑤ runs whether or not ④ has.
+
 ### 2.1 Segmentation
 
 Collect every start and end across all devices into a sorted boundary list; each adjacent pair is
@@ -68,7 +76,8 @@ totals cannot double-count by construction.
 > first — resolving each event's origin device (the 3.1 `$aw.origin.device` tag, else the bucket's
 > `-synced-from-<peer>` suffix, else the local UUID) and subtracting idle. Segments are **atomic**:
 > a boundary from any device's app change is kept, and adjacent segments are never merged here —
-> that is step ⑥, keyed on identical *attribution*, not on device set.
+> that is step ⑥ (`aw-combined::coalesce`, opt-in), keyed on identical *attribution* — the
+> foreground device-and-`data` pair — not on device set.
 
 ### 2.2 Classification
 
@@ -110,16 +119,31 @@ the UI can show *"resolved by your rule: YouTube + Kindle → reading"* and offe
 
 ### 2.4 Provisional attribution
 
+> **In code (3.3):** `aw-combined::attribute`. `Segment::foreground` is an index into `active`;
+> `Segment::foreground_slice()` / `background_slices()` are the accessors 3.4 calls.
+
 Unresolved contention still needs a number today (**R17**). The placeholder:
 
-1. Longest total duration in the segment wins.
+1. **Longest-running activity wins** — and "duration" here means the length of the **originating
+   activity interval** that covers the segment, *after idle subtraction*, **not** the segment's own
+   length. Every slice in a segment covers that segment exactly (by construction in ②), so the
+   segment's length is identical for every candidate and would make this rule dead code. What
+   discriminates is that the phone's hour-long YouTube session outlasts the tablet's fifteen-minute
+   Kindle dip. Post-idle, so a mostly-idle long event does not out-claim a shorter continuous one.
+   In code each `ActiveSlice` carries `source_start` / `source_end` for exactly this comparison.
 2. Tie → lowest device UUID, lexicographically.
+3. Tie → lowest `bucket_id` (rule 2 cannot separate one device's two overlapping buckets).
+4. Tie → lowest canonical `serde_json` string of `data` (`data` is not in ①'s sort key).
 
-Step 2 is not arbitrary — it is what makes the result **identical on every device** (R18). Any
-tiebreak involving local clock, sync order or "most recent" would break that and must be rejected.
+Steps 2–4 are not arbitrary — together they are a **total order**, which is what makes the result
+**identical on every device** (R18). Any tiebreak involving local clock, sync order or "most
+recent" would break that and must be rejected.
 
-The segment stays flagged `unresolved` so it still renders shaded (R8). Provisional attribution
-changes the number; it never clears the shading.
+The segment stays flagged `unresolved` iff it is `Contended`, so it still renders shaded (R8).
+Provisional attribution changes the number; it never clears the shading. A segment demoted to
+`Settled` by the short-contention pass (§2.2) is **not** `unresolved` — never shaded, never asked
+about — but it still gets the same provisional pick, so its time is credited to its longest-running
+activity rather than lost.
 
 ---
 
