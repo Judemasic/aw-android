@@ -194,7 +194,7 @@ internal class SharedFolder(private val context: Context, private val root: Docu
         // ("VERSION.txt", "VERSION (1).txt", "VERSION (2).txt", ...). octet-stream has no
         // preferred extension, so the name we ask for is the name we get -- the same reason
         // mirrorDirectory below uses it for every file it writes.
-        val created = root.createFile("application/octet-stream", SHARED_VERSION_FILE)
+        val created = createFileExactly(root, "application/octet-stream", SHARED_VERSION_FILE)
         if (created == null || !writeText(created, "$SHARED_SCHEMA_VERSION\n")) {
             Log.w(TAG, "Could not write $SHARED_VERSION_FILE")
             return SchemaVerdict.ABSENT
@@ -238,7 +238,8 @@ internal class SharedFolder(private val context: Context, private val root: Docu
             )
         }
 
-        val file = existingFile ?: deviceDir.createFile("application/json", SHARED_META_FILE)
+        val file =
+            existingFile ?: createFileExactly(deviceDir, "application/json", SHARED_META_FILE)
         if (file == null) {
             Log.w(TAG, "Could not create $SHARED_META_FILE for ${meta.deviceUuid}")
             return false
@@ -308,7 +309,7 @@ internal class SharedFolder(private val context: Context, private val root: Docu
         // "application/octet-stream" for the same reason VERSION uses it: SAF's local-storage
         // provider rewrites a filename to match its idea of the MIME type's extension, and a
         // decisions.jsonl silently written as decisions.jsonl.txt would never be found again.
-        val file = existing ?: deviceDir.createFile("application/octet-stream", fileName)
+        val file = existing ?: createFileExactly(deviceDir, "application/octet-stream", fileName)
         if (file == null) {
             Log.w(TAG, "Could not create $fileName for $deviceUuid")
             return false
@@ -347,9 +348,45 @@ internal class SharedFolder(private val context: Context, private val root: Docu
             Log.w(TAG, "$name exists in the sync folder as a file, not a directory")
             return null
         }
-        val dir = existing ?: parent.createDirectory(name)
-        if (dir == null) Log.w(TAG, "Could not create $name in the sync folder")
-        return dir
+        return existing ?: createDirExactly(parent, name)
+    }
+
+    private fun createFileExactly(parent: DocumentFile, mime: String, name: String) =
+        insistOnName(parent.createFile(mime, name), name)
+
+    private fun createDirExactly(parent: DocumentFile, name: String) =
+        insistOnName(parent.createDirectory(name), name)
+
+    /**
+     * Accept a freshly created document only if SAF gave us the name we asked for.
+     *
+     * SAF's `createDocument` never fails on a name collision -- it silently uniquifies,
+     * returning "VERSION (1)", "VERSION (2)", and so on. So a create that comes back under
+     * a different name means one of two things, and both are reasons to stop rather than
+     * carry on: the document already exists and our [DocumentFile.findFile] could not see
+     * it, or the provider renamed us (a mime type with a preferred extension does that).
+     *
+     * Both have happened on hardware. On 2026-09-09 a stale MediaProvider made
+     * `queryChildDocuments` return *empty* for the whole shared folder, so every sync
+     * concluded `VERSION` was absent and asked for another -- 32 copies of `VERSION` and 32
+     * of `devices/` before SAF's own uniquifier gave up with "Failed to create unique file",
+     * every one of them replicated to the other device by Syncthing. Checking the name we
+     * got against the name we wanted catches that on the *first* duplicate instead of the
+     * thirty-third, and the stray is removed so a later retry starts clean.
+     */
+    private fun insistOnName(created: DocumentFile?, name: String): DocumentFile? {
+        if (created == null) {
+            Log.w(TAG, "Could not create $name in the sync folder")
+            return null
+        }
+        if (created.name == name) return created
+        Log.w(
+            TAG,
+            "Asked the sync folder for \"$name\" and got \"${created.name}\" -- it is not " +
+                "listing its contents correctly, so refusing to add a duplicate",
+        )
+        if (!created.delete()) Log.w(TAG, "Could not remove the stray ${created.name}")
+        return null
     }
 
     private fun readText(file: DocumentFile): String? =

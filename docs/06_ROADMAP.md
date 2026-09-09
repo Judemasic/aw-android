@@ -1923,6 +1923,55 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 
 ## Progress log
 
+### 2026-09-09 (latest) — sync outage: a blind SAF listing became 128 duplicate files
+
+**Symptom.** "Sync Now" reported failure on the phone, and the directory picker would not let a
+folder be chosen. Reported right after an APK install, which is what it looked like — and was not.
+
+**What actually happened, in order:**
+
+1. Android's **MediaProvider** went stale and began reporting
+   `/storage/emulated/0/ActivityWatch-sync` as *hidden*. `adb` could list the folder; only the SAF
+   layer was blind. The tell in logcat was `Queried directory "primary:ActivityWatch-sync" is
+   hidden` alongside `java.nio.file.NoSuchFileException: /storage/emulated` from
+   `com.android.externalstorage`.
+2. `queryChildDocuments` therefore returned **empty**, so [`SharedFolder`]'s `findFile()` returned
+   null for everything.
+3. Null was read as *"absent"*, so each sync created the document again. **SAF never fails on a
+   name collision** — it silently uniquifies. So every sync left another `VERSION (n)`,
+   `devices (n)`, `jude_s_s25_ultra (n)`, `jude_s_tab_s10_fe (n)`.
+4. Syncthing replicated all of it to the tablet.
+5. At copy **32** SAF's uniquifier gave up — `FileNotFoundException: Failed to create unique file`
+   → `Could not write VERSION` → the visible "sync failed".
+
+**Not caused by the install.** Every duplicate is timestamped 11:12–18:26; the APK went on at
+21:14. Worth stating plainly because the timing was genuinely misleading.
+
+**Recovery.** `am force-stop com.google.android.providers.media.module` (plus
+`com.android.externalstorage`) on both devices. Sync went green immediately — and, decisively, the
+duplicate count *stopped rising*, which is what confirmed the diagnosis. A reboot would do the same.
+
+**Cleanup.** 128 stray entries (32 each of four names) removed from the **phone only**; Syncthing
+carried the deletions to the tablet, and `.stversions` archived them. Verified before deleting:
+every `VERSION (n)` held the same `1`, every stray `meta.json` was byte-identical to the real one
+but for an older `last_seen`, and the real `test.db` files were **newer and larger** than any stray
+(3,190,784 B at 21:46 vs 3,174,400 B at 17:44). The bare `VERSION`, `devices/`,
+`jude_s_s25_ultra/` and `jude_s_tab_s10_fe/` were never in the delete set.
+
+**The fix.** [`SharedFolder`] now routes every create through `insistOnName`: *the name we get back
+must be the name we asked for*. If SAF answers `VERSION (1)` to a request for `VERSION`, the folder
+is not listing correctly — so refuse, delete the stray, and fail loudly. This catches the failure on
+the **first** duplicate rather than the thirty-third, and it also subsumes the earlier
+2026-09-09 `text/plain` → `VERSION.txt` bug (see [2.1 verified](#2026-09-09--21-verified-on-device-after-catching-a-saf-extension-bug)), which was the same
+"findFile can't see what we wrote" shape with a different cause.
+
+⚠️ **The underlying MediaProvider staleness is an OS fault we cannot prevent** — the guard stops it
+turning into 128 files and a broken sync, but a stale provider will still make a sync fail until the
+provider is restarted or the device rebooted. Left as a known operational note, not a code task.
+
+One leftover, deliberately untouched: a stale `.syncthing.VERSION.tmp` from 11:12. It is Syncthing's
+own temp file and Syncthing manages its lifecycle.
+
 ### 2026-09-09 (latest) — 3.4: the combined view, in code
 `aw-combined` is wired to a screen. A **Combined timeline** item in the nav drawer opens
 `CombinedTimelineActivity`, which asks Rust for one day and draws the combined track above one row
