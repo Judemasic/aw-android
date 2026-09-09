@@ -86,7 +86,10 @@ internal fun DeviceMeta.toJson(): String =
  *
  * Unknown fields are ignored rather than rejected: a newer device may write more than we know
  * about, and §8's rule is that we must not destroy what we do not understand. Ignoring is enough
- * here because we never rewrite a peer's file; the compaction half of that rule arrives with 2.2.
+ * here because we never rewrite a peer's file. The other half of §8's rule -- a compaction that
+ * must write back the lines it did not understand -- has nothing to do yet: 2.2's JSONL logs are
+ * append-only and nothing compacts them ([SharedRecord.Unknown] keeps the raw line for when it
+ * does).
  *
  * Deliberately free of `android.util.Log` so it is reachable from plain JVM unit tests; the
  * caller says what a null means in its own context.
@@ -241,6 +244,101 @@ internal class SharedFolder(private val context: Context, private val root: Docu
             return false
         }
         return writeText(file, meta.toJson())
+    }
+
+    /**
+     * Every device directory under `devices/`, by uuid -- ours included.
+     *
+     * A device is "present" here because it wrote something, not because it is online: a phone that
+     * has been off for a month still has its uuid listed, and its decisions still count (**R23** --
+     * a peer may reappear arbitrarily late and must not have been merged away in the meantime).
+     */
+    fun listDeviceUuids(): List<String> {
+        val devicesDir = root.findFile(SHARED_DEVICES_DIR) ?: return emptyList()
+        if (!devicesDir.isDirectory) return emptyList()
+        return devicesDir.listFiles()
+            .filter { it.isDirectory }
+            .mapNotNull { it.name }
+            .sorted()
+    }
+
+    /** Parse one device's copy of [fileName]; an absent or unreadable file is simply no records. */
+    fun readShared(deviceUuid: String, fileName: String): List<SharedRecord> {
+        val devicesDir = root.findFile(SHARED_DEVICES_DIR) ?: return emptyList()
+        val deviceDir = devicesDir.findFile(deviceUuid) ?: return emptyList()
+        val file = deviceDir.findFile(fileName)?.takeIf { it.isFile } ?: return emptyList()
+        return parseSharedJsonl(readText(file))
+    }
+
+    /**
+     * Every device's copy of [fileName], concatenated -- the input [mergeDecisions] and
+     * [effectiveSettings] expect.
+     *
+     * Concatenation order is uuid order, which is arbitrary but *stable*; the merge does not depend
+     * on it either way (**R18**), and a stable order keeps a logged dump comparable between runs.
+     * A device whose file cannot be read contributes nothing rather than failing the read: one
+     * unreadable peer must not cost us the other two.
+     */
+    fun readAllShared(fileName: String): List<SharedRecord> =
+        listDeviceUuids().flatMap { readShared(it, fileName) }
+
+    /**
+     * Append [records] to our own `devices/<uuid>/<fileName>` (**R20** -- only the owner writes it).
+     *
+     * Appending, never rewriting, is the whole point: a whole-file replacement is what makes
+     * Syncthing produce `.sync-conflict-*` copies, and a log that is only ever extended cannot lose
+     * a line to one.
+     *
+     * SAF's `"wa"` mode is the real append and is what we ask for first. Not every provider
+     * implements it, so the fallback reads the file and rewrites it with the new lines on the end.
+     * That fallback is only safe because we are this file's only writer -- never use it on a peer's.
+     *
+     * @return true when every line is on disk. An empty [records] writes nothing and succeeds.
+     */
+    fun appendShared(deviceUuid: String, fileName: String, records: List<SharedRecord>): Boolean {
+        if (records.isEmpty()) return true
+        val devicesDir = findOrCreateDir(root, SHARED_DEVICES_DIR) ?: return false
+        val deviceDir = findOrCreateDir(devicesDir, deviceUuid) ?: return false
+
+        val existing = deviceDir.findFile(fileName)
+        if (existing != null && existing.isDirectory) {
+            Log.w(TAG, "$fileName exists as a directory; cannot append")
+            return false
+        }
+        // "application/octet-stream" for the same reason VERSION uses it: SAF's local-storage
+        // provider rewrites a filename to match its idea of the MIME type's extension, and a
+        // decisions.jsonl silently written as decisions.jsonl.txt would never be found again.
+        val file = existing ?: deviceDir.createFile("application/octet-stream", fileName)
+        if (file == null) {
+            Log.w(TAG, "Could not create $fileName for $deviceUuid")
+            return false
+        }
+        // Every line this app writes is newline-terminated, so a plain append lands on a fresh
+        // line. A file whose last line was truncated mid-transfer is the exception, and the parser
+        // keeps that damaged line as SharedRecord.Unknown rather than letting it eat ours.
+        val text = records.joinToString("") { it.toJsonLine() + "\n" }
+        return appendText(file, text)
+    }
+
+    private fun appendText(file: DocumentFile, text: String): Boolean {
+        try {
+            context.contentResolver.openOutputStream(file.uri, "wa")?.use {
+                it.write(text.toByteArray())
+                return true
+            }
+            Log.w(TAG, "No output stream for ${file.name} in append mode; rewriting instead")
+        } catch (e: IOException) {
+            Log.w(TAG, "Append not available for ${file.name} (${e.message}); rewriting instead")
+        } catch (e: IllegalArgumentException) {
+            // Providers that do not know "wa" throw this rather than returning null.
+            Log.w(TAG, "Append mode rejected for ${file.name} (${e.message}); rewriting instead")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Permission denied appending to ${file.name}: ${e.message}")
+            return false
+        }
+        val existingText = readText(file) ?: ""
+        val separator = if (existingText.isEmpty() || existingText.endsWith("\n")) "" else "\n"
+        return writeText(file, existingText + separator + text)
     }
 
     private fun findOrCreateDir(parent: DocumentFile, name: String): DocumentFile? {

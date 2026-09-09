@@ -842,11 +842,45 @@ all correctly containing `1` but under the wrong name. Fixed by creating it as
 `mirrorDirectory` already uses for every other file it writes, for the same reason. `meta.json`
 was unaffected because it already carries its own `.json` extension. Commit `5efe301`.
 
-### 2.2 — Append-only JSONL store ⬜
+### 2.2 — Append-only JSONL store ✅ DONE IN CODE 2026-09-09 — nothing calls it yet
 Read/write/merge for `decisions.jsonl` and `settings.jsonl`, including tombstones and the
 deterministic tiebreak from [`05`](05_DATA_MODEL.md) §4.2. **Unit-test the merge with shuffled
 input orders** — the property that matters is order-independence (R18), and it is easy to lose
 without a test that specifically looks for it.
+
+**Result.** `SharedStore.kt` is new and holds the whole model and merge, with no Android and no I/O
+in it so the merge is unit-testable on the JVM:
+
+1. **Records** — `decision`, `tombstone`, `setting`, and `Unknown`. `Unknown` keeps the raw line
+   verbatim, which is [`05`](05_DATA_MODEL.md) §8's "ignored, not dropped": a line type a newer
+   build wrote, *and* a line truncated mid-transfer, both survive us. Parse and serialise
+   round-trip, one line per record.
+2. **`mergeDecisions`** — dedupe by `id`, drop what any device's tombstone revokes, group by
+   `(window, signature match key)`, keep the newest, ties on lowest `created_by`. The result is
+   sorted, so the *list* is order-independent, not just its contents.
+3. **`effectiveSettings` / `effectiveSettingValues`** — last write wins per key, same tiebreak,
+   ordered by key. This is what 2.3 routes `category.*` through.
+4. **`Ulid`** — 48-bit millisecond timestamp + 80 random bits, Crockford base32, `d_`/`t_`
+   prefixes per §4. Ids sort chronologically as plain text and need no coordination to be unique.
+5. **`SharedFolder.appendShared` / `readShared` / `readAllShared` / `listDeviceUuids`** — the SAF
+   half. Appends go through SAF's `"wa"` mode with a read-and-rewrite fallback for providers that
+   refuse it (safe only because we are our own file's only writer, R20); files are created as
+   `application/octet-stream` for the same reason `VERSION` is, so nothing renames
+   `decisions.jsonl` to `decisions.jsonl.txt`.
+
+**Judgment calls**, both recorded in [`05`](05_DATA_MODEL.md) §4.2 because a device resolving them
+differently would disagree with this one: a duplicated `id` counts once, and `id` is the final
+tiebreak after `created_by` (same device, same millisecond, same group would otherwise be decided
+by arrival order). A third: an unparseable `created_at` loses to every parseable one.
+
+**Check:** `scripts/check-local.sh kotlin` and the full `:mobile:testDebugUnitTest` pass; 26 new
+tests in `SharedStoreTest.kt`. Every merge assertion runs through `assertOrderIndependent`, which
+re-merges the same lines under 50 fixed shuffle seeds and reversed, so an order-dependent merge
+fails rather than passing by luck.
+
+**Not verified on device, and there is nothing to verify yet:** no caller writes or reads these
+files, so the app behaves exactly as it did before. 2.3 is this store's first on-device exercise.
+Compaction (§5) is still not built.
 
 ### 2.3 — Settings sync ⬜
 Route `category.*` / `label.*` through the shared store; keep device-local keys in `AWPreferences`.
@@ -1082,6 +1116,36 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (later) — 2.2: the shared logs, and a merge that does not care what order it reads
+`SharedStore.kt` holds the append-only side of the shared folder: the record types for
+`decisions.jsonl` and `settings.jsonl`, the merge that turns every device's copy into one answer,
+and ULIDs for decision ids. `SharedFolder.kt` gained the SAF half — list the device directories,
+read one device's log or all of them, append to our own.
+
+**The whole point is one property, so it is what the tests assert.** Syncthing delivers files in
+any order and arbitrarily late (R23), so the merge must depend on line *content* and nothing else
+(R18). Rather than merging each fixture once, every merge test runs `assertOrderIndependent`,
+which re-merges the same lines under 50 fixed shuffle seeds and once reversed, and fails if any of
+them disagrees. Fixed seeds, not random ones — a merge that is order-dependent one run in thirty
+is worse than one that fails every time.
+
+Writing the tests that way immediately forced two rules [`05`](05_DATA_MODEL.md) §4.2 did not
+state, both now written into it: **a duplicated `id` counts once** (a copied file could otherwise
+out-vote the decision that actually won), and **`id` is the final tiebreak after `created_by`**
+(two lines from one device in one millisecond in one group would otherwise be settled by whichever
+was read first — exactly the dependence R18 rules out). A third, smaller one: a `created_at` that
+will not parse loses to every one that does, instead of being guessed at.
+
+Also carried the `VERSION` lesson forward without waiting to be bitten again: the `.jsonl` files
+are created as `application/octet-stream`, because that is what stops a SAF provider renaming
+`decisions.jsonl` to `decisions.jsonl.txt` the way it renamed `VERSION` this morning.
+
+**Nothing calls any of it yet**, deliberately — 2.2 is the store, 2.3 is the first user of it. The
+app's behaviour on device is byte-identical to 2.1's, so there is nothing to test on hardware and
+no device check was asked for. `scripts/check-local.sh kotlin` and the full unit suite pass; 26 new
+tests in `SharedStoreTest.kt`. Compaction ([`05`](05_DATA_MODEL.md) §5) is still not built, but
+unknown line types are now kept verbatim so it can be built safely later.
 
 ### 2026-09-09 — 2.1 verified on device, after catching a SAF extension bug
 Both devices synced against the fixed build (commit `5efe301`). Confirmed on `SM-S938B` and

@@ -130,6 +130,22 @@ resolved during the merge, not on disk.
 Step 4's tiebreak is what guarantees three devices reach the same answer without coordination.
 "Most recently synced" would not, and must not be used.
 
+> **Implemented 2026-09-09 (roadmap 2.2)** in `SharedStore.kt` (`mergeDecisions`), with three
+> details this list did not pin down — all three are part of the contract now, because a device that
+> resolved them differently would disagree with one that follows them:
+>
+> - **A duplicated `id` is one decision.** Deduplicate by `id` before grouping. A line copied twice
+>   (a restored backup, a hand-copied file) must not be able to out-vote the decision that won.
+> - **`id` is the final tiebreak**, after `created_by`. Two lines from *the same* device, in the
+>   same millisecond, in the same group would otherwise leave the winner to arrival order — the one
+>   thing **R18** forbids.
+> - **An unparseable `created_at` loses** to every parseable one, and ties among broken timestamps
+>   fall back to comparing the raw string. Guessing at a broken clock would put arrival order back
+>   in.
+>
+> The grouping key uses `signature`'s **match key** — `device_role`/`app`/`category`, sorted,
+> uuids excluded ([`04`](04_COMBINED_TIMELINE.md) §3) — so a rule survives replacing a phone.
+
 ---
 
 ## 5. `settings.jsonl`
@@ -152,6 +168,12 @@ per-device toggles. These stay in `AWPreferences`.
 > **Compaction:** the log grows without bound. When it exceeds a threshold, its owner — and only its
 > owner (**R20**) — may rewrite *its own* file to the effective values it contributed, preserving
 > `updated_at`. Safe precisely because no other device writes that file.
+>
+> ⚠️ **Not built as of 2.2 (2026-09-09).** The logs are append-only and nothing shrinks them. What
+> 2.2 does provide is the half that makes compaction safe when it arrives: every line the parser
+> does not understand is kept verbatim as `SharedRecord.Unknown` (`SharedStore.kt`) rather than
+> being dropped, so a compaction can write those lines straight back out — §8's rule that an older
+> build must not destroy a newer build's data.
 
 ---
 
