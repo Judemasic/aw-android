@@ -246,6 +246,12 @@ their bucket id ends `-synced-from-<hostname>`, and `devices/<uuid>/meta.json` m
 to a UUID via `displayName`. Step 3.2 has to handle both, and its golden tests must include an
 untagged event.
 
+**Built in 3.2 (2026-09-09).** `aw-combined::normalise` (step ①) does exactly this fallback: tag
+first, else the `-synced-from-<peer>` suffix looked up in the hostname→UUID map, else — on a map
+miss — the captured string used verbatim (which is correct for the roadmap 1.5
+`aw-stopwatch-synced-from-<uuid>` case), else the local device's own UUID. No event is ever
+dropped.
+
 ---
 
 ## 7. Local-only state

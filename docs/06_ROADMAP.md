@@ -1,17 +1,19 @@
 # 06 — Roadmap
 
 > **👉 START HERE:** ✅ **Phase 1 and Phase 2 are done and verified on both devices as of
-> 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 is under way
-> and [3.1](#31--origin-tagging-at-merge) is now verified on both devices (2026-09-09,
-> CI [34343835497] / `feb127e`)** — imported events carry the UUID of the device that collected
-> them, confirmed both in the tablet's import log and in its stored `sqlite.db`, with the tablet's
-> own first-hand data left untagged. **The next step is [3.2](#32--segmentation--classification)**
-> — segmentation + classification in Rust. Nothing blocks it.
+> 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 is under way:
+> [3.1](#31--origin-tagging-at-merge) is verified on both devices (2026-09-09, CI [34343835497] /
+> `feb127e`), and [3.2](#32--segmentation--classification) is done in code (2026-09-09)** — the
+> `aw-combined` crate in `aw-server-rust` now has the normalise/segment/classify pipeline with 29
+> passing tests. Nothing calls it yet, so there is nothing to verify on a device. The submodule
+> pointer moved to `aw-server-rust@beta` `ad0e2e5`, which carries only the new unused crate — no CI
+> build or APK needed. **The next step is [3.3](#33--provisional-attribution)** — provisional
+> attribution (pipeline steps ⑤–⑥), also pure Rust with no device test.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
 > settings and its cycle ends with the settings step. What is missing is *visibility*, so 2.3b is
-> a line of text, not a button. It can be done any time; it does not block 3.2.
+> a line of text, not a button. It can be done any time; it does not block 3.3.
 >
 > **The 4.2% ceiling is gone, measured not assumed (2026-09-04, step
 > [1.11](#111--bump-aw-webui-past-the-960-fix)).** `aw-webui` moved `3cbe349 → a2ca625`, carried
@@ -1090,15 +1092,90 @@ UUID in the store is the phone's, and the tablet's own first-hand `aw-watcher-an
 on rather than panicking (the `src_did.unwrap()` fix, item 5). Both devices reported
 `success=true`.
 
-### 3.2 — Segmentation + classification ⬜
+### 3.2 — Segmentation + classification ✅ DONE (2026-09-09) — done in code, no device test
 Implement pipeline steps ①–③ from [`04`](04_COMBINED_TIMELINE.md) §2, **in Rust** so a future
 desktop client and a future aw-webui view reuse it (R2, Q4). Include idle exclusion and the
 minimum-duration threshold (Q1).
-**Check:** golden tests — known event sets produce known segments. Include a three-device case; a
-two-device-only implementation will pass a two-device test and still violate **R1**. Include an
-**untagged** event too: everything imported before 3.1 has no `$aw.origin.device`, and step ①
-must fall back to the bucket's `-synced-from-<hostname>` suffix resolved through
-`devices/<uuid>/meta.json` rather than dropping it.
+
+**Result.** A new workspace crate **`aw-server-rust/aw-combined`** holds the first half of the
+combined-timeline pipeline as one pure function, `compute_segments(PipelineInput) -> Vec<Segment>`.
+It takes every device's post-sync activity and idle events (the caller reads them out of its
+datastore — this crate does no I/O and no clock reads) and returns a list of non-overlapping
+**atomic** segments, each labelled `Settled` (0–1 device active) or `Contended` (≥2 devices). It is
+not wired to anything yet; nothing calls it.
+
+- **① `normalise`** flattens all buckets into one list of `(start, end, device, bucket_id, data)`
+  intervals. It resolves each event's origin device in three steps, never dropping an event
+  (**R19**): (1) the `$aw.origin.device` tag from 3.1 if present; (2) else the `-synced-from-<peer>`
+  suffix of the bucket id — `<peer>` looked up in a hostname→UUID map, and **used verbatim on a
+  miss**; (3) else this device's own UUID. The miss branch in (2) is deliberate, not a fallback:
+  [1.5](#15--two-device-end-to-end-verification) recorded a real
+  `aw-stopwatch-synced-from-<uuid>` bucket where upstream names the peer by UUID, not hostname — the
+  map misses, the captured string already *is* the UUID, and using it keeps an unknown peer visible
+  instead of silently folding it into the local device. ① then subtracts each device's idle
+  intervals (an idle period can split one activity interval in two) and drops every zero-width
+  interval — the Android unlock watcher emits `duration = 0` heartbeats that would otherwise plant
+  a boundary covering nothing.
+- **② `segment`** is a boundary sweep: collect every interval endpoint, sort, dedup, and for each
+  adjacent pair emit a segment carrying every interval that fully covers it. Adjacent segments are
+  **never merged** — §2.1 calls these *atomic*; an app change on any device is a real boundary, and
+  merging on "same device set" would throw away one of two consecutive `data` maps. Coalescing on
+  *identical attribution* is 3.3.
+- **③ `classify`** marks a segment `Contended` iff it covers ≥2 **distinct** devices, then runs the
+  minimum-duration pass **over contiguous contended runs, not single segments**: it finds each
+  maximal run of temporally adjacent contended segments and, if the run's *total* duration is
+  < 60 s (`DEFAULT_MIN_CONTENTION_SECS`, D15/Q1), demotes every segment in it to `Settled` with
+  `absorbed_short_contention = true`. Exactly 60 s stays contended.
+
+The **idle contract**: `PipelineInput.idle` is "events that are already known to be idle periods" —
+the caller filters by its own AFK schema; this crate knows none. It is empty on Android, where
+`aw-watcher-android` only records while the screen is on and in use, so its events already *are* the
+active signal. A desktop caller populates it from `aw-watcher-afk`. This keeps the function
+platform-agnostic (**R2**).
+
+**Judgment calls** (neither dictated by `04` or the roadmap):
+
+- **Minimum-duration threshold applied to runs, not individual segments.** Segments are cut at
+  every app change on every device, so a genuine 15-minute contention where either device switches
+  app every 30 s is shredded into sub-60 s atomic segments. Thresholding each separately would
+  demote all of them and make real contention vanish — the opposite of **R7/R8**. The threshold is
+  about short *episodes* ("walking between two devices"), which is a property of the run.
+- **Short contention is demoted-and-flagged, not merged into a neighbour.** §2.2 says short
+  contention "attaches to the neighbouring settled segment", which is undefined when both
+  neighbours are settled with different activities, or when there is no settled neighbour at all.
+  Demoting keeps the segment, its data, and determinism, and stops it being shaded or asked about —
+  which is what §2.2 is for. **Open point for 3.3:** whose activity a demoted
+  `absorbed_short_contention` segment's time is ultimately credited to. `state == Settled`
+  therefore does **not** imply ≤1 device — consumers must check `active`, not `state`.
+
+**Check:** `cargo test -p aw-combined` — 29 tests, all green: 14 golden + 6 unit + 9 adversarial.
+The golden tests assert the
+`04` §6 worked example boundary-for-boundary, a three-device case (**R1** — a two-device
+implementation passes a two-device test and still violates R1), all three origin-resolution
+branches including both the hostname-in-map and hostname-missing cases and the 1.5 UUID-suffix
+case, idle subtraction (removes an overlap; splits an interval), the run-threshold regression guard
+(two adjacent 40 s contended segments, total 80 s → both stay contended), exactly-60 s, zero-width
+drop, atomic-boundary preservation, and a determinism check that shuffles bucket and event order
+and asserts identical output (**R18**). The **adversarial** set covers what the golden tests cannot
+distinguish — that a time gap and that a settled segment each *end* a contended run (so two 40 s
+halves are not wrongly summed to 80 s), that one device's idle never subtracts another's activity,
+overlapping idle periods, idle swallowing an interval whole, a negative duration from a corrupt row,
+a non-string origin tag falling through instead of panicking, and contention chained across three
+devices counting as one run. `cargo test -p aw-sync` still passes (28 tests) — the
+`EVENT_ORIGIN_KEY` constant moved from `aw-sync` to `aw-models` so `aw-combined` can read it
+without depending on `aw-sync`; `aw-sync`'s public re-export is unchanged. `scripts/check-local.sh
+rust` gained `cargo check -p aw-combined --lib`.
+
+⚠️ **Known limitation — the sweep is O(n²) in event count.** ② tests every interval against every
+boundary. Measured on desktop (release build, three devices): 3k events 18 ms, 6k 52 ms, 15k 253 ms,
+30k 870 ms. A single day is a few thousand events, so the day view [3.4](#34--combined-view-with-shading)
+builds is comfortable — but a **week or month view would need a sweep line** that carries a running
+active-set instead of rescanning. Recorded here so 3.4 is not surprised by it; not worth fixing
+before something asks for a multi-day range.
+
+There is **nothing to test on a device** and nothing for the owner to do: this step is pure Rust
+over fixed inputs, and nothing depends on the new crate yet. No CI build or APK is needed — the
+`aw-server-rust` submodule pointer moves forward but carries only an unused crate.
 
 ### 3.3 — Provisional attribution ⬜
 Pipeline steps ⑤–⑥ with the deterministic tiebreak. *(R17, R18)*
@@ -1316,6 +1393,40 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (night, latest) — 3.2: the segmentation pipeline, in a crate of its own
+The first half of the combined-timeline pipeline (`04` §2 steps ①②③) is now real Rust, in a new
+`aw-server-rust` workspace crate **`aw-combined`**. One pure function,
+`compute_segments(PipelineInput) -> Vec<Segment>`, turns every device's post-sync activity and idle
+events into non-overlapping atomic segments labelled `Settled` or `Contended`. No datastore access,
+no file I/O, no clock — the caller passes events in, so a future desktop client and an aw-webui view
+reuse it unchanged (**R2**, **Q4**).
+
+- **①** resolves each event's origin device (3.1 tag → `-synced-from-<peer>` suffix, map-hit gives
+  the UUID and a **map-miss keeps the string verbatim** for the 1.5 `-synced-from-<uuid>` case →
+  local UUID), subtracts idle, and drops zero-width heartbeats. **②** is a boundary sweep with no
+  merging — segments are atomic. **③** marks `Contended` on ≥2 distinct devices, then absorbs
+  contended *runs* shorter than 60 s (D15) into `Settled` with an `absorbed_short_contention` flag.
+- Two judgment calls, both recorded in the 3.2 Result: the minimum-duration threshold is applied to
+  a whole contiguous **run** of contended segments (not each atomic segment, which would shred a
+  long contention below the threshold and erase it); and short contention is **demoted-and-flagged**
+  rather than merged into a neighbour (undefined when neighbours differ or are absent). Which
+  activity a demoted segment's time is credited to is an open point handed to 3.3.
+- `EVENT_ORIGIN_KEY` moved from `aw-sync` to `aw-models` so `aw-combined` can share the literal
+  without depending on `aw-sync`; `aw-sync`'s re-export is unchanged and its 28 tests still pass.
+- 29 tests (`cargo test -p aw-combined`): 14 golden + 6 unit + 9 adversarial, covering the `04` §6
+  worked example,
+  a three-device case (**R1**), all origin-resolution branches, idle subtraction and splitting, the
+  run-threshold regression guard, exactly-60 s, zero-width drop, atomic-boundary preservation, and
+  an input-shuffle determinism check (**R18**), plus 9 adversarial tests for what ends a contended
+  run, per-device idle, and corrupt rows. `check-local.sh rust` gained
+  `cargo check -p aw-combined --lib`.
+- ⚠️ The boundary sweep is **O(n²)** — measured 3k events 18 ms, 15k 253 ms, 30k 870 ms (release,
+  desktop). Comfortable for the day view 3.4 builds; a week or month range would need a sweep line.
+  Recorded, not fixed — nothing asks for a multi-day range yet.
+- **Nothing to test on a device.** Pure Rust over fixed inputs; nothing calls the crate yet. The
+  `aw-server-rust` submodule pointer moves forward carrying only an unused crate — no CI build or
+  APK needed, and 1.11's / 3.1's hardware verification stays valid.
 
 ### 2026-09-09 (night, later) — 3.1 verified on both devices, driven over adb
 The 3.1 device test from the entry below, run end to end without the owner touching a screen. The

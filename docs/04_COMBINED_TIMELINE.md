@@ -3,7 +3,9 @@
 > How the merged view is computed, how contention is detected and shown, and how the owner resolves
 > it. Implements [`01_REQUIREMENTS_AND_RULES.md` §3](01_REQUIREMENTS_AND_RULES.md).
 >
-> Nothing in this document exists in code yet.
+> Pipeline steps ①–③ landed in code in roadmap 3.2 — the `aw-combined` crate in `aw-server-rust`
+> (`compute_segments`, modules `normalise` / `segment` / `classify`). Steps ④–⑥ and the resolution
+> UI (§3 onward) are not built yet. Annotations below mark what maps to code.
 
 ---
 
@@ -62,6 +64,12 @@ an atomic segment during which the set of active devices is constant. This is wh
 mechanically enforceable — attribution is decided **per segment**, and segments never overlap, so
 totals cannot double-count by construction.
 
+> **In code (3.2):** `aw-combined::segment`. ① `aw-combined::normalise` builds the interval list
+> first — resolving each event's origin device (the 3.1 `$aw.origin.device` tag, else the bucket's
+> `-synced-from-<peer>` suffix, else the local UUID) and subtracting idle. Segments are **atomic**:
+> a boundary from any device's app change is kept, and adjacent segments are never merged here —
+> that is step ⑥, keyed on identical *attribution*, not on device set.
+
 ### 2.2 Classification
 
 A segment is **contended** when two or more devices are simultaneously non-idle in it.
@@ -74,6 +82,18 @@ has no input for the idle threshold.
 > the neighbouring settled segment instead of becoming a question. Without this, walking between two
 > devices generates dozens of meaningless prompts a day and the shading in R8 stops meaning
 > anything. Exposed as a setting so it can be tuned against real usage.
+
+> **In code (3.2):** `aw-combined::classify`, `distinct_devices(seg) >= 2`. The 60 s minimum is
+> implemented as **demote-and-flag over a contiguous contended *run***, not "attach to the
+> neighbouring settled segment": if a maximal run of temporally adjacent contended segments totals
+> < 60 s, every segment in it becomes `Settled` with `absorbed_short_contention = true`, keeping
+> its slices. Runs, because a long contention is cut into many sub-60 s atomic segments by app
+> changes and thresholding each one separately would erase real contention. "Attach to the
+> neighbour" is undefined when both neighbours are settled with different activities or there is no
+> settled neighbour; which activity a demoted segment's time is credited to is left to 3.3. Idle is
+> an input the pipeline subtracts (`PipelineInput.idle`); on Android it is empty because
+> `aw-watcher-android` only records while the screen is on and in use. `min_contention` is a
+> parameter, not yet a user-facing setting.
 
 ### 2.3 Applying decisions
 

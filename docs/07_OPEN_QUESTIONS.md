@@ -62,9 +62,18 @@ Full comparison in [`04_COMBINED_TIMELINE.md` §5](04_COMBINED_TIMELINE.md).
 
 ---
 
-## Q5 — Idle detection quality on Android ⬜ *engineering call — not the owner's*
+## Q5 — Idle detection quality on Android ✅ RESOLVED 2026-09-09 (roadmap 3.2)
 
-**Blocks:** Phase 3.2 — contention classification depends on it.
+**Resolution.** Android has no AFK bucket. `aw-watcher-android` only records while the screen is on
+and the device is in use, so its events already *are* the "active" signal — idle time is simply the
+gaps between them, and there is nothing to detect. The `aw-combined` pipeline (roadmap 3.2)
+therefore takes idle as an **optional input it subtracts** (`PipelineInput.idle`), left empty on
+Android and populated from `aw-watcher-afk` by a future desktop caller. No no-input-timeout
+heuristic was built: with nothing recording during idle there is no input stream to time out, and
+inventing one would only add a way to wrongly mark real activity idle. Screen-off and explicit-AFK
+signals are a desktop concern, handled on the desktop side of that same input.
+
+**Blocks:** ~~Phase 3.2~~ — resolved as part of it.
 
 **What "idle" means here, plainly:** the device is powered on, but nobody is using it — phone
 face-down on the desk, tablet left propped up after you walked away.

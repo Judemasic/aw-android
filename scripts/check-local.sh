@@ -123,6 +123,7 @@ check_rust() {
     export PATH="$HOME/.cargo/bin:$PATH"
     cd "$REPO_ROOT/aw-server-rust"
     cargo check -p aw-sync --lib
+    cargo check -p aw-combined --lib
 }
 
 case "${1:-all}" in
