@@ -1,13 +1,12 @@
 # 06 — Roadmap
 
 > **👉 START HERE:** ✅ **Phase 1 and Phase 2 are done and verified on both devices as of
-> 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 has started:
-> [3.1](#31--origin-tagging-at-merge) is done in code, built by CI, and unverified on device** —
-> imported events now carry the UUID of the device that collected them. **The CI build is ready:
-> run [34343835497] built `feb127e` (both repos pushed) and is green; the `aw-android-apk`
-> artifact is downloadable and unexpired.** All that is left before 3.2 is the on-device adb
-> check — install that APK on both devices and follow "How to test this" in the 2026-09-09 (night)
-> log entry. 3.2 waits on that report.
+> 2026-09-09**, through [2.3a](#23a--apply-settings-while-the-app-is-open). **Phase 3 is under way
+> and [3.1](#31--origin-tagging-at-merge) is now verified on both devices (2026-09-09,
+> CI [34343835497] / `feb127e`)** — imported events carry the UUID of the device that collected
+> them, confirmed both in the tablet's import log and in its stored `sqlite.db`, with the tablet's
+> own first-hand data left untagged. **The next step is [3.2](#32--segmentation--classification)**
+> — segmentation + classification in Rust. Nothing blocks it.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -1030,7 +1029,7 @@ time within a minute of the file arriving, without opening logcat.
 
 ## Phase 3 — Combined timeline (read-only)
 
-### 3.1 — Origin tagging at merge ✅ DONE IN CODE 2026-09-09 — ⬜ NOT VERIFIED ON DEVICE
+### 3.1 — Origin tagging at merge ✅ VERIFIED ON DEVICE 2026-09-09
 Tag imported events with their source device UUID. *(R11 — raw data untouched)*
 
 **Result.** Every event copied in from another device now carries `$aw.origin.device` in its
@@ -1079,10 +1078,17 @@ never has to stamp anything into its own events (**R11**).
 events are not modified, that staged/exported events carry no tag, and that an existing tag
 survives a relay — plus two on the path→UUID derivation.
 
-**⚠️ Not verified on device.** Nothing here can be verified off one: it needs two real
-devices and a shared folder. See "How to test this" in the 2026-09-09 log entry below.
-**CI build ready:** run [34343835497] built `feb127e` and is green; the `aw-android-apk` artifact
-is downloadable and unexpired. The device test is the only thing left before 3.2.
+**✅ Verified on both devices 2026-09-09** (CI build [34343835497], `feb127e`), driven over adb:
+after fresh phone activity was synced across, the tablet logged
+`= Synced 1 new events, tagged origin ad0c6c34-d388-4ef0-b906-976bd760b22d` — the **phone's**
+`device_id`, read straight off the phone, not the tablet's own `7b54cfe9-…`. Pulling the tablet's
+`sqlite.db` confirmed it in *stored* data, not just the log: 16 imported events across all four
+`-synced-from-jude_s_s25_ultra` buckets now carry `$aw.origin.device`, the only distinct origin
+UUID in the store is the phone's, and the tablet's own first-hand `aw-watcher-android` bucket
+(715 events) carries **zero** tags — a device never stamps its own data (**R11**). The
+`! Bucket hostname/device ID was invalid` warning fired on the phone's push and the sync carried
+on rather than panicking (the `src_did.unwrap()` fix, item 5). Both devices reported
+`success=true`.
 
 ### 3.2 — Segmentation + classification ⬜
 Implement pipeline steps ①–③ from [`04`](04_COMBINED_TIMELINE.md) §2, **in Rust** so a future
@@ -1310,6 +1316,38 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 (night, later) — 3.1 verified on both devices, driven over adb
+The 3.1 device test from the entry below, run end to end without the owner touching a screen. The
+CI build [34343835497] (`feb127e`) APK was installed on both the phone (`SM-S938B`) and the tablet
+(`SM-X520`) with `adb install -r`; its `libaw_sync.so` was checked to contain the `tagged origin`
+string first. Fresh phone activity was made by launching apps over `adb` and firing the watcher's
+`net.activitywatch.android.watcher.LOG_DATA` broadcast, then **Sync Now** on each device was tapped
+by `adb shell input` after locating the button with `uiautomator dump` (a first mis-tap opened the
+directory chooser — backed out with two `KEYCODE_BACK`, `syncDirUri` never touched, "Directory:
+ActivityWatch-sync" unchanged throughout).
+
+**Result:**
+
+```
+phone   13:56:01  = Synced 4 new events        (push into staging)
+phone   13:56:01  SAF export: jude_s_s25_ultra/ad0c6c34-… copied=1
+tablet  13:58:48  = Synced 1 new events, tagged origin ad0c6c34-d388-4ef0-b906-976bd760b22d
+tablet  13:58:49  Multi-Device Sync completed: success=true
+```
+
+`ad0c6c34-…` is the phone's `files/device_id`, read directly via `run-as`; the tablet's own is
+`7b54cfe9-…`. Then the tablet's `sqlite.db` (+ WAL) was pulled and queried directly:
+
+- 16 imported events now carry `$aw.origin.device`, across all four
+  `aw-watcher-android*-synced-from-jude_s_s25_ultra` buckets;
+- the **only** distinct origin UUID in the whole tablet store is the phone's;
+- the tablet's own first-hand `aw-watcher-android` bucket — 715 events — carries **zero** tags.
+
+That is R11 (a device never stamps its own data), the log line, and the stored-data check all
+satisfied. The `! Bucket hostname/device ID was invalid` warning fired on the phone's push and the
+sync carried on instead of panicking — item 5 of 3.1 (the `src_did.unwrap()` fix) exercised too.
+Nothing now blocks **3.2**.
 
 ### 2026-09-09 (night) — 3.1: imported events now say which device they came from
 Phase 3's first step, and the smallest one: an event copied in from another device carries the
