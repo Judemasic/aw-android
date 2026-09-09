@@ -184,7 +184,14 @@ internal class SharedFolder(private val context: Context, private val root: Docu
             }
             return verdict
         }
-        val created = root.createFile("text/plain", SHARED_VERSION_FILE)
+        // "application/octet-stream" is deliberate, not lazy: SAF's local-storage provider maps
+        // "text/plain" to a preferred extension and silently renames a create of "VERSION" to
+        // "VERSION.txt" -- confirmed on device 2026-09-09, where findFile("VERSION") then never
+        // matched what was actually written and every sync re-created another copy
+        // ("VERSION.txt", "VERSION (1).txt", "VERSION (2).txt", ...). octet-stream has no
+        // preferred extension, so the name we ask for is the name we get -- the same reason
+        // mirrorDirectory below uses it for every file it writes.
+        val created = root.createFile("application/octet-stream", SHARED_VERSION_FILE)
         if (created == null || !writeText(created, "$SHARED_SCHEMA_VERSION\n")) {
             Log.w(TAG, "Could not write $SHARED_VERSION_FILE")
             return SchemaVerdict.ABSENT
