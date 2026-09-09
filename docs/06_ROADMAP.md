@@ -1,10 +1,9 @@
 # 06 — Roadmap
 
 > **👉 START HERE:** ✅ **Phase 1 is done, and [2.1](#21--shared-folder-layout--version)
-> landed in code on 2026-09-09 — `VERSION`, `devices/<uuid>/meta.json`, and the
-> refuse-a-newer-folder rule. Next: [2.2](#22--append-only-jsonl-store) — and carry 2.1's
-> three on-device checks with you next time a device is in hand, because none of 2.1 has
-> run on hardware.**
+> is verified on both devices as of 2026-09-09 — `VERSION`, `devices/<uuid>/meta.json`, and
+> the refuse-a-newer-folder rule, plus a SAF extension-renaming bug (`VERSION` becoming
+> `VERSION.txt`) found and fixed during that pass. Next: [2.2](#22--append-only-jsonl-store).**
 >
 > **The 4.2% ceiling is gone, measured not assumed (2026-09-04, step
 > [1.11](#111--bump-aw-webui-past-the-960-fix)).** `aw-webui` moved `3cbe349 → a2ca625`, carried
@@ -795,7 +794,7 @@ above.
 
 ## Phase 2 — Shared state
 
-### 2.1 — Shared folder layout + `VERSION` ✅ DONE 2026-09-09 (code; ⚠️ not yet on device)
+### 2.1 — Shared folder layout + `VERSION` ✅ VERIFIED ON DEVICE 2026-09-09
 Create `devices/<uuid>/`, write `meta.json`, add version read/refuse. *(R20)*
 
 **Result.** `SharedFolder.kt` is new and owns all three. Every sync cycle now:
@@ -825,9 +824,23 @@ is deliberately not part of the test: it changes on every ordinary app update.
 **Check:** `scripts/check-local.sh kotlin` and `:mobile:testDebugUnitTest` pass; 11 new tests in
 `SharedFolderTest.kt` cover the version verdicts (absent / older / ours / newer / junk), the
 `meta.json` round-trip and field names, unknown-field tolerance, and the lineage test's false
-positives. **Not run on a device.** On the next device pass confirm: `VERSION` at the shared-folder
-root, `devices/<uuid>/meta.json` for *both* devices, and `SAF import:` still reporting `peers=1`
-(not 2 — which is what `devices/` walked as a hostname would look like).
+positives.
+
+**Verified on device 2026-09-09**, both `SM-S938B` (phone) and `SM-X520` (tablet): a single
+`VERSION` file at the shared-folder root containing `1`, `devices/<uuid>/meta.json` present for
+both devices with correct `role` (`phone`/`tablet`) and fresh `last_seen`, no double-counted
+peer from `devices/` being walked as a hostname.
+
+**⚠️ Bug found and fixed during this pass — `VERSION` was never named `VERSION`.**
+`createFile("text/plain", "VERSION")` hits SAF's local-storage provider mapping `text/plain` to a
+preferred extension, so the file actually landed as `VERSION.txt`. `ensureVersion()`'s own
+`findFile("VERSION")` then never found what it had written, treated the folder as version-less on
+every single sync, and wrote another copy each time — three turned up
+(`VERSION.txt`, `VERSION (1).txt`, `VERSION (2).txt`) after two devices ran a couple of syncs each,
+all correctly containing `1` but under the wrong name. Fixed by creating it as
+`application/octet-stream` instead, which has no preferred extension — the same MIME type
+`mirrorDirectory` already uses for every other file it writes, for the same reason. `meta.json`
+was unaffected because it already carries its own `.json` extension. Commit `5efe301`.
 
 ### 2.2 — Append-only JSONL store ⬜
 Read/write/merge for `decisions.jsonl` and `settings.jsonl`, including tombstones and the
@@ -1069,6 +1082,27 @@ After any Rust merge: update the submodule pointer, push, rebuild in Actions
 ---
 
 ## Progress log
+
+### 2026-09-09 — 2.1 verified on device, after catching a SAF extension bug
+Both devices synced against the fixed build (commit `5efe301`). Confirmed on `SM-S938B` and
+`SM-X520`: one `VERSION` file at the shared-folder root reading `1`, `devices/<uuid>/meta.json`
+present for both with `role: phone` / `role: tablet` correctly split and a fresh `last_seen`.
+
+**The device test caught something the unit tests could not.** `ensureVersion()` created the file
+as `createFile("text/plain", "VERSION")`. On this phone's storage provider that silently becomes
+`VERSION.txt` — SAF maps `text/plain` to a preferred extension when the requested name has none.
+`findFile("VERSION")` then never matched what was actually on disk, so every sync treated the
+folder as version-less and wrote another copy: `VERSION.txt`, then `VERSION (1).txt`, then
+`VERSION (2).txt` after two devices ran a couple of syncs apiece, all holding `1` but under names
+nothing would ever read back. Nothing in `SharedFolderTest.kt` could have caught this — it is a
+pure-JVM suite with no `DocumentFile`, and the bug is specifically in how a real SAF provider
+renames a create. Fixed by writing `application/octet-stream` instead, which has no preferred
+extension; `mirrorDirectory` already uses it for every other file for the same reason. `meta.json`
+was never at risk — it already carries its own `.json` extension, and both devices' copies were
+correct on the very first pass, before the fix.
+
+The three stray files were deleted by hand from both devices' sync folders; no migration was
+written, since 2.1 has not shipped past this pair of test devices.
 
 ### 2026-09-09 — 2.1: the shared folder gained a version, and each device a name
 Phase 2 has code. `SharedFolder.kt` writes the root `VERSION`, publishes
