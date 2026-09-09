@@ -1373,6 +1373,12 @@ control tappable in portrait with one thumb.
 > make aw-webui's desktop screens pleasant on a phone. That effort goes to **3.4** instead, which
 > is native, phone-first, and the screen actually opened every day (Q4).
 >
+> ↩️ **Partly reversed 2026-09-09, by the owner, for the Timeline only:** *"we eventually want the
+> timeline to be better on small screens like the phone — on the tablet it is good."* The cut still
+> holds for aw-webui in general; the **Timeline** is carved back out as [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width),
+> because it is the one aw-webui screen actually read on the phone. Still "functional, not
+> beautiful" (**R34**) — fit the controls, give the tracks the width, do not redesign it.
+>
 > ⚠️ **"Just use a browser" is not free.** The embedded server binds `127.0.0.1`, so a desktop
 > browser cannot reach a phone's data without changing what it listens on — a security decision,
 > not a convenience one. Do not assume this route exists until someone has decided that.
@@ -1394,11 +1400,23 @@ On a real phone in portrait, list every screen that overflows, with the offendin
 | Timeline — **range and mode controls**, top bar | ❌ overflows |
 | Settings — **some fields** | ❌ overflow |
 
-Tablet is fine throughout, so this is **narrow-width only**. ⚠️ Still owed: the *specific* offending
-elements (which CSS rule, which component) — the list above is at screen granularity, which is
-enough to decide Q8 but not enough to fix. Pin them down with WebView remote debugging
-(`chrome://inspect`), which works because `WebView.setWebContentsDebuggingEnabled(true)` is already
-set in testing builds.
+Tablet is fine throughout, so this is **narrow-width only**. ⚠️ Still owed: the *specific* CSS rule
+per element. Pin the rest down with WebView remote debugging (`chrome://inspect`), which works
+because `WebView.setWebContentsDebuggingEnabled(true)` is already set in testing builds.
+
+**Timeline, captured on the S25U 2026-09-09** (screenshot taken while verifying 3.4) — the element
+list 5.1 was missing, at least for this screen:
+
+| Element | What happens at phone width |
+|---|---|
+| `Mode` segmented control | Runs off the right edge; **"Date range" reads "Date rang"** and is not fully tappable |
+| `Range` segmented control (`¼h ½h 1h 2h 3h 4h 6h 12h 24h`) | Nine buttons on one row; **"24h" is cut off** |
+| `643 Events shown:` box | Clipped at the right edge, value not visible |
+| Bucket table label column | Takes **~55% of the width**, squeezing every track into the right 45% |
+| Bucket row labels | `android-synced-from-jude` truncated — note this is the *layout* truncating, on top of the separate `_` truncation bug in [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_) |
+
+The owner's summary, unprompted: **"on the tablet it is good"** — so this is purely a width problem,
+which is what [5.2](#52--decide-q8--resolved-2026-09-02--css-not-native) already concluded.
 ### 5.2 — Decide Q8 ✅ RESOLVED 2026-09-02 — CSS, not native
 Patch `aw-webui`'s CSS (**B**), or inject a mobile stylesheet from the WebView (**A**).
 
@@ -1436,9 +1454,38 @@ Controls sized for a thumb, not a mouse.
 >
 > ✅ **Added in 1.7 (2026-09-02, unverified).**
 
+### 5.5 — Make the aw-webui **Timeline** usable at phone width ⬜ ← *owner-requested 2026-09-09*
+The Timeline is the screen the owner actually reads, and it is the worst offender at phone width.
+**On the tablet it is good** — this is narrow-width only, so it is a responsive-layout job, not a
+redesign, and per [5.2](#52--decide-q8--resolved-2026-09-02--css-not-native) it is **CSS (B), not a
+native rewrite**.
+
+This is the one screen carved back out of this phase's 2026-09-02 scope cut, at the owner's
+request on 2026-09-09 — see the note at the top of Phase 5. Target stays **R34: functional, not
+beautiful.**
+
+What "better" means here, beyond [5.3](#53--kill-horizontal-page-scroll)'s "does not scroll
+sideways" — a Timeline can fit the viewport and still be unreadable:
+
+- **The two segmented controls (`Mode`, `Range`) must fit or wrap.** Nine range buttons on one row
+  do not fit a phone; wrap them, scroll them in their own container, or collapse to a dropdown.
+- **Give the tracks the width.** The label column eats ~55% of the screen; labels belong above
+  each track, or in a much narrower column, so the actual data gets the space.
+- **Track rows tall enough to read**, and bucket names not truncated by the layout.
+
+**Check:** on the S25U in portrait, every `Mode` and `Range` option is fully visible and tappable,
+no element is clipped at the right edge, and each bucket track is at least as wide as its label
+column. Compare against the 2026-09-09 screenshot in [5.1](#51--audit-what-actually-breaks--mostly-done-2026-09-02).
+
+⚠️ **Distinct from the native combined-timeline screen** built in
+[3.4](#34--combined-view-with-shading), which has its own design debt recorded there. This item is
+about **upstream aw-webui's Timeline**, rendered in the WebView.
+
 > **New screens are exempt from this phase — they must be born mobile-first (R33).** The combined
 > timeline (Phase 3.4) and resolution sheet (Phase 4.1) are designed at phone width from the start,
-> so they never join the backlog this phase exists to clear.
+> so they never join the backlog this phase exists to clear. ⚠️ **3.4 did not honour this** — its
+> first pass has raw UUIDs colliding with the duration text and no legend; the design pass owed
+> there is tracked in 3.4's own entry, not here.
 
 ---
 
