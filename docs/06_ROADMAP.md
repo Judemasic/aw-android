@@ -20,12 +20,20 @@
 > per event rather than per bucket); both are written up in 3.4. `aw-server-rust@beta` is
 > `9f6f855`.
 >
-> ⚠️ **The 3.4 screen works but looks bad, by the owner's judgement and mine** — raw UUIDs
-> colliding with the duration text at phone width, no legend, tap-detail that names apps but not
-> devices. **A design pass is owed and was deliberately deferred** at the owner's instruction; the
-> defect list is in 3.4. Do not treat the current screen as the intended one. Separately,
-> [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width) now tracks the owner's request that
-> the **aw-webui** Timeline be made usable at phone width.
+> ⏳ **[3.5](#35--rebuild-the-combined-timeline-in-aw-webui) is the live step, and it moves the
+> combined timeline out of Kotlin and into aw-webui.** The owner raised the bar on 2026-09-09 —
+> *"top of the line ui not just a few adjustments"*, look like the **Activity view**, and **work on
+> PC, tablet and phone** (now **R35**/**R36**). That last one is decisive rather than cosmetic: 3.4
+> drew the screen with a native Android `View`, and there is no Android on a PC, so no amount of
+> restyling can get there. **3.5a is done** — the pipeline is now served at
+> `GET /api/0/combined/timeline`, verified against a running server (R6 and R8 both hold over
+> HTTP). **3.5b, the Vue view, is next.** The 3.4 native screen and its JNI call stay until the
+> replacement is verified, then come out in 3.5c.
+>
+> ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
+> now 3.5b's acceptance list. Separately,
+> [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width) tracks the owner's request that
+> upstream aw-webui's **Timeline** be made usable at phone width; different screen, same repo.
 >
 > **Decided, not built: [2.3b](#23b--show-when-settings-last-synced).** No second "Sync Now"
 > button — [1.7](#17--sync-settings-reachability-and-a-manual-trigger) already put one in Sync
@@ -1255,7 +1263,7 @@ device count, `coalesce` refusing to merge across a flag change, and determinism
 nothing calls the crate yet. No CI build or APK; the submodule pointer moves forward carrying only
 the unused crate. The first Phase 3 device test is 3.4.
 
-### 3.4 — Combined view with shading ✅ DONE (2026-09-09) — verified on both devices; ⚠️ UI pass owed
+### 3.4 — Combined view with shading ✅ DONE (2026-09-09) — verified on both devices; UI superseded by [3.5](#35--rebuild-the-combined-timeline-in-aw-webui)
 Render the combined track above per-device tracks; shade unresolved contention. *(R8)*
 **Q4 is resolved (2026-09-02): native, phone-first, on top of the Rust pipeline from 3.2.** An
 aw-webui view comes later for desktop. Born mobile-first per **R33** — it never joins Phase 5's
@@ -1370,8 +1378,11 @@ sync brought over. **R18 promises identical output for identical *input*** — i
 devices mid-sync agree, and this is not evidence against it. Worth remembering before reading a
 disagreement as a bug.
 
-⚠️ **UI: known bad, design pass deliberately deferred** (owner, 2026-09-09: *"the ui is so so
-bad"*, and *"if you know you will fix the ui later then later"*). Confirmed defects, worst first:
+⚠️ **UI: known bad. The fix is [3.5](#35--rebuild-the-combined-timeline-in-aw-webui), which
+rebuilds this screen in aw-webui rather than restyling it** (owner, 2026-09-09: *"the ui is so so
+bad"*, then *"i expect top of the line ui not just a few adjustments … the ui should worl o pc
+table and phone"* — and a native Android `View` cannot run on a PC, see **R35**). The defect list
+below is not wasted: it is the acceptance list 3.5b must clear. Worst first:
 
 1. **Device names are raw UUIDs**, and on the phone the name **collides with the duration text**
    (`ad0c6c34-…-976bd760b22d (this devic7h)23m`). The tablet has the width to avoid the collision,
@@ -1387,11 +1398,99 @@ bad"*, and *"if you know you will fix the ui later then later"*). Confirmed defe
 
 ---
 
+### 3.5 — Rebuild the combined timeline in aw-webui ⏳ IN PROGRESS (2026-09-09) — HTTP endpoint done
+*(**R35**, **R36**, R6, R8, R11)*
+
+**This replaces the "UI pass" 3.4 owed.** The owner raised the bar on 2026-09-09 and, in doing so,
+changed *where the screen has to live*:
+
+> *"if you are gonna do the ui then i expect top of the line ui not just a few adjustments i will
+> spendd most of my time in this app in this screen also i do like the acttivity veiw can wwe have
+> thatt for the compind too? also dpnt forget thtat the ui should worl o pc table and phone"*
+
+Three requirements, now written up as **R35** and **R36** in
+[`01_REQUIREMENTS_AND_RULES.md`](01_REQUIREMENTS_AND_RULES.md):
+
+1. **Top of the line, not a few adjustments** — this is the screen the owner lives in.
+2. **Look like aw-webui's Activity view**, applied to combined data.
+3. **Work on PC, tablet and phone.**
+
+#### ⚠️ The finding that decides the architecture
+
+**Requirement 3 rules out the 3.4 native screen, and no amount of layout work rescues it.**
+3.4 drew the timeline with a hand-written Android `View` (`CombinedTimelineView.kt`). There is no
+Android on a PC, so that screen can never satisfy R35 — and requirements 1 and 2 point the same
+way, because the Activity view the owner likes *is* aw-webui.
+
+aw-webui is the right home and needs no new plumbing to reach the owner's three targets:
+
+| | How aw-webui gets there |
+|---|---|
+| Phone | Already rendered in the app's WebView (`WebUIFragment.kt`) against the embedded server |
+| Tablet | Same WebView |
+| PC | The same Vue app, served by desktop aw-server, in a browser |
+
+So 3.5 is **not** a restyle of the native view. It is a rebuild of the screen as an aw-webui view,
+reusing the Activity view's own components so it inherits that look rather than imitating it.
+
+#### 3.5a — Serve the combined timeline over HTTP ✅ DONE (2026-09-09)
+aw-webui speaks HTTP and **cannot call JNI**, so nothing else in 3.5 can start until the pipeline is
+reachable over the API. New `aw-server/src/endpoints/combined.rs`:
+
+```
+GET /api/0/combined/timeline?start=<rfc3339>&end=<rfc3339>&hostnames=<json>
+```
+
+It is a thin wrapper — all the work stays in `aw-server/src/combined.rs`, which 3.4 already built
+and which is shared with the JNI path, so **the two callers cannot drift**. `own_device` is read
+server-side from `ServerState.device_id` rather than taken as a parameter, because the server
+already knows and a caller could only get it wrong. `hostnames` stays a parameter: on Android that
+map lives in the Syncthing folder behind SAF, which only Kotlin can open.
+
+**Checked against a running server** (`--testing`, loopback), not just compiled:
+
+| Case | Result |
+|---|---|
+| Empty datastore | `{"combined":[],"combined_seconds":0,"devices":[]}` |
+| Two devices overlapping 30 min | **`combined_seconds` 5400, device totals 7200** — **R6 holds** |
+| The overlapping half-hour | `state=contended`, `unresolved=true` — **R8 holds** |
+| `start=nonsense` / `end` ≤ `start` / bad `hostnames` JSON | `400` each, naming the parameter |
+| `hostnames` supplied | peer row shows `hostname=tablet` instead of a bare uuid |
+
+⚠️ **The JNI entry point and the 3.4 native screen deliberately stay for now.** Deleting a working
+screen before its replacement exists would leave the owner with none. They come out in 3.5c.
+
+#### 3.5b — The Vue view ⬜ ← *next*
+Build `CombinedTimeline.vue` in aw-webui, reusing the Activity view's components so it inherits the
+look. Must fix, at minimum, every defect listed under 3.4 — device **names** not raw uuids, a tap
+detail that says *which device* each side was on, a legend — and must read well at phone, tablet and
+desktop width (**R35**).
+
+**Check:** the same day renders in a desktop browser and in the app's WebView on both devices; the
+R6 summary matches the native screen's numbers for the same day.
+
+#### 3.5c — Retire the native screen ⬜
+Once 3.5b is verified on hardware, remove `CombinedTimelineView.kt`,
+`CombinedTimelineActivity.kt`, `CombinedTimeline.kt`, the `getCombinedTimeline` JNI function and its
+`RustInterface` declaration, and point the nav-drawer entry at the web view. **Not before** — see
+the warning in 3.5a.
+
+> **Distinct from [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width).** 5.5 is upstream
+> aw-webui's *existing* **Timeline** screen at phone width. 3.5 is the *new* combined view. They
+> both land in aw-webui and will share layout lessons, but they are different screens.
+
+---
+
 ## Phase 4 — Manual resolution
 
 ### 4.1 — Resolution sheet ⬜
 Tap-to-open, the four outcomes, and the `once` / `always` scope control.
 *(R9, R11, R16)*
+
+⚠️ **Build this in aw-webui, not as a native Android sheet.** It opens from a shaded block in the
+combined timeline, which [3.5](#35--rebuild-the-combined-timeline-in-aw-webui) is moving into
+aw-webui to satisfy **R35** (PC, tablet and phone). A native `BottomSheet` would be stranded on
+Android and would have to be written twice. **Do 3.5b first** — a sheet needs a block to open from.
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -1673,7 +1772,17 @@ per device, with unresolved contention striped (**R8**).
   raw UUIDs colliding with the duration text at phone width; tap detail that names apps but not
   devices (so real cross-device contention reads as *"Syncthing-Fork — also running:
   Syncthing-Fork"*); no legend. Full list in 3.4.
-- Next: **4.1 — Resolution sheet**, or the 3.4 UI pass first if the owner prefers.
+- **The owner then raised the UI bar, which changed the architecture** (2026-09-09): top-of-the-line
+  rather than adjustments, look like the **Activity view**, and **work on PC, tablet and phone**.
+  Written up as **R35**/**R36**. A native Android `View` cannot run on a PC, so the combined
+  timeline moves to **aw-webui** — see [3.5](#35--rebuild-the-combined-timeline-in-aw-webui).
+- **3.5a done:** `GET /api/0/combined/timeline` now serves the pipeline over HTTP, wrapping the same
+  `aw-server/src/combined.rs` the JNI path uses so the two cannot drift. Verified against a running
+  server, not just compiled: two devices overlapping 30 min gave `combined_seconds` **5400** against
+  device totals of **7200** (**R6**), with the overlap `contended`/`unresolved` (**R8**), and all
+  three bad-input cases returned `400` naming the parameter.
+- Next: **3.5b — the Vue view.** Then 3.5c retires the native screen, and only then **4.1 —
+  Resolution sheet**, which must also be built in aw-webui since it opens from a shaded block.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after

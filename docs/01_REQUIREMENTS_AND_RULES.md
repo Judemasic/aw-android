@@ -208,6 +208,23 @@ horizontally, scrolls sideways, and cuts content off the edge of the screen. It 
 
 > **R34 — "Functional" comes before "beautiful".** The first target is: nothing cut off, nothing
 > unreachable, every control tappable. Visual refinement is a later, separate pass.
+> ⚠️ **Amended for the combined timeline by R36** — that one screen does not get to stop at
+> "functional".
+
+> **R35 — The combined timeline runs on PC, tablet and phone.** *(owner, 2026-09-09: "dpnt forget
+> thtat the ui should worl o pc table and phone")* Not "phone first, PC someday" — all three are
+> the target. This is **binding on the implementation, not just the layout**: a native Android
+> `View` cannot run on a PC, so the combined timeline belongs in **aw-webui**, which already renders
+> in the Android WebView against the embedded server *and* in a desktop browser. The native screen
+> built in roadmap 3.4 is therefore a stepping stone, not the destination.
+
+> **R36 — The combined timeline is the app's primary screen and is held to a higher standard.**
+> *(owner, 2026-09-09: "i will spendd most of my time in this app in this screen", and "i expect top
+> of the line ui not just a few adjustments")* R34's "functional, not beautiful" is the floor for
+> the rest of the app; **for this screen it is not the ceiling.** A round of small corrections to
+> the 3.4 native view does not discharge this. The owner has named the standard concretely: it
+> should feel like **aw-webui's Activity view** — the same visual language, density and polish,
+> applied to combined data.
 
 ---
 
