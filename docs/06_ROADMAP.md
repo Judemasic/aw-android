@@ -1460,7 +1460,7 @@ map lives in the Syncthing folder behind SAF, which only Kotlin can open.
 ⚠️ **The JNI entry point and the 3.4 native screen deliberately stay for now.** Deleting a working
 screen before its replacement exists would leave the owner with none. They come out in 3.5c.
 
-#### 3.5b — The Vue view ⬜ ← *next*
+#### 3.5b — The Vue view ⏳ BUILT (2026-09-09) — verified in a browser, ⚠️ NOT on device, ⚠️ blocked on a fork
 Build `CombinedTimeline.vue` in aw-webui, reusing the Activity view's components so it inherits the
 look. Must fix, at minimum, every defect listed under 3.4 — device **names** not raw uuids, a tap
 detail that says *which device* each side was on, a legend — and must read well at phone, tablet and
@@ -1468,6 +1468,76 @@ desktop width (**R35**).
 
 **Check:** the same day renders in a desktop browser and in the app's WebView on both devices; the
 R6 summary matches the native screen's numbers for the same day.
+
+##### What was built
+
+In **`aw-server-rust/aw-webui`** (branch `beta`, commit `cb3b0c3`):
+
+| File | What it is |
+|---|---|
+| `src/visualizations/ProportionalTimeline.vue` | **New, reusable, and deliberately generic.** Takes `tracks`, knows nothing about devices or contention, and carries `orientation` as a **prop**. This is the component [5.5b](#55--make-the-aw-webui-timeline-usable-at-phone-width) reuses and the one that could go upstream. |
+| `src/views/CombinedTimeline.vue` | The view: fetches `/api/0/combined/timeline`, Mode/Range, device picker, rename, tap detail. |
+| `src/stores/settings.ts` | New `device_names` key — renames persist **server-side**, not in localStorage, so a rename survives a reinstall and reaches the peer. |
+| `src/route.js`, `components/Header.vue`, `i18n/locales/en.ts` | Route `/combined`, nav entry, string. |
+
+**The combined view passes `orientation="vertical"` at every width**, not `auto`. Extra width buys
+columns and a side detail panel, never a different axis — one layout that scales beats two that
+drift. The component still supports horizontal because 5.5b needs it: upstream's desktop Timeline
+users *do* expect a horizontal axis.
+
+##### ✅ What was verified, against a running server
+
+Not "it compiles". `aw-server --testing --webpath …/dist` was run with **three** seeded devices and
+the page driven in a browser:
+
+| | Result |
+|---|---|
+| **R6** | combined **368 min** vs device sum **608 min** — holds |
+| Segments | 11, of which **4 unresolved** |
+| **Worst contention** | a segment with **4 slices** (`Android Studio + YouTube + Kindle + Firefox`) — renders legibly as four labelled bands |
+| Wide (1148px) | vertical axis, three **full labelled** device columns, detail panel beside |
+| Narrow (510px) | vertical axis, 22px labelled gutter columns, detail below |
+
+Three bugs were found this way and fixed, none of which a compile would have caught: gutter headers
+rendered **white-on-dark** (a hardcoded `#fff` fallback); narrow gutter stripes **leaked duration
+text** into 22px (`tiny` measures the time axis, not the cross axis); and adding a nav entry pushed
+the absolutely-centred navbar brand into the left nav at ~1180px, so the brand moves to `xl`.
+
+##### ⚠️ What is NOT verified
+
+- **Nothing has run on a phone or tablet.** This is a browser result only.
+- **True phone width was never reached.** Headless Edge has a hard **minimum viewport of 510px**
+  (`--window-size=412` still reports `innerWidth=510`), so 412px is untested. The vertical layout is
+  exercised at 510, but the narrowest case is not.
+  ⚠️ **A correction:** an earlier note here claimed a screenshot of the stock Home screen *confirmed*
+  aw-webui overflows sideways at phone width. That was unsound — it was the same 510px artifact
+  being cropped to 412. [5.1](#51--audit-what-actually-breaks--mostly-done-2026-09-02)'s
+  on-device evidence for overflow still stands; that particular screenshot proved nothing.
+- **Device names show raw uuids by default.** The view does not pass the optional `hostnames` map,
+  so an untagged peer has no friendly name until renamed. Rename works; the default is poor.
+
+##### 🚧 Blocked: there is no `aw-webui` fork to push to
+
+`aw-server-rust/aw-webui` is a submodule pointing at **`ActivityWatch/aw-webui`**, checked out
+detached at `a2ca625`. **`Judemasic/aw-webui` does not exist.** The work is committed locally on a
+new `beta` branch but **cannot be pushed**, and CI clones with `submodules: recursive`, so **no APK
+can contain this screen until the fork exists.**
+
+Unblocking is one command, but it **creates a public repository** under the owner's GitHub account,
+so it is deliberately left to them:
+
+```sh
+gh repo fork ActivityWatch/aw-webui --clone=false --remote=false
+cd "aw-server-rust/aw-webui" && git remote add fork https://github.com/Judemasic/aw-webui.git
+git push -u fork beta
+# then point the submodule at the fork and bump the pointers
+cd "aw-server-rust" && git config -f .gitmodules submodule.aw-webui.url https://github.com/Judemasic/aw-webui.git
+git add .gitmodules aw-webui && git commit -m "chore: point aw-webui at the fork" && git push origin beta
+```
+
+⚠️ **Local toolchain note:** `npm install` fails on **npm 12** (`EALLOWSCRIPTS` preparing the
+`vue-d3-sunburst` git dependency). `npx npm@10 install` works, and CI is unaffected — the workflow
+has no `setup-node`, so it uses the runner's npm 10.
 
 ##### The layout problem, and the decision *(owner, 2026-09-09: "there is not inogh horisintal spavce on a phone ofr a good tmeline … maybe make it virtical?")*
 
@@ -1901,8 +1971,22 @@ per device, with unresolved contention striped (**R8**).
   server, not just compiled: two devices overlapping 30 min gave `combined_seconds` **5400** against
   device totals of **7200** (**R6**), with the overlap `contended`/`unresolved` (**R8**), and all
   three bad-input cases returned `400` naming the parameter.
-- Next: **3.5b — the Vue view.** Then 3.5c retires the native screen, and only then **4.1 —
-  Resolution sheet**, which must also be built in aw-webui since it opens from a shaded block.
+- **3.5b built and verified in a browser** (2026-09-09), not on device. New `CombinedTimeline.vue`
+  plus a generic `ProportionalTimeline.vue` whose orientation is a prop — that second one is what
+  5.5b reuses and what could go upstream. Run against a live server with three seeded devices: **R6
+  held (368 min combined vs 608 min device sum)** and a **4-slice** contended segment rendered
+  legibly, which was the case flagged as unverified in the layout study. Three device-class bugs
+  were caught by actually looking: white-on-dark gutter headers, duration text leaking into 22px
+  stripes, and a navbar brand collision my new nav entry caused at 1180px.
+- ⚠️ **Blocked on a fork.** `aw-webui` is a submodule of upstream and `Judemasic/aw-webui` does not
+  exist, so the commit cannot be pushed and **CI cannot build an APK containing this screen**.
+  Creating the fork makes a public repo on the owner's account, so it is left to them — the exact
+  commands are in [3.5b](#35b--the-vue-view).
+- ⚠️ **True phone width (412px) is still untested**: headless Edge will not go below a 510px
+  viewport. The vertical layout is exercised at 510; the narrowest case waits for hardware.
+- Next: **the fork, then a CI build and a device test.** Then 3.5c retires the native screen, and
+  only then **4.1 — Resolution sheet**, which must also be built in aw-webui since it opens from a
+  shaded block.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
