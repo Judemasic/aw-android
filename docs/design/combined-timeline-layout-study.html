@@ -1,0 +1,788 @@
+<title>Vertical Timeline Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+:root{
+  --ground:#EDEFF2;      --surface:#FFFFFF;     --surface-2:#F5F7F9;
+  --ink:#14171C;         --ink-2:#3D454F;       --muted:#69717D;
+  --line:#D2D8DF;        --line-2:#E3E8ED;
+  --accent:#0E7C6B;      --accent-ink:#0A5F52;  --accent-wash:#DCEFEB;
+  --warn:#B4541F;        --warn-wash:#F6E6DA;
+  --app-1:#2E6F5E; --app-2:#5F4B94; --app-3:#2C6FA6;
+  --app-4:#A83E36; --app-5:#8A6A2F; --app-6:#4E6B2F;
+  --on-app:#FFFFFF;
+  --shadow:0 1px 2px rgba(20,23,28,.06), 0 6px 20px -12px rgba(20,23,28,.28);
+  --r:7px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1116;    --surface:#161A20;     --surface-2:#1D222A;
+    --ink:#E8EBEF;       --ink-2:#BDC5CF;       --muted:#8E97A3;
+    --line:#2B323B;      --line-2:#222831;
+    --accent:#3BC6AD;    --accent-ink:#67D8C3;  --accent-wash:#12332F;
+    --warn:#E08A4E;      --warn-wash:#3A2A1B;
+    --app-1:#3A8A76; --app-2:#7566A8; --app-3:#3E86C0;
+    --app-4:#BE5850; --app-5:#A78243; --app-6:#66883F;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1116;    --surface:#161A20;     --surface-2:#1D222A;
+  --ink:#E8EBEF;       --ink-2:#BDC5CF;       --muted:#8E97A3;
+  --line:#2B323B;      --line-2:#222831;
+  --accent:#3BC6AD;    --accent-ink:#67D8C3;  --accent-wash:#12332F;
+  --warn:#E08A4E;      --warn-wash:#3A2A1B;
+  --app-1:#3A8A76; --app-2:#7566A8; --app-3:#3E86C0;
+  --app-4:#BE5850; --app-5:#A78243; --app-6:#66883F;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.55; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+.cond{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif}
+
+.wrap{max-width:1180px;margin:0 auto;padding:32px 20px 72px}
+
+/* ---------- masthead ---------- */
+header.masthead{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px
+}
+h1{
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-weight:700;font-size:clamp(28px,5vw,42px);line-height:1.08;
+  letter-spacing:-.015em;margin:0 0 12px;text-wrap:balance
+}
+.standfirst{margin:0;max-width:64ch;color:var(--ink-2);font-size:15.5px}
+.standfirst b{color:var(--ink);font-weight:600}
+
+/* ---------- controls ---------- */
+.controls{
+  display:flex;flex-wrap:wrap;gap:22px 30px;align-items:flex-start;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px 18px;margin-bottom:8px;box-shadow:var(--shadow)
+}
+.ctl{display:flex;flex-direction:column;gap:7px}
+.ctl > span.lbl{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted)
+}
+.seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.seg button{
+  font:inherit;font-size:12.5px;font-weight:500;padding:6px 11px;border:0;
+  background:transparent;color:var(--ink-2);cursor:pointer;white-space:nowrap;
+  border-right:1px solid var(--line)
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:var(--line-2);color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
+.checks{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.checks label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-2);cursor:pointer}
+.checks input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+
+/* ---------- verdict strip ---------- */
+.verdict{
+  display:flex;gap:10px;align-items:flex-start;margin:0 0 24px;
+  padding:11px 14px;border-radius:0 var(--r) var(--r) 0;
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  font-size:13px;color:var(--ink-2)
+}
+.verdict.bad{border-left-color:var(--warn);background:var(--warn-wash)}
+.verdict b{color:var(--ink)}
+
+/* ---------- device frame ---------- */
+.stage{display:flex;justify-content:center;margin-bottom:14px}
+.frame{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);overflow:hidden;width:100%;transition:max-width .3s ease
+}
+.frame-bar{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:7px 12px;border-bottom:1px solid var(--line-2);background:var(--surface-2);
+  font-size:11px;color:var(--muted)
+}
+.frame-bar .mono{font-size:11px}
+
+/* ---------- app chrome inside frame ---------- */
+.appbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 12px;border-bottom:1px solid var(--line-2)
+}
+.appbar h2{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;
+  margin:0;letter-spacing:-.01em
+}
+.daynav{display:flex;align-items:center;gap:4px}
+.daynav button{
+  font:inherit;font-size:13px;width:28px;height:28px;line-height:1;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);border-radius:5px;cursor:pointer
+}
+.daynav button:hover{background:var(--surface-2);color:var(--ink)}
+.daynav .today{width:auto;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.03em}
+
+.summary{
+  display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line-2);
+}
+.stat{flex:1 1 0;min-width:88px;padding:9px 12px;border-right:1px solid var(--line-2)}
+.stat:last-child{border-right:0}
+.stat .v{font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600;letter-spacing:-.02em;display:block;line-height:1.2}
+.stat .k{font-size:10.5px;color:var(--muted);letter-spacing:.02em}
+.stat.flag .v{color:var(--warn)}
+
+/* ---------- minimap ---------- */
+.minimap{position:relative;height:38px;border-bottom:1px solid var(--line-2);padding:6px 12px 12px;cursor:pointer}
+.mm-track{position:relative;height:100%;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.mm-b{position:absolute;top:0;bottom:0;opacity:.85}
+.mm-b.c{background:repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 5px),var(--warn-wash)}
+.mm-view{position:absolute;top:-2px;bottom:-2px;border:1.5px solid var(--accent);border-radius:3px;background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none}
+.mm-ticks{position:absolute;left:12px;right:12px;bottom:1px;height:9px}
+.mm-ticks span{position:absolute;font-family:"IBM Plex Mono",monospace;font-size:8.5px;color:var(--muted);transform:translateX(-50%)}
+
+/* ---------- timeline body ---------- */
+.tl-body{display:flex;align-items:stretch}
+.tl-scroll{flex:1 1 auto;overflow:auto;position:relative;scrollbar-width:thin}
+.tl-inner{position:relative}
+
+.hourcol{position:absolute;left:0;top:0;bottom:0;width:var(--hourw);pointer-events:none}
+.hourcol .hr{
+  position:absolute;left:0;width:100%;font-family:"IBM Plex Mono",monospace;
+  font-size:10px;color:var(--muted);padding-right:6px;text-align:right;
+  transform:translateY(-.5em)
+}
+.gridline{position:absolute;background:var(--line-2)}
+
+.lane{position:absolute}
+.lane-head{
+  position:sticky;z-index:3;background:var(--surface);border-bottom:1px solid var(--line);
+  font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);padding:5px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+
+.blk{
+  position:absolute;border-radius:4px;overflow:hidden;cursor:pointer;
+  color:var(--on-app);border:1px solid rgba(0,0,0,.14);
+  display:flex;padding:3px 6px;gap:6px;min-height:0
+}
+.blk:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px;z-index:5}
+.blk .nm{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.blk .du{font-family:"IBM Plex Mono",monospace;font-size:10.5px;opacity:.9;white-space:nowrap;line-height:1.3}
+.blk .sub{font-size:10px;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.blk.v{flex-direction:column;justify-content:flex-start;gap:0}
+.blk.v .row1{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.blk.h{flex-direction:column;justify-content:center;gap:0;padding:2px 5px}
+.blk.tiny{padding:0;border-radius:2px}
+.blk.tiny .nm,.blk.tiny .du,.blk.tiny .sub,.blk.tiny .row1{display:none}
+.blk.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:6}
+.blk.contended::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(45deg,rgba(255,255,255,.34) 0 3px,transparent 3px 8px);
+  box-shadow:inset 0 0 0 2px var(--warn)
+}
+
+.quiet{
+  position:absolute;display:flex;align-items:center;justify-content:center;gap:8px;
+  color:var(--muted);font-size:10.5px;font-family:"IBM Plex Mono",monospace
+}
+.quiet::before,.quiet::after{content:"";flex:1 1 auto;height:1px;background:var(--line);min-width:8px}
+.quiet.h{writing-mode:vertical-rl;text-orientation:mixed}
+.quiet.h::before,.quiet.h::after{width:1px;height:auto;min-height:8px;flex:1 1 auto}
+
+.gutter-b{position:absolute;border-radius:2px;opacity:.92}
+.gutter-b.contended{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 2px,transparent 2px 6px)}
+
+/* ---------- detail ---------- */
+.detail{
+  width:294px;flex:0 0 294px;border-left:1px solid var(--line);
+  background:var(--surface-2);padding:14px;overflow:auto
+}
+.detail.sheet{
+  position:static;width:auto;flex:none;border-left:0;border-top:1px solid var(--line);
+  max-height:none
+}
+.detail h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;margin:0 0 2px;font-weight:700}
+.detail .when{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);margin:0 0 12px}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;margin:0 0 14px}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.pill{
+  display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
+  padding:2px 8px;border-radius:99px;letter-spacing:.02em
+}
+.pill.settled{background:var(--accent-wash);color:var(--accent-ink)}
+.pill.contended{background:var(--warn-wash);color:var(--warn)}
+.swatch{width:9px;height:9px;border-radius:2px;flex:0 0 auto;display:inline-block}
+.also{margin:0 0 14px;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+.also li{display:flex;gap:8px;align-items:center;font-size:12.5px;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:6px 9px}
+.also .dev{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);margin-left:auto}
+.resolve{
+  border:1px dashed var(--line);border-radius:var(--r);padding:10px;background:var(--surface);
+  font-size:12px;color:var(--muted)
+}
+.resolve b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:3px;font-weight:600}
+.empty{color:var(--muted);font-size:12.5px;padding:6px 0}
+
+/* ---------- legend ---------- */
+.legend{
+  display:flex;flex-wrap:wrap;gap:5px 14px;padding:8px 12px;
+  border-top:1px solid var(--line-2);font-size:11px;color:var(--ink-2)
+}
+.legend .it{display:flex;align-items:center;gap:5px}
+.legend .stripes{
+  width:16px;height:10px;border-radius:2px;border:1.5px solid var(--warn);
+  background:repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 6px),var(--warn-wash)
+}
+
+/* ---------- notes ---------- */
+.notes{margin-top:44px;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
+.note{border-top:2px solid var(--ink);padding-top:12px}
+.note.warnbar{border-top-color:var(--warn)}
+.note h4{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;margin:0 0 6px;
+  font-weight:700;letter-spacing:-.01em;text-wrap:balance
+}
+.note p{margin:0 0 8px;font-size:13px;color:var(--ink-2)}
+.note p:last-child{margin-bottom:0}
+.note .k{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px
+}
+.note code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface);padding:1px 4px;border-radius:3px;border:1px solid var(--line-2)}
+
+footer.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+footer.foot b{color:var(--ink-2)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">aw-android · roadmap 3.5b · layout study</p>
+  <h1>A timeline that survives a phone</h1>
+  <p class="standfirst">
+    Twenty-four hours across 340&nbsp;pt of phone width gives each hour <b>14&nbsp;points</b>, so a
+    ten-minute session renders 2.4&nbsp;points wide — thinner than the line under this sentence.
+    No font fixes that. Below: the same real data, drawn both ways, at three widths.
+    Turn the axis to <b>Horizontal</b> at phone width to watch it fail.
+  </p>
+</header>
+
+<div class="controls">
+  <div class="ctl">
+    <span class="lbl">Viewport</span>
+    <div class="seg" id="segWidth" role="group" aria-label="Viewport width">
+      <button data-w="412" aria-pressed="true">Phone · 412</button>
+      <button data-w="834" aria-pressed="false">Tablet · 834</button>
+      <button data-w="1180" aria-pressed="false">Desktop · 1180</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="lbl">Time axis</span>
+    <div class="seg" id="segAxis" role="group" aria-label="Time axis">
+      <button data-a="auto" aria-pressed="true">Auto</button>
+      <button data-a="v" aria-pressed="false">Vertical</button>
+      <button data-a="h" aria-pressed="false">Horizontal</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="lbl">Zoom</span>
+    <div class="seg" id="segZoom" role="group" aria-label="Zoom">
+      <button data-z="34" aria-pressed="false">Day</button>
+      <button data-z="64" aria-pressed="true">Normal</button>
+      <button data-z="128" aria-pressed="false">Close</button>
+    </div>
+  </div>
+  <div class="ctl" style="flex:1 1 220px">
+    <span class="lbl">Behaviour</span>
+    <div class="checks">
+      <label><input type="checkbox" id="cCollapse" checked> Collapse quiet time</label>
+      <label><input type="checkbox" id="cDevices" checked> Device tracks</label>
+      <label><input type="checkbox" id="cFit"> Fit day to width</label>
+    </div>
+  </div>
+</div>
+
+<div class="verdict" id="verdict"></div>
+
+<div class="stage">
+  <div class="frame" id="frame">
+    <div class="frame-bar">
+      <span class="mono" id="frameLabel">412 × 780</span>
+      <span class="mono" id="frameScale">64 px / hour</span>
+    </div>
+
+    <div class="appbar">
+      <h2>Combined</h2>
+      <div class="daynav">
+        <button type="button" aria-label="Previous day">‹</button>
+        <button type="button" class="today">TUE 9 SEP</button>
+        <button type="button" aria-label="Next day">›</button>
+      </div>
+    </div>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="minimap" id="minimap" title="Whole day. Click to jump.">
+      <div class="mm-track" id="mmTrack"></div>
+      <div class="mm-ticks" id="mmTicks"></div>
+    </div>
+
+    <div class="tl-body" id="tlBody">
+      <div class="tl-scroll" id="tlScroll"><div class="tl-inner" id="tlInner"></div></div>
+      <aside class="detail" id="detail"></aside>
+    </div>
+
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<section class="notes">
+  <div class="note">
+    <span class="k">Decision 01</span>
+    <h4>Spend the axis you have in surplus</h4>
+    <p>Scrolling down is free and native on a phone; horizontal width is fixed and scarce. So time —
+    which needs unbounded room — goes on the free axis, and the app name goes on the scarce one,
+    where text reads anyway.</p>
+    <p>At 64&nbsp;px/hour that same ten-minute session is <code>11 × 250</code> instead of
+    <code>340 × 2.4</code>. Room for a name, a duration, and the shading.</p>
+  </div>
+
+  <div class="note">
+    <span class="k">Decision 02</span>
+    <h4>Devices are a gutter, not equal columns</h4>
+    <p>R11 says the raw per-device tracks are always available underneath. But they are
+    <em>reference</em>, not the thing you read. Three equal columns on a 412&nbsp;pt phone gives
+    everything 130&nbsp;pt and ruins all three.</p>
+    <p>Narrow: a 10&nbsp;pt stripe per device says <em>who was awake here</em> at a glance. Wide: the
+    stripes become full labelled columns. Same data, same component.</p>
+  </div>
+
+  <div class="note">
+    <span class="k">Decision 03</span>
+    <h4>Collapse the dead time, keep the glance</h4>
+    <p>Most of a tracked day is nothing. Uncollapsed, you flick past sleep for six screens. Quiet
+    runs over 25 minutes become one <code>2h 14m quiet</code> divider — the day drops from ~20
+    screens to about 3.</p>
+    <p>Collapsing costs you <em>the whole day at once</em>, which horizontal gives free. The minimap
+    strip buys it back: full 24 hours, always visible, showing density and where you are.</p>
+  </div>
+
+  <div class="note warnbar">
+    <span class="k">Rejected</span>
+    <h4>The chronological card list</h4>
+    <p>Sessions in order, no time scale. Reads beautifully on a phone and is a fraction of the work.</p>
+    <p>It kills the feature. Contention shading is a claim about <em>area</em> — <em>these two
+    devices were both busy for this much of the same hour</em>. Drop proportional time and R8 has
+    nothing left to say. That settles it: proportionality is non-negotiable here.</p>
+  </div>
+
+  <div class="note">
+    <span class="k">Integration</span>
+    <h4>One component, orientation as a prop</h4>
+    <p>Upstream will not accept a second timeline page, and they'd be right. But vertical and
+    horizontal are not two pages — they are one mapping from time to distance, with the axis as a
+    variable. Data, colours, hit-testing and shading are identical.</p>
+    <p>So the PR is <em>“the timeline gains a vertical mode below ~700&nbsp;px”</em>. Desktop
+    unchanged, no migration, additive. The multi-device combined view stays in our fork, because
+    upstream has nothing to merge it into.</p>
+  </div>
+
+  <div class="note warnbar">
+    <span class="k">Honest cost</span>
+    <h4>vis-timeline does not fully go away</h4>
+    <p><code>vis-timeline</code> is imported in seven files — Timeline, Bucket, Report, the two
+    selectable-view components, the label helper, and its own wrapper. Replacing all of it is a
+    bigger project than this one.</p>
+    <p>So two renderers coexist for a while: ours for the combined view and for Timeline at narrow
+    width, vis-timeline for everything else. That duplication sits behind one component boundary
+    rather than in a duplicated page — and it shrinks over time instead of growing.</p>
+  </div>
+</section>
+
+<footer class="foot">
+  <b>Example data, not your real day.</b> Two devices, hand-built to the shape of the 2026-09-09
+  verified run so the proportions and the contention are realistic. Durations, totals and the shaded
+  overlaps below are computed live from that data, not drawn by hand — the combined total is a true
+  union measure, never the sum of the devices (R6).
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- data: one example day, two devices ---------------- */
+const APPS = {
+  "Android Studio":"var(--app-1)", "Slack":"var(--app-2)", "Chrome":"var(--app-3)",
+  "YouTube":"var(--app-4)", "Kindle":"var(--app-5)", "Syncthing-Fork":"var(--app-6)"
+};
+const DEVICES = [
+  { id:"phone",  name:"Galaxy S25 Ultra",  short:"S25U", uuid:"ad0c6c34…60b22d", own:true  },
+  { id:"tablet", name:"Galaxy Tab S10 FE", short:"Tab",  uuid:"7b54cfe9…1111d8", own:false }
+];
+const M = (h,m)=>h*60+m;
+const RAW = {
+  phone:[
+    [M(8,12),M(8,38),"Slack"], [M(8,38),M(9,25),"Chrome"], [M(9,25),M(10,40),"Android Studio"],
+    [M(11,35),M(12,10),"YouTube"], [M(13,5),M(14,15),"Android Studio"], [M(14,15),M(14,45),"Slack"],
+    [M(16,20),M(17,0),"Chrome"], [M(19,40),M(20,25),"YouTube"], [M(21,5),M(21,40),"Syncthing-Fork"]
+  ],
+  tablet:[
+    [M(9,50),M(10,40),"Kindle"], [M(12,0),M(12,45),"Chrome"], [M(14,0),M(14,45),"Kindle"],
+    [M(15,10),M(16,35),"YouTube"], [M(20,0),M(20,55),"Syncthing-Fork"], [M(22,10),M(22,50),"Kindle"]
+  ]
+};
+
+const fmt=s=>{const h=Math.floor(s/60),m=Math.round(s%60);return h?`${h}h ${String(m).padStart(2,"0")}m`:`${m}m`};
+const clock=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.round(s%60)).padStart(2,"0")}`;
+
+/* ------- build combined segments: cut at every boundary, pick a winner ------- */
+function buildSegments(){
+  const cuts=new Set();
+  for(const d of DEVICES) for(const [a,b] of RAW[d.id]){cuts.add(a);cuts.add(b);}
+  const pts=[...cuts].sort((x,y)=>x-y);
+  const segs=[];
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i], b=pts[i+1];
+    const active=[];
+    for(const d of DEVICES)
+      for(const [s,e,app] of RAW[d.id])
+        if(s<b && e>a) active.push({device:d, app, srcStart:s, srcEnd:e});
+    if(!active.length) continue;
+    // R17: longest originating activity wins; ties break on device id, then app.
+    active.sort((x,y)=>(y.srcEnd-y.srcStart)-(x.srcEnd-x.srcStart)
+      || x.device.id.localeCompare(y.device.id) || x.app.localeCompare(y.app));
+    segs.push({start:a,end:b,fg:active[0],active,contended:active.length>1});
+  }
+  // coalesce touching segments that agree on foreground app + device + state
+  const out=[];
+  for(const s of segs){
+    const p=out[out.length-1];
+    if(p && p.end===s.start && p.fg.app===s.fg.app && p.fg.device.id===s.fg.device.id
+       && p.contended===s.contended){ p.end=s.end; continue; }
+    out.push({...s,active:s.active.slice()});
+  }
+  return out;
+}
+const SEGS=buildSegments();
+const COMBINED=SEGS.reduce((n,s)=>n+(s.end-s.start),0);
+const DEVTOTAL=DEVICES.reduce((n,d)=>n+RAW[d.id].reduce((m,[a,b])=>m+(b-a),0),0);
+const NCONT=SEGS.filter(s=>s.contended).length;
+const CONTSECS=SEGS.filter(s=>s.contended).reduce((n,s)=>n+(s.end-s.start),0);
+
+/* ---------------- state ---------------- */
+const st={w:412,axis:"auto",zoom:64,collapse:true,devices:true,fit:false,sel:null};
+const $=id=>document.getElementById(id);
+
+/* --- piecewise minute→px map, so collapsed quiet runs cost a fixed stub --- */
+const QUIET_MIN=25, QUIET_PX=40;
+function buildMap(pxh){
+  const per=pxh/60, spans=[]; let p=0, cur=0;
+  const push=(t0,t1,quiet)=>{
+    const len=quiet?QUIET_PX:(t1-t0)*per;
+    spans.push({t0,t1,p0:p,p1:p+len,quiet}); p+=len;
+  };
+  for(const s of SEGS){
+    if(s.start>cur){
+      const gap=s.start-cur;
+      if(st.collapse && gap>=QUIET_MIN) push(cur,s.start,true);
+      else push(cur,s.start,false);
+    }
+    push(s.start,s.end,false); cur=s.end;
+  }
+  if(cur<1440){
+    const gap=1440-cur;
+    if(st.collapse && gap>=QUIET_MIN) push(cur,1440,true); else push(cur,1440,false);
+  }
+  const pos=t=>{
+    for(const s of spans){
+      if(t<=s.t1){
+        if(s.quiet) return s.p0+(s.t1>s.t0?(t-s.t0)/(s.t1-s.t0)*QUIET_PX:0);
+        return s.p0+(t-s.t0)*per;
+      }
+    }
+    return p;
+  };
+  return {pos,total:p,spans};
+}
+
+/* ---------------- render ---------------- */
+function render(){
+  const cap=Math.min(st.w, document.querySelector(".wrap").clientWidth);
+  $("frame").style.maxWidth=cap+"px";
+  const narrow = cap<640, wide = cap>=980;
+  const axis = st.axis==="auto" ? (narrow?"v":"h") : st.axis;
+  const vert = axis==="v";
+  const viewH = narrow?560:520;
+
+  let pxh = st.zoom;
+  if(st.fit){
+    const avail = vert ? viewH : (cap - (wide&&st.sel?294:0) - 46);
+    pxh = avail/24;
+  }
+  const map=buildMap(pxh);
+
+  $("frameLabel").textContent = `${cap} × ${viewH}   ·   ${vert?"vertical":"horizontal"}`;
+  $("frameScale").textContent = `${pxh.toFixed(1)} px / hour`;
+
+  /* ---- verdict ---- */
+  const perHour=pxh, tenMin=perHour/6;
+  const v=$("verdict");
+  if(!vert && tenMin<8){
+    v.className="verdict bad";
+    v.innerHTML=`<span>⚠︎</span><span><b>This is the failure.</b> One hour is
+      <b>${perHour.toFixed(1)}px</b>, so a ten-minute session is <b>${tenMin.toFixed(1)}px</b> wide —
+      unlabelable and below a 44px touch target. Every block collapses to a hairline.
+      Switch the axis to <b>Vertical</b>.</span>`;
+  } else if(!vert){
+    v.className="verdict";
+    v.innerHTML=`<span>→</span><span>Horizontal works here because the viewport is wide enough:
+      one hour is <b>${perHour.toFixed(1)}px</b>. This is the mode upstream desktop keeps.</span>`;
+  } else {
+    v.className="verdict";
+    v.innerHTML=`<span>→</span><span>Vertical: one hour is <b>${perHour.toFixed(1)}px</b> tall and a
+      block is <b>${(cap-(wide&&st.sel?294:0)-46-(st.devices?DEVICES.length*14:0)).toFixed(0)}px</b>
+      wide. A ten-minute session is <b>${tenMin.toFixed(1)}px</b> tall — thin, but it has the full
+      width for its name.</span>`;
+  }
+
+  /* ---- summary ---- */
+  $("summary").innerHTML=[
+    `<div class="stat"><span class="v">${fmt(COMBINED)}</span><span class="k">combined</span></div>`,
+    `<div class="stat"><span class="v">${fmt(DEVTOTAL)}</span><span class="k">device sum</span></div>`,
+    `<div class="stat"><span class="v">${DEVICES.length}</span><span class="k">devices</span></div>`,
+    `<div class="stat flag"><span class="v">${NCONT}</span><span class="k">unresolved</span></div>`
+  ].join("");
+
+  /* ---- minimap ---- */
+  const mm=$("mmTrack"); mm.innerHTML="";
+  for(const s of SEGS){
+    const b=document.createElement("div");
+    b.className="mm-b"+(s.contended?" c":"");
+    b.style.left=(s.start/1440*100)+"%";
+    b.style.width=Math.max(0.25,(s.end-s.start)/1440*100)+"%";
+    if(!s.contended) b.style.background=APPS[s.fg.app];
+    mm.appendChild(b);
+  }
+  const mv=document.createElement("div"); mv.className="mm-view"; mv.id="mmView"; mm.appendChild(mv);
+  $("mmTicks").innerHTML=[0,6,12,18,24].map(h=>
+    `<span style="left:${h/24*100}%">${String(h).padStart(2,"0")}</span>`).join("");
+
+  /* ---- body ---- */
+  const scroll=$("tlScroll"), inner=$("tlInner"), detail=$("detail"), body=$("tlBody");
+  const showPanel = wide && !!st.sel;
+  detail.style.display = st.sel ? "block" : "none";
+  detail.className = "detail" + (showPanel ? "" : " sheet");
+  body.style.flexDirection = showPanel ? "row" : "column";
+  scroll.style.height = viewH+"px";
+  scroll.style.overflowX = vert?"hidden":"auto";
+  scroll.style.overflowY = vert?"auto":"hidden";
+
+  const HOURW = vert?38:0, HOURH = vert?0:20;
+  const gutW = st.devices ? (wide?0:DEVICES.length*14) : 0;
+  inner.innerHTML="";
+  inner.style.setProperty("--hourw",HOURW+"px");
+
+  const trackW = cap - (showPanel?294:0);
+  if(vert){
+    inner.style.width="100%"; inner.style.height=map.total+"px";
+    const laneX = HOURW+6;
+    const devColW = wide && st.devices ? Math.min(190,(trackW-laneX-16)/(DEVICES.length+1.6)) : 0;
+    // 18px keeps the device gutter clear of the scrollbar, which otherwise sits on top of it.
+    const combW = trackW - laneX - 18 - (wide?devColW*DEVICES.length+8:gutW+8);
+
+    // hour labels + gridlines (skip inside collapsed quiet)
+    for(let h=0;h<=24;h++){
+      const t=h*60, inQuiet=map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1);
+      if(inQuiet) continue;
+      const y=map.pos(t);
+      const lb=document.createElement("div");
+      lb.className="hr mono"; lb.style.top=y+"px"; lb.style.width=HOURW+"px";
+      lb.style.position="absolute"; lb.style.left="0"; lb.style.textAlign="right";
+      lb.style.paddingRight="6px"; lb.textContent=String(h).padStart(2,"0");
+      inner.appendChild(lb);
+      const gl=document.createElement("div");
+      gl.className="gridline"; gl.style.left=laneX+"px"; gl.style.right="8px";
+      gl.style.top=y+"px"; gl.style.height="1px"; inner.appendChild(gl);
+    }
+    // quiet dividers
+    for(const s of map.spans) if(s.quiet){
+      const q=document.createElement("div"); q.className="quiet";
+      q.style.left=laneX+"px"; q.style.width=combW+"px";
+      q.style.top=s.p0+"px"; q.style.height=QUIET_PX+"px";
+      q.textContent=`${fmt(s.t1-s.t0)} quiet`;
+      inner.appendChild(q);
+    }
+    // combined blocks
+    for(const s of SEGS){
+      const y0=map.pos(s.start), y1=map.pos(s.end), h=Math.max(3,y1-y0-1);
+      const el=document.createElement("div");
+      el.className="blk v"+(s.contended?" contended":"")+(h<20?" tiny":"")+(st.sel===s?" sel":"");
+      el.style.left=laneX+"px"; el.style.width=combW+"px";
+      el.style.top=y0+"px"; el.style.height=h+"px";
+      el.style.background=APPS[s.fg.app];
+      el.tabIndex=0;
+      el.innerHTML=`<div class="row1"><span class="nm">${s.fg.app}</span>
+        <span class="du mono">${fmt(s.end-s.start)}</span></div>`+
+        (h>=48&&s.contended?`<span class="sub">also on ${s.active.filter(a=>a.device.id!==s.fg.device.id)
+          .map(a=>a.device.short).join(", ")||s.fg.device.short}</span>`:"");
+      el.onclick=()=>{st.sel=(st.sel===s?null:s);render()};
+      el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}};
+      inner.appendChild(el);
+    }
+    // device tracks
+    if(st.devices) DEVICES.forEach((d,i)=>{
+      const x = wide ? laneX+combW+8+i*devColW : laneX+combW+8+i*14;
+      const w = wide ? devColW-6 : 10;
+      if(wide){
+        const hd=document.createElement("div");
+        hd.className="lane-head"; hd.style.position="absolute"; hd.style.left=x+"px";
+        hd.style.width=w+"px"; hd.style.top="0"; hd.style.zIndex="4";
+        hd.textContent=d.name; inner.appendChild(hd);
+      }
+      for(const [a,b,app] of RAW[d.id]){
+        const y0=map.pos(a),y1=map.pos(b);
+        const el=document.createElement("div");
+        const cont=SEGS.some(s=>s.contended&&s.start<b&&s.end>a);
+        el.className= wide ? "blk v"+(h_tiny(y1-y0)?" tiny":"") : "gutter-b"+(cont?" contended":"");
+        el.style.left=x+"px"; el.style.width=w+"px";
+        el.style.top=y0+"px"; el.style.height=Math.max(2,y1-y0-1)+"px";
+        el.style.background=APPS[app];
+        if(wide){
+          el.innerHTML=`<div class="row1"><span class="nm">${app}</span></div>`;
+          el.style.marginTop=(y0<26?26:0)+"px";
+        }
+        inner.appendChild(el);
+      }
+    });
+    function h_tiny(x){return x<20}
+  } else {
+    // horizontal
+    const laneY=HOURH+4, rowH=st.devices?46:70, devH=18;
+    const totalH=laneY+rowH+(st.devices?DEVICES.length*(devH+4)+6:0);
+    inner.style.width=Math.max(trackW,map.total)+"px";
+    inner.style.height=Math.max(totalH,viewH-8)+"px";
+    for(let h=0;h<=24;h++){
+      const t=h*60; if(map.spans.some(s=>s.quiet&&t>s.t0&&t<s.t1)) continue;
+      const x=map.pos(t);
+      const lb=document.createElement("div");
+      lb.className="hr mono"; lb.style.position="absolute"; lb.style.left=x+"px";
+      lb.style.top="0"; lb.style.width="auto"; lb.style.textAlign="left";
+      lb.style.transform="translateX(-50%)"; lb.textContent=String(h).padStart(2,"0");
+      inner.appendChild(lb);
+      const gl=document.createElement("div");
+      gl.className="gridline"; gl.style.left=x+"px"; gl.style.width="1px";
+      gl.style.top=laneY+"px"; gl.style.bottom="4px"; inner.appendChild(gl);
+    }
+    for(const s of map.spans) if(s.quiet){
+      const q=document.createElement("div"); q.className="quiet h";
+      q.style.left=s.p0+"px"; q.style.width=QUIET_PX+"px";
+      q.style.top=laneY+"px"; q.style.height=rowH+"px";
+      q.textContent=fmt(s.t1-s.t0); inner.appendChild(q);
+    }
+    for(const s of SEGS){
+      const x0=map.pos(s.start),x1=map.pos(s.end),w=Math.max(1,x1-x0-1);
+      const el=document.createElement("div");
+      el.className="blk h"+(s.contended?" contended":"")+(w<54?" tiny":"")+(st.sel===s?" sel":"");
+      el.style.left=x0+"px"; el.style.width=w+"px";
+      el.style.top=laneY+"px"; el.style.height=rowH+"px";
+      el.style.background=APPS[s.fg.app]; el.tabIndex=0;
+      el.innerHTML=`<span class="nm">${s.fg.app}</span><span class="du mono">${fmt(s.end-s.start)}</span>`;
+      el.onclick=()=>{st.sel=(st.sel===s?null:s);render()};
+      el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click()}};
+      inner.appendChild(el);
+    }
+    if(st.devices) DEVICES.forEach((d,i)=>{
+      const y=laneY+rowH+6+i*(devH+4);
+      for(const [a,b,app] of RAW[d.id]){
+        const x0=map.pos(a),x1=map.pos(b);
+        const el=document.createElement("div");
+        el.className="gutter-b"; el.style.left=x0+"px"; el.style.width=Math.max(1,x1-x0-1)+"px";
+        el.style.top=y+"px"; el.style.height=devH+"px"; el.style.background=APPS[app];
+        inner.appendChild(el);
+      }
+    });
+  }
+
+  /* ---- minimap viewport indicator ---- */
+  const syncView=()=>{
+    const mvEl=document.getElementById("mmView"); if(!mvEl) return;
+    const len=vert?map.total:map.total, off=vert?scroll.scrollTop:scroll.scrollLeft;
+    const win=vert?scroll.clientHeight:scroll.clientWidth;
+    const t0=invert(map,off), t1=invert(map,off+win);
+    mvEl.style.left=(t0/1440*100)+"%";
+    mvEl.style.width=Math.max(2,(t1-t0)/1440*100)+"%";
+  };
+  scroll.onscroll=syncView; syncView();
+
+  /* ---- detail ---- */
+  if(st.sel){
+    const s=st.sel, others=s.active.filter(a=>a!==s.fg);
+    detail.innerHTML=`
+      <h3>${s.fg.app}</h3>
+      <p class="when mono">${clock(s.start)} – ${clock(s.end)} · ${fmt(s.end-s.start)}</p>
+      <span class="pill ${s.contended?"contended":"settled"}">${s.contended?"Unresolved overlap":"Settled"}</span>
+      <dl class="dl" style="margin-top:12px">
+        <dt>Counted to</dt><dd>${s.fg.device.name}</dd>
+        <dt>Device id</dt><dd>${s.fg.device.uuid}</dd>
+        <dt>Why it won</dt><dd>longest run (${fmt(s.fg.srcEnd-s.fg.srcStart)})</dd>
+      </dl>
+      ${others.length?`<span class="k mono" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Also running</span>
+      <ul class="also" style="margin-top:6px">${others.map(o=>
+        `<li><span class="swatch" style="background:${APPS[o.app]}"></span>${o.app}
+         <span class="dev">${o.device.name}</span></li>`).join("")}</ul>`:""}
+      ${s.contended?`<div class="resolve"><b>Resolve this overlap</b>
+        Both devices claim this time. Pick what actually counted — once, or as a standing rule.
+        <em>(roadmap 4.1)</em></div>`:""}`;
+  } else detail.innerHTML="";
+
+  /* ---- legend ---- */
+  $("legend").innerHTML =
+    Object.keys(APPS).map(a=>`<span class="it"><span class="swatch" style="background:${APPS[a]}"></span>${a}</span>`).join("")
+    + `<span class="it"><span class="stripes"></span>Unresolved overlap · ${fmt(CONTSECS)}</span>`;
+}
+
+function invert(map,px){
+  for(const s of map.spans)
+    if(px<=s.p1) return s.t0+(s.p1>s.p0?(px-s.p0)/(s.p1-s.p0)*(s.t1-s.t0):0);
+  return 1440;
+}
+
+/* ---------------- wiring ---------------- */
+function segWire(id,key,cast){
+  $(id).addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+    st[key]=cast(b.dataset[Object.keys(b.dataset)[0]]); render();
+  });
+}
+segWire("segWidth","w",Number);
+segWire("segAxis","axis",String);
+segWire("segZoom","zoom",Number);
+$("cCollapse").onchange=e=>{st.collapse=e.target.checked;render()};
+$("cDevices").onchange=e=>{st.devices=e.target.checked;render()};
+$("cFit").onchange=e=>{st.fit=e.target.checked;render()};
+$("minimap").onclick=e=>{
+  const r=$("mmTrack").getBoundingClientRect();
+  const t=Math.max(0,Math.min(1440,(e.clientX-r.left)/r.width*1440));
+  const sc=$("tlScroll"), map=buildMap(st.fit?sc.clientHeight/24:st.zoom);
+  const p=map.pos(t);
+  if(sc.scrollHeight>sc.clientHeight) sc.scrollTo({top:Math.max(0,p-80),behavior:"smooth"});
+  else sc.scrollTo({left:Math.max(0,p-80),behavior:"smooth"});
+};
+window.addEventListener("resize",render);
+st.sel=SEGS.find(s=>s.contended)||SEGS[0];
+render();
+})();
+</script>

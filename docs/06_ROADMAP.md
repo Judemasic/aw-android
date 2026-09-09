@@ -1469,6 +1469,74 @@ desktop width (**R35**).
 **Check:** the same day renders in a desktop browser and in the app's WebView on both devices; the
 R6 summary matches the native screen's numbers for the same day.
 
+##### The layout problem, and the decision *(owner, 2026-09-09: "there is not inogh horisintal spavce on a phone ofr a good tmeline … maybe make it virtical?")*
+
+**The owner is right, and it is arithmetic rather than taste.** A phone gives ~340&nbsp;pt of usable
+width. Spread 24 hours across it and **one hour is 14&nbsp;pt**, so a ten-minute session draws
+**2.4&nbsp;pt** wide — narrower than a hairline, unlabelable, and far below a 44&nbsp;pt touch
+target. No font size fixes this; the *block* is the problem, not the text in it.
+
+**Decision: the time axis runs vertically at phone width.** The reason matters, because it decides
+everything else: **vertical is the axis in surplus.** Scrolling down is free and native on a phone;
+horizontal width is fixed and scarce. So time — which needs unbounded room — takes the free axis,
+and the app name takes the scarce one, where text reads anyway. At 64&nbsp;px/hour the same session
+is `11 × 250` instead of `340 × 2.4`. This is what every calendar app converged on, against exactly
+this constraint.
+
+**The layout study is checked in: [`docs/design/combined-timeline-layout-study.html`](design/combined-timeline-layout-study.html).**
+Open it in any browser. It draws one example day both ways at 412 / 834 / 1180&nbsp;px from real
+proportional data — not a picture, so the block sizes are the block sizes. Setting *Viewport =
+Phone* and *Time axis = Horizontal* reproduces the failure above and prints the per-hour figure.
+
+Four supporting decisions, all demonstrated in that study:
+
+1. **Device tracks are a gutter, not equal columns.** **R11** keeps the raw per-device tracks
+   available, but they are *reference*, not the thing being read. Three equal columns on a phone
+   gives everything ~130&nbsp;pt and ruins all three. Narrow: a 10&nbsp;pt stripe per device answers
+   *who was awake here* at a glance. Wide: the stripes become full labelled columns.
+2. **Collapse quiet runs.** Most of a tracked day is nothing. Runs over ~25 minutes collapse to a
+   single `2h 14m quiet` divider, taking the day from ~20 screens of scroll to about 3.
+3. **Keep a minimap.** Collapsing costs the "whole day at once" that horizontal gives free; a fixed
+   24-hour density strip above the scroll area buys it back and shows scroll position.
+4. **Rejected: a chronological card list.** It reads beautifully on a phone and is a fraction of the
+   work, but it **kills the feature** — contention shading is a claim about *area* ("both devices
+   were busy for this much of the same hour"), so dropping proportional time leaves **R8** with
+   nothing to say. Proportional time is non-negotiable on this screen.
+
+##### Upstream integration — one component, orientation as a prop *(owner: "they would hav eot maintain two pages? therre is no escape from that right?")*
+
+**There is an escape, but only by not building a page.** Upstream would rightly refuse a second
+timeline screen — two pages, two bug surfaces, forever. But vertical and horizontal are **not two
+pages**: they are one mapping from time to distance with the axis as a variable. Data, colours,
+hit-testing, tooltips and shading are identical; only `top/height` becomes `left/width`.
+
+So the upstream PR is *"the existing timeline gains a vertical mode below ~700&nbsp;px"* — desktop
+behaviour unchanged, no migration, purely additive, and it fixes a problem upstream has too. That is
+a PR that can land, where a new screen is one that sits open.
+
+⚠️ **This reverses a call made earlier the same day.** 3.5's first draft argued for *vertical at
+every width, one orientation only, because two orientations will drift*. The fear was right and the
+remedy was wrong: **two hand-written renderers** drift; **one renderer with an axis variable** does
+not. Each *screen* then picks its own default — the combined view goes vertical at all widths, the
+upstream Timeline stays horizontal on desktop.
+
+⚠️ **What is *not* escapable, honestly.** `vis-timeline` is imported in **seven** files —
+`views/Timeline.vue`, `views/Bucket.vue`, `views/Report.vue`, `components/SelectableEventView.vue`,
+`components/SelectableVisualization.vue`, `util/timelineLabels.ts` and `visualizations/VisTimeline.vue`.
+Replacing all of it is a bigger project than this one. So two renderers coexist for a while:
+
+| Screen | Renderer | Maintained by |
+|---|---|---|
+| Combined view | new component | our fork — upstream has no multi-device merge to hang it on |
+| Timeline, narrow | new component | upstream, after the PR |
+| Timeline, wide | `vis-timeline` | upstream, unchanged |
+| Bucket / Report / pickers | `vis-timeline` | upstream, untouched |
+
+That duplication sits behind **one component boundary rather than in a duplicated page**, and it
+shrinks over time instead of growing. The clean contribution split: **the renderer goes upstream**
+(general value), **the combined multi-device view stays in the fork** (nothing upstream to merge it
+into).
+
 #### 3.5c — Retire the native screen ⬜
 Once 3.5b is verified on hardware, remove `CombinedTimelineView.kt`,
 `CombinedTimelineActivity.kt`, `CombinedTimeline.kt`, the `getCombinedTimeline` JNI function and its
@@ -1569,6 +1637,12 @@ fine throughout, so **C (native screens) is ruled out** — it would rewrite scr
 everywhere except a handful of rows. Prefer **B** where the fix is a genuine responsive improvement
 worth carrying upstream; fall back to **A** for anything too fork-specific to upstream.
 
+⚠️ **Refined 2026-09-09, not reversed.** The **Timeline** turned out to need more than CSS — it is
+built on `vis-timeline`, which has no vertical mode, and no stylesheet makes a 24-hour horizontal
+axis readable on a phone. That is a **new Vue component**, still web and still upstreamable, so the
+verdict "CSS, not native" survives: the answer is never an Android screen. But read "CSS" as "in
+aw-webui" rather than "stylesheet only". See [5.5](#55--make-the-aw-webui-timeline-usable-at-phone-width).
+
 ### 5.3 — Kill horizontal page scroll ⬜
 The page must not scroll sideways; wide tables and charts scroll inside their own containers
 instead. *(R31)*
@@ -1603,6 +1677,25 @@ The Timeline is the screen the owner actually reads, and it is the worst offende
 **On the tablet it is good** — this is narrow-width only, so it is a responsive-layout job, not a
 redesign, and per [5.2](#52--decide-q8--resolved-2026-09-02--css-not-native) it is **CSS (B), not a
 native rewrite**.
+
+⚠️ **Corrected 2026-09-09: CSS alone cannot finish this one.** 5.2's "CSS, not native" still holds —
+the fix is not an Android rewrite — but the element list below was written before anyone checked
+what the Timeline is *built on*. It is **`vis-timeline`**, which has **no vertical mode**: its time
+axis is horizontal, full stop. CSS can stop things being clipped, and should; it cannot make a
+24-hour horizontal axis readable at **14&nbsp;pt per hour**, which is what a phone gives (see the
+arithmetic in [3.5b](#35b--the-vue-view)).
+
+So this step splits, and its larger half is now downstream of Phase 3:
+
+- **5.5a — stop the clipping** *(CSS, do any time)*: the `Mode`/`Range` controls wrap or scroll, the
+  events box is not cut off, the label column stops eating ~55% of the width. This is worth doing on
+  its own and does not wait for anything.
+- **5.5b — give it a vertical mode** *(waits on [3.5b](#35b--the-vue-view))*: adopt the renderer
+  built for the combined view and use it for the Timeline below ~700&nbsp;px. **This is the actual
+  fix**, and it costs almost nothing extra once 3.5b exists — which is the argument for building
+  3.5b's renderer as a general component rather than something combined-view-specific.
+
+**Do not** attempt 5.5b before 3.5b, and do not write a second vertical renderer for it.
 
 This is the one screen carved back out of this phase's 2026-09-02 scope cut, at the owner's
 request on 2026-09-09 — see the note at the top of Phase 5. Target stays **R34: functional, not
