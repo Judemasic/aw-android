@@ -1747,7 +1747,7 @@ Five seeded devices, 16 combined segments, 7 of them contended — driven at **4
    about it, and the 3.5c block stepper's key lookup would have landed on the wrong one of the pair.
    The row index is part of the key now.
 
-### 4.1b — Redesign the combined screen for the phone ⬜ ← **next, and it blocks nothing else**
+### 4.1b — Redesign the combined screen for the phone ⬜ ← **next; both open questions answered 2026-09-10**
 
 > **Decided by the owner 2026-09-09**, after driving the built app on the S25U. They rejected an
 > incremental fix and chose *"design the phone screen properly"* — treat the phone as its own screen
@@ -1794,25 +1794,45 @@ whether the control works** — drive the real app.
 
 | Question | Answer |
 |---|---|
-| **Which of the two top bars survives** | **The aw-webui navbar.** Hide the **native** Android action bar instead. ⚠️ **Open problem:** Sync Settings and API Authentication exist *only* in the native drawer, and the web UI has no equivalent — the redesign must give them a home before that bar can go. |
-| **What the phone screen is for** | **Resolving overlaps**, **finding one specific stretch**, and **glancing at the day** — with a caveat, below. |
+| **Which of the two top bars survives** | **The aw-webui navbar.** Hide the **native** Android action bar instead. ✅ **Answered 2026-09-10:** Sync Settings and API Authentication move into aw-webui's own **Settings** page as a new group, alongside General / Appearance / Notifications — *"cant we add them to the settings like the real settings that has general appearance notifications and so on"*. See [4.1b-i](#41b-i--give-the-native-settings-a-home-in-awwebuis-settings) below. |
+| **What the phone screen is for** | **Resolving overlaps**, **finding one specific stretch**, and **glancing at the day** — all three. The 2026-09-10 answer confirmed the glance stays here; see below. |
 | **Resolving on a phone** | **Full support.** *"Phone too."* Big targets, one decision per screen, comfortable to do ten in a row. This gets to shape the layout. |
 | **Day nav** | **Stays as it is, next to the title.** *"the day stays as it is next to the title no problem"* |
 | **Minimap** | **Stays, and gains dragging.** *"make the minimap strip not just tappable but also scrollable or like draggable"* — drag the viewport marker to scrub the day, not just tap to jump. |
 | **Stat tiles** | **Keep the numbers, shrink the furniture.** *"stat tiles are taking extra space they can be neater"* — not removed, made compact. |
 | **`Range & devices` + `View` fold-outs** | **Collapse both into a ⚙ button next to TODAY at the top.** *"make the range device and view into a gear button next to the today at the top"* |
 
-❓ **One answer still needs the owner, first thing:** on what this screen is for, they wrote *"maybe
-the glance is better represented on the Activity, which should also be in the map."* Two readings,
-and they change the design:
-1. **"Glance at the day" belongs to the Activity view, not Combined** — so Combined drops the
-   at-a-glance job and commits to resolving + finding, which would justify cutting the stat tiles
-   much harder than "neater".
-2. **The Activity view should also appear in the minimap** — i.e. the minimap gains a categorised
-   or Activity-style band alongside the contention band.
+✅ **Answered 2026-09-10 — the glance stays, and the Activity remark was about something else.**
+The question was whether *"maybe the glance is better represented on the Activity, which should also
+be in the map"* meant (1) move the glance off Combined, or (2) give the minimap an Activity band.
+**Neither.** The owner: *"if you mean by the glance the strip at the top of the timetable then keep
+it. I mean something different, which is the way the Activity now works for a single bucket but
+works for multiple devices and combined — so I think a new tab."*
 
-**Ask which before designing the header.** Do not guess: reading (1) removes a whole job from the
-screen.
+So, for this step:
+- **The minimap strip stays exactly as scoped** — kept, made draggable. No Activity band added to it.
+- **Combined keeps all three jobs**, glance included, so the stat tiles are *shrunk*, not cut.
+- **The Activity remark is not a Combined change at all.** aw-webui's Activity view answers "what did
+  I do today" for **one host's buckets**; the owner wants the same view computed **across every
+  synced device, over the combined timeline** — as its **own tab**, not folded into Combined.
+  Written up as **[4.4](#44--activity-across-devices-a-new-tab)**. It does not block this step.
+
+#### 4.1b-i — Give the native settings a home in aw-webui's Settings
+
+Hiding the native action bar orphans **Sync Settings** and **API Authentication**, which today exist
+only in the native drawer. They move into the web UI's own Settings page.
+
+[`Settings.vue`](../../aw-server-rust/aw-webui/src/views/settings/Settings.vue) already renders a
+sidebar of groups — `general`, `appearance`, `categorization`, `privacy`, `developer`,
+`notifications` — each a list of components, with `/settings/:group` routed in
+[`route.js`](../../aw-server-rust/aw-webui/src/route.js). Add a **`device`** group holding sync and
+API-authentication settings, shown **only when running inside the Android app** (the desktop build
+has no such device, and R35 says the 1280px layout must not change).
+
+Whether the group re-implements those screens in Vue or simply launches the existing native
+activities through a JS bridge is an implementation choice for the step — the requirement is that
+**from the web UI alone, with the native bar hidden, both are reachable.** This is a prerequisite
+for hiding the native action bar, and therefore for acceptance criterion 3.
 
 #### What the redesign must fix, restated as acceptance criteria
 
@@ -1828,8 +1848,9 @@ screen.
 
 #### Not blocked by this
 
-4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout. If the
-redesign stalls on the open question above, **do 4.2 first**.
+4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout, and
+**4.4** is a separate screen. Nothing here blocks anything else; if this redesign stalls, **do 4.2
+first**.
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -1838,7 +1859,32 @@ Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `aut
 ### 4.3 — Undo ⬜
 Tombstones; segment returns to shaded. *(R12)*
 
-> **End of Phase 4 = the product the owner asked for.** Everything after this is convenience.
+### 4.4 — Activity, across devices (a new tab) ⬜ ← *owner-requested 2026-09-10*
+
+> *"the way the Activity now works for a single bucket but works for multiple devices and combined —
+> so I think a new tab."*
+
+aw-webui's **Activity** view ([`views/activity/Activity.vue`](../../aw-server-rust/aw-webui/src/views/activity/Activity.vue),
+`ActivityView.vue`) answers *"what did I do today"* — top apps, categories, the day's totals — for
+**one host's buckets**, chosen by a host picker. Everything Phase 3 built now makes the same
+question answerable across **all** synced devices at once: `aw-combined` already segments, classifies
+and attributes the day (**R6/R17**), so each stretch of time has exactly one device and app that
+counts toward totals. Feeding *those* attributed slices into Activity's existing summaries gives a
+genuinely multi-device day, with no double-counting when two devices were awake at once.
+
+- **A new tab, not a mode of Combined.** Combined stays the *resolve and find* screen (4.1b);
+  this is the *what did I do* screen. Two jobs, two tabs.
+- **Reuse the Activity components** — the same top-apps / category / total summaries, fed from the
+  combined attribution instead of one host's bucket queries. Do not fork the view.
+- **Contested time needs an honest treatment.** Segments still awaiting a decision are attributed
+  *provisionally*. Decide whether they count, count as their provisional pick, or are shown
+  separately — and make it visible rather than silent.
+
+**Check:** on a day with events from two devices, the tab's total active time is not the sum of the
+two devices' overlapping totals, and resolving an overlap in Combined changes the numbers here.
+
+> **End of 4.1–4.3 = the product the owner originally asked for.** 4.4 was added 2026-09-10 and is
+> the first thing beyond it; everything after that is convenience.
 
 ---
 
@@ -2236,8 +2282,14 @@ per device, with unresolved contention striped (**R8**).
 - ✋ **The owner stopped the incremental fix** and chose a proper phone redesign — see
   [4.1b](#41b--redesign-the-combined-screen-for-the-phone). The docked-sheet stopgap in
   `aw-webui@751bf6e` is **rejected**; CI 34405376414 is green with it and was **not installed**.
-- Next: **4.1b**, once the owner answers the open question in it. **4.2 — Persist + apply
-  decisions** is not blocked by the layout and can go first if 4.1b stalls.
+- ✅ **Both of 4.1b's open questions answered by the owner 2026-09-10.** The minimap strip stays
+  (glance included, stat tiles shrunk not cut); the native Sync Settings and API Authentication get
+  a home as a new **group inside aw-webui's own Settings page**, which unblocks hiding the native
+  action bar. The Activity remark turned out not to be about Combined at all — it asks for the
+  Activity view computed across every device, as its own tab: now
+  **[4.4](#44--activity-across-devices-a-new-tab)**.
+- Next: **4.1b**, unblocked. **4.2 — Persist + apply decisions** is not blocked by the layout and
+  can still go first if the redesign stalls.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
