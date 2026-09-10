@@ -2105,8 +2105,79 @@ overlaps still asking. **That is R26.**
 are the same code paths — the merge is symmetric and the rule pass is unit-tested — but neither has
 been run on hardware.
 
-### 4.3 — Undo ⬜
+### 4.3 — Undo ✅ BUILT (2026-09-10) — browser-built, ⚠️ NOT yet on device
 Tombstones; segment returns to shaded. *(R12)*
+
+**Built, and it was almost entirely a UI step.** The pipeline has understood tombstones since 4.2 —
+`parse_tombstone`, the revoke pass in `merge_decisions`, and a test
+(`a_revoked_decision_leaves_the_segment_asking_again`) that already proved a revoked decision leaves
+the segment asking again. 4.2 even *posted* one by hand during its device run. What did not exist
+was any way to reach that from the app: a resolved block could be answered **differently** but never
+**un**-answered, so a mis-tap on Resolve was permanent.
+
+`CombinedTimeline.vue` now shows **Undo** wherever a segment has a `resolved_by` — in the phone's
+peek row next to *Change answer*, and under the resolved note on the wide layout. It posts
+`{type: "tombstone", revokes: <the decision's id>}` to the existing
+`POST /api/0/combined/decisions` and re-reads the day.
+
+**Two judgment calls:**
+
+1. **A tombstone, not a delete.** The decision has almost certainly reached the other device
+   already. Deleting our own copy would leave theirs standing, so the block would un-resolve here
+   and then come back resolved on the next sync. A tombstone travels the way the decision did, and
+   `merge_decisions` drops the pair whichever file each arrives in.
+2. **Undoing an auto-resolved block says so before you press it.** `auto_resolved` means a
+   *standing rule* settled this stretch, and revoking that record takes **every** stretch it settled
+   back to asking. That is not what "undo" implies on its own, so the panel says it in a line above
+   the button and the button reads *Undo this rule* rather than *Undo this answer* (**R16**).
+
+Nothing on the Rust or Kotlin side moved: tombstones share the decision key prefix, so
+`syncSharedDecisions` already carries them.
+
+**Also fixed here — the minimap box lied until you touched it.** The owner: *"when opening combined
+and not moving, the green box on the seek bar at the top covers the whole period; only when I move
+does it snap to the correct position."* `ProportionalTimeline` only emitted `viewport` from
+`onScroll`, so until the first scroll the parent kept its `{0, 24h}` default and drew the box across
+the whole day. It now re-emits on mount and whenever the mapping from minute to pixel changes — the
+data, the zoom, the axis, the measured width.
+
+#### 4.3a — Why two devices disagree on the unresolved count ✅ INVESTIGATED 2026-09-10 — **not a bug**
+The owner, on seeing both screens at once: *"the phone and tablet have a mismatched number of
+unresolved — how can that happen?"* On the day it was asked the phone said **38** and the tablet
+**40**.
+
+Measured, rather than reasoned about: both timelines were pulled over `adb forward` and diffed.
+
+- Of the 401 segments whose end falls **before the point where the phone's copy of the tablet's data
+  runs out**, the two devices agree on **every one** — same boundaries, same state, same device,
+  same label — and on all **38** unresolved. The single difference in that whole range is one
+  nanosecond of rounding on one boundary (`…460999999Z` vs `…460999998Z`).
+- The tablet's 2 extra overlaps are both in the **last twenty minutes**: 13:58–14:01 and
+  14:01–14:07 UTC, where the tablet had its own live events and the phone had not received them.
+
+So the cause is **sync lag, and only sync lag**. Each device computes the day from what it holds
+locally. The tablet's exported database on the phone ended at 13:52:14 UTC; the tablet's own
+database ran to 14:13. The phone had imported that file completely — its tip event *starts* at
+13:21:50 and runs 1824s, ending at exactly 13:52:14, which is what made it look 30 minutes staler
+than it was on a first reading of the bucket tip. Two overlaps exist on the tablet in that trailing
+window and cannot exist on the phone yet, because half of each of them has not arrived.
+
+Two things worth keeping from this:
+
+- ✅ **4.2's "covers, not equals" judgment call is load-bearing** and now has evidence. Boundaries
+  computed independently on two devices can differ by a nanosecond. A decision whose window had to
+  *equal* a segment would match on the device that wrote it and silently fail on the other.
+- 🐛 **The view is not honest about the edge**, and that is what made this look like a bug. The
+  combined screen draws right up to now and gives no sign that a peer's data stops earlier, so the
+  trailing minutes read as *"the tablet was idle"* when they mean *"we have not heard from the
+  tablet yet."* Tracked as [4.3b](#43b--say-where-each-devices-data-ends).
+
+#### 4.3b — Say where each device's data ends ⬜ ← *raised by 4.3a, 2026-09-10*
+Mark, on the combined timeline, the point past which a device's events have not arrived, so the
+trailing minutes read as *not yet known* rather than *idle* — and so a total or an unresolved count
+that is about to change says so. The data is already there: the newest event per contributing
+bucket. **Check:** with one device deliberately un-synced for ten minutes, the other's combined
+screen shows its data ending where it does, and the unresolved count carries a "may change" mark.
 
 ### 4.4 — Activity, across devices (a new tab) ⬜ ← *owner-requested 2026-09-10*
 
