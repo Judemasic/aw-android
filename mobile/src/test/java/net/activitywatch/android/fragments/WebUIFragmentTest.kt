@@ -90,9 +90,12 @@ class WebUIFragmentTest {
     @Test
     fun `WebAppInterface reassembles chunked exports`() {
         var received: Triple<String, String, String>? = null
-        val bridge = WebAppInterface { content, filename, mimeType ->
-            received = Triple(content, filename, mimeType)
-        }
+        val bridge = WebAppInterface(
+            onExport = { content, filename, mimeType ->
+                received = Triple(content, filename, mimeType)
+            },
+            onOpenNative = {},
+        )
 
         bridge.beginExport("../aw-bucket-export.json", "application/json")
         bridge.appendExport("{\"buckets\":")
@@ -103,11 +106,28 @@ class WebUIFragmentTest {
     }
 
     @Test
+    fun `WebAppInterface forwards native settings requests by name`() {
+        // Roadmap 4.1b-i. With the native action bar hidden there is no drawer, so this
+        // bridge is the only way left to reach Sync Settings and API Authentication.
+        val opened = mutableListOf<String>()
+        val bridge = WebAppInterface(onExport = { _, _, _ -> }, onOpenNative = { opened.add(it) })
+
+        bridge.openNativeSettings("sync")
+        bridge.openNativeSettings("auth")
+
+        assertEquals(listOf("sync", "auth"), opened)
+        assertTrue(bridge.hasNativeSettings())
+    }
+
+    @Test
     fun `WebAppInterface download helpers keep explicit mime types`() {
         val received = mutableListOf<Triple<String, String, String>>()
-        val bridge = WebAppInterface { content, filename, mimeType ->
-            received.add(Triple(content, filename, mimeType))
-        }
+        val bridge = WebAppInterface(
+            onExport = { content, filename, mimeType ->
+                received.add(Triple(content, filename, mimeType))
+            },
+            onOpenNative = {},
+        )
 
         bridge.downloadJSON("{}", "data.json")
         bridge.downloadCSV("a,b", "data.csv")
