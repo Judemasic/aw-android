@@ -1747,7 +1747,7 @@ Five seeded devices, 16 combined segments, 7 of them contended — driven at **4
    about it, and the 3.5c block stepper's key lookup would have landed on the wrong one of the pair.
    The row index is part of the key now.
 
-### 4.1b — Redesign the combined screen for the phone ⬜ ← **next; both open questions answered 2026-09-10**
+### 4.1b — Redesign the combined screen for the phone ⏳ BUILT (2026-09-10) — browser-verified, ⚠️ NOT yet on device
 
 > **Decided by the owner 2026-09-09**, after driving the built app on the S25U. They rejected an
 > incremental fix and chose *"design the phone screen properly"* — treat the phone as its own screen
@@ -1834,23 +1834,83 @@ activities through a JS bridge is an implementation choice for the step — the 
 **from the web UI alone, with the native bar hidden, both are reachable.** This is a prerequisite
 for hiding the native action bar, and therefore for acceptance criterion 3.
 
+#### What was built (2026-09-10)
+
+Built from **one rule** rather than patched again: **below 980px the view is exactly as tall as the
+viewport, hides its own overflow and locks the body, and everything above the timeline has a fixed
+height.** The timeline is then the only scroll container on the screen. Everything else follows.
+
+| Was | Is |
+|---|---|
+| `Range & devices` + `View` fold-outs, 72px, above the data | A **⚙ sheet** next to the day nav |
+| Stat tiles in a box with dividers, 57px | One line, numbers kept, 18px |
+| Minimap taps to jump | **Drags to scrub**, with pointer capture so the gesture survives leaving the 26px strip |
+| Prev/Next in a 31px band | A **floating pill** over the timeline, 44px buttons, lifted clear of the detail sheet |
+| Timeline fixed at 520px | Takes whatever the viewport leaves, measured |
+| Detail docked at 60vh (rejected) | A **peek** of ~147px with **Resolve… inside it**; `Details` expands, the next block collapses it |
+| Resolution sheet scrolled as one piece | Head and foot pinned, middle scrolls — **Save is never below the fold**; on a phone the evidence list goes, since the options now carry the same swatch, device and duration |
+| **334px of chrome** before the first block | **108px** |
+
+Also **4.1b-i** (below): the native action bar is hidden on phones, and the two settings that lived
+only behind it have a home in aw-webui's own Settings.
+
+`aw-webui@57fbce9`, `@48f422f`; `aw-android@c43ca12`.
+
+#### Verified in a browser, and what a browser cannot judge
+
+Driven in headless Edge at 412×825 against a live server with **real touch events**, not DOM clicks
+— the 4.1 run passed this screen by clicking through the DOM and so never discovered a control it
+could not reach. A finger tap selects a block, the pill steps to the next one, and **Resolve… opens
+the resolution sheet from inside the peek**. `scrollY` stays 0 through every gesture, including a
+full-height drag. At 1280px nothing about the layout changes (**R35**); portrait tablet gets the
+compact layout, landscape tablet keeps the desktop one.
+
+⚠️ **Two things that run cannot judge, both for the device:**
+1. **Touch *scrolling* does not work in headless Edge at all** — a trivial control page with an
+   `overflow: auto` div does not scroll either, so "does a thumb-drag move the timeline" is
+   unanswerable there. Wheel scrolling works, which is only evidence the container is scrollable.
+2. **How any of it feels in the hand**, which is the thing 4.1b was opened for.
+
+🐛 **Two traps this run walked into, recorded so the next one does not.** `aw-server --webpath`
+lost to the server's own compiled-in `rust-embed` copy and silently served a **months-old bundle**;
+the run now goes through a small static server instead. And Edge reused a cached bundle **across
+runs** even with `Network.setCacheDisabled`, so every verification now starts a **cold browser**.
+Both failure modes look exactly like a passing test of code you have already replaced.
+
+#### 4.1b-i — The native settings' new home ✅ BUILT
+
+`Settings ▸ This device`, second in the sidebar, with a row each for **Sync Settings** and **API
+Authentication** that opens the app's own screen through `WebUIFragment`'s JavaScript bridge
+(`Android.openNativeSettings`). Gated on **the bridge being present**, not on `VUE_APP_ON_ANDROID`:
+the same bundle is served by a desktop aw-server, and a build flag says how the bundle was compiled,
+not whether an app is on the other side of it. On a desktop the group is absent, not empty.
+
+The native action bar is then hidden **on phones only** (`smallestScreenWidthDp < 600`, read from
+the live configuration so a foldable is asked again), and the drawer is **locked shut** rather than
+left swipeable with no advertised way back to it. Everything else the drawer held — Home, Activity,
+Raw Data, Combined, Settings — is in aw-webui's navbar already.
+
 #### What the redesign must fix, restated as acceptance criteria
 
 1. **One scroller, or none.** A thumb-drag anywhere on the screen must move something useful. No
-   nested scroll container competing with the page.
+   nested scroll container competing with the page. — ⏳ *the page is proven not to move; that the
+   timeline does is the device's to say (headless cannot touch-scroll).*
 2. **Every control reachable by thumb**, verified by *scrolling and tapping on hardware*, not by
-   DOM-clicking in a headless browser.
-3. **One top bar**, not two.
-4. **Chrome well under 334px** before the first block.
+   DOM-clicking in a headless browser. — ⏳ *reachable and tappable by real touch events at 412px;
+   hardware still owed.*
+3. **One top bar**, not two. — ✅ *native bar hidden on phones; 4.1b-i gave the orphans a home.*
+4. **Chrome well under 334px** before the first block. — ✅ **108px.**
 5. **The resolution sheet is comfortable for ten decisions in a row** — that is now a primary job,
-   not an occasional one.
-6. Still **R35**: whatever this becomes must not break the tablet or the 1280px desktop layout.
+   not an occasional one. — ⏳ *Save always visible, 44px targets, no duplicated evidence list; how
+   it feels over ten in a row is the device's to say.*
+6. Still **R35**: whatever this becomes must not break the tablet or the 1280px desktop layout. —
+   ✅ *1280px measured unchanged; portrait tablet takes the compact layout deliberately.*
 
 #### Not blocked by this
 
 4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout, and
-**4.4** is a separate screen. Nothing here blocks anything else; if this redesign stalls, **do 4.2
-first**.
+**4.4** is a separate screen. Nothing here blocks anything else. **Next: the device test**, then
+4.2.
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -2288,8 +2348,15 @@ per device, with unresolved contention striped (**R8**).
   action bar. The Activity remark turned out not to be about Combined at all — it asks for the
   Activity view computed across every device, as its own tab: now
   **[4.4](#44--activity-across-devices-a-new-tab)**.
-- Next: **4.1b**, unblocked. **4.2 — Persist + apply decisions** is not blocked by the layout and
-  can still go first if the redesign stalls.
+- ⏳ **4.1b and 4.1b-i built 2026-09-10, browser-verified, not yet on device.** One scroller, the
+  fold-outs behind a ⚙, a peek-sized detail sheet with **Resolve… inside it**, a scrubbing minimap,
+  a floating stepper, and 334px of chrome down to **108px**. The native action bar is gone on
+  phones, and Sync Settings and API Authentication live in `Settings ▸ This device`.
+- ⚠️ **Headless cannot touch-scroll** — proven against a trivial control page — so "does a thumb-drag
+  move the timeline" is the device's to answer, along with how the whole thing feels.
+- 🐛 That run also caught two ways a verification can quietly check the *old* code: `--webpath`
+  losing to the server's embedded copy, and Edge reusing a cached bundle across runs.
+- Next: **install and drive it on the S25U**, then **4.2 — Persist + apply decisions**.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
