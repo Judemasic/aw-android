@@ -34,8 +34,8 @@
 > stored, applied (step ④) and carried between devices by the sync; the two-device round trip is
 > the part still owed. **4.3, undo, is done and verified on the phone.**
 >
-> 🐛 **[4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--built-2026-09-10---not-on-device)
-> is the live step, and it is a defect 4.2's device run did not reach.** The owner found it on the
+> ✅ **[4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--verified-on-both-devices-2026-09-10)
+> is done and verified on both devices, and it was a defect 4.2's device run did not reach.** The owner found it on the
 > S25U on 2026-09-10: a resolution that saves cleanly, returns `200 OK`, is stored — and leaves the
 > block shaded anyway, with nothing in logcat but success. Cause: `coalesce` glues a block together
 > whenever the *winner* is unchanged, so the sheet records a cast that no atomic segment underneath
@@ -43,8 +43,12 @@
 > part-way through was unresolvable.** The fix makes a `once` decision match on its **window alone**
 > — the cast stays evidence, and stays what a `scope: always` **rule** matches on — and makes a pick
 > settle only the time its activity was actually running, so nothing is ever credited with seconds
-> no watcher recorded (**R11**). Built and green under `cargo test --workspace`; ⚠️ **not yet on a
-> device.**
+> no watcher recorded (**R11**). Installing it then found a second defect on hardware — **every
+> Android device calls itself `localhost`**, so a peer's decision named *itself* by a string that
+> means a different device on every machine, and the tablet settled the owner's tail in favour of
+> itself. Fixed in `aw-server-rust@6d74dd5`; both devices now return the same day, segment for
+> segment. ⚠️ **`localhost` is still not an identity**, which is a live risk for `scope: always`
+> rules — see 4.2a's closing note.
 >
 > Raised in the same conversation and deliberately sequenced *after* it:
 > **[4.5](#45--smoothing-and-what-counts-as-a-competitor)**, rounding away small slivers and deciding
@@ -2122,7 +2126,7 @@ overlaps still asking. **That is R26.**
 **Phone → tablet ran on hardware in [4.3](#43--undo--verified-on-device-2026-09-10)**, carrying a
 tombstone written on the S25U to the tablet. A `scope: always` rule is still unverified on hardware.
 
-### 4.2a — A decision answers a stretch of time, not a cast of competitors ⏳ BUILT (2026-09-10) — ⚠️ NOT on device
+### 4.2a — A decision answers a stretch of time, not a cast of competitors ✅ VERIFIED ON BOTH DEVICES 2026-09-10
 Found by the owner on the S25U the day after 4.2 was verified: a resolution that saved cleanly,
 returned `200 OK`, was stored, and left the block shaded anyway. *(R11, R16, R26)*
 
@@ -2228,6 +2232,79 @@ whose cast changes part-way through — the shape 4.2's tests never built:
 ⚠️ **Not verified: anything on a device.** `cargo clippy` could not run (not installed for this
 toolchain), and `cargo fmt --check` is red on `aw-combined` — but it was already red on `beta` before
 this change, on files this step never touched, and the Android build workflow does not run either.
+
+#### On the hardware, 2026-09-10 — the fix works, and installing it found a second defect
+
+⚠️ **The first attempt verified nothing, and the failure is worth recording.** CI run
+[34498633710] was green and its APK was installed on both devices, and the block still would not
+resolve — because `git add aw-server-rust` had been run in `aw-android` after the work was
+committed in the **sibling checkout** at `../aw-server-rust`, which is a *different working tree*
+from the submodule this repo builds. Git saw only a dirty submodule and re-recorded the old
+pointer, so `8dbebf2` carried the roadmap and nothing else. **A green build of the wrong code looks
+exactly like a failed fix.** Corrected in `e8604b7`; check `git rev-parse HEAD:aw-server-rust`
+against the run's SHA *before* trusting a result, not after being surprised by one.
+
+**On the real build ([34500333746], `e8604b7`), the S25U's own block behaved exactly as designed:**
+
+| | Before | After |
+|---|---|---|
+| `14:43:51 → 14:49:28` | part of one contended block | **settled**, ActivityWatch on the S25U, `resolved_by d_01M25YH1WTPH013FTN1X8PAZGP` |
+| `14:49:28 → 14:49:36` | — | **contended**, still asking, winner still the tablet's ActivityWatch and the S25U's `One UI Home` untouched in `background` |
+
+The four duplicate saves resolved to one record deterministically, as expected. Segments with a
+`resolved_by` went 2 → 3; the unresolved count stayed 51, because the block became one settled
+segment plus one new asking tail — which is the arithmetic the rule predicts.
+
+🐛 **And then the tablet disagreed with the phone about those same eight seconds.** It read the
+same record and settled the tail **in favour of itself**:
+
+| | the phone calls it | the tablet calls it |
+|---|---|---|
+| S25U `ad0c6c34` | **`localhost`** | `jude_s_s25_ultra` |
+| Tab S10 FE `7b54cfe9` | `jude_s_tab_s10_fe` | **`localhost`** |
+
+Every Android device reports its own hostname as `localhost` — that is what `gethostname()` returns
+on the embedded server — so a decision names *its own* device by the one string that means a
+different device on every machine it is read on. The uuid lookup correctly missed on the tablet;
+the **role fallback** then matched the tablet's own ActivityWatch. Two devices, one day, two
+answers, which is what **R18** exists to forbid.
+
+Fixed in `6d74dd5`: the role fallback is reached only when the picked uuid is one this day has
+never heard of. A device we know about and cannot find in this segment is an answer of *"not
+here"*, not a licence to guess. The fallback goes on existing for the case it was written for — a
+rule that outlived the device that made it — pinned by
+`a_role_still_finds_a_device_this_day_has_never_heard_of`.
+
+⚠️ **The deeper problem is not fixed and is not this step's to fix: `localhost` is not an
+identity.** A *signature* carrying it means different things on different devices, so a
+`scope: always` rule recorded on one device can key on a role that names another device entirely.
+Rules have never been verified on hardware, and this is why that matters. Naming devices properly —
+the `devices/<uuid>/meta.json` role [`05_DATA_MODEL.md`](05_DATA_MODEL.md) §3 always intended, or
+anything that is not `gethostname()` — is its own step, and **4.2's judgment call 3 should be
+re-read in this light**: it replaced a uuid with a hostname to make roles portable, and on Android
+the hostname turns out to be portable in the worst possible way.
+
+✅ **Re-checked on both devices after `6d74dd5` ([34502662704], `f7837dd`) — they now agree exactly.**
+The block, read out of each device's own `/api/0/combined/timeline`, line for line identical:
+
+| Window | State | Counted to | `resolved_by` |
+|---|---|---|---|
+| `14:43:51 → 14:49:28` | settled | **ActivityWatch on the S25U** | `d_01M25YH1WTPH013FTN1X8PAZGP` |
+| `14:49:28 → 14:49:36` | **contended, still asking** | (provisional: the tablet) | — |
+
+And across the whole day, not just the block: of **551 segments both devices hold**, 3 differ —
+**two by a single nanosecond** on a boundary (`…460999999Z` vs `…460999998Z`, the same rounding
+artefact [4.3a](#43a--why-two-devices-disagree-on-the-unresolved-count--investigated-2026-09-10--not-a-bug)
+measured) and **one in the trailing twenty minutes**, where each device still holds events the other
+has not received — which is 4.3a's sync-lag finding, not a disagreement. Everything decision-shaped
+matches: **53 unresolved on both, 3 `resolved_by` on both.** That is **R18** and **R26** together.
+
+⚠️ **Not verified: the view.** Every check above went through the HTTP API on both devices; nobody
+has looked at the drawn screen. 4.2a changed no Vue and no Kotlin, so there is no new UI to judge —
+but *"a resolved block followed by an eight-second shaded crumb"* is a thing the owner has never
+seen, and whether it reads as correct or as a glitch is a question only the screen can answer. It
+is the argument for [4.5](#45--smoothing-and-what-counts-as-a-competitor), and the reason 4.5 is
+next rather than optional.
 
 ### 4.3 — Undo ✅ VERIFIED ON DEVICE 2026-09-10
 Tombstones; segment returns to shaded. *(R12)*
