@@ -32,7 +32,24 @@
 > "Combined timeline" entry opens it. **4.1, the resolution sheet, is built** and verified in a
 > browser at phone and desktop width. **4.2 is built and verified on one machine** — decisions are
 > stored, applied (step ④) and carried between devices by the sync; the two-device round trip is
-> the part still owed. **4.3, undo, is next**, and most of its plumbing is already in place.
+> the part still owed. **4.3, undo, is done and verified on the phone.**
+>
+> 🐛 **[4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--built-2026-09-10---not-on-device)
+> is the live step, and it is a defect 4.2's device run did not reach.** The owner found it on the
+> S25U on 2026-09-10: a resolution that saves cleanly, returns `200 OK`, is stored — and leaves the
+> block shaded anyway, with nothing in logcat but success. Cause: `coalesce` glues a block together
+> whenever the *winner* is unchanged, so the sheet records a cast that no atomic segment underneath
+> has, and ④ required the cast to match exactly. **Every overlap where a device switches app
+> part-way through was unresolvable.** The fix makes a `once` decision match on its **window alone**
+> — the cast stays evidence, and stays what a `scope: always` **rule** matches on — and makes a pick
+> settle only the time its activity was actually running, so nothing is ever credited with seconds
+> no watcher recorded (**R11**). Built and green under `cargo test --workspace`; ⚠️ **not yet on a
+> device.**
+>
+> Raised in the same conversation and deliberately sequenced *after* it:
+> **[4.5](#45--smoothing-and-what-counts-as-a-competitor)**, rounding away small slivers and deciding
+> whether a device parked on its launcher competes at all. Rounding first would have hidden the
+> sliver that exposed 4.2a. It needs two answers from the owner before it can start.
 >
 > ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
 > now 3.5b's acceptance list. Separately,
@@ -2105,6 +2122,113 @@ overlaps still asking. **That is R26.**
 **Phone → tablet ran on hardware in [4.3](#43--undo--verified-on-device-2026-09-10)**, carrying a
 tombstone written on the S25U to the tablet. A `scope: always` rule is still unverified on hardware.
 
+### 4.2a — A decision answers a stretch of time, not a cast of competitors ⏳ BUILT (2026-09-10) — ⚠️ NOT on device
+Found by the owner on the S25U the day after 4.2 was verified: a resolution that saved cleanly,
+returned `200 OK`, was stored, and left the block shaded anyway. *(R11, R16, R26)*
+
+#### What was actually wrong
+
+Nothing failed. The `POST /api/0/combined/decisions` succeeded, the record was written, the view
+re-read the day — and the block came back `contended`. No error, no warning, nothing in logcat but
+success. Four saves in a row produced four identical stored records and no change on screen.
+
+**The block on screen is not one segment.** ⑥ [`coalesce`](../../aw-server-rust/aw-combined/src/coalesce.rs)
+glues neighbouring segments together whenever the *winner* is unchanged — it compares only the
+foreground slice, deliberately, so a background app changing does not shatter a block. The sheet
+therefore reads its participant list off the **glued** block, while ④ matched decisions against the
+**atomic** segments underneath, requiring the cast to be identical.
+
+The owner's real block, `14:43:51 → 14:49:36` UTC, read off the device:
+
+| | 14:43:51 → 14:49:28 | 14:49:28 → 14:49:36 |
+|---|---|---|
+| Tab S10 FE | ActivityWatch | ActivityWatch |
+| S25U | **ActivityWatch** ← picked | One UI Home |
+
+Two atomic segments, two competitors each; one glued block, **three** competitors. The recorded
+three-way signature matched neither half, so the answer landed nowhere. **Every overlap in which
+either device switches app part-way through was unresolvable** — deterministically, not
+intermittently. The decisions that had worked, including 4.2's own device check, were all blocks
+whose cast happened not to change.
+
+#### The rule, in the owner's words
+
+> *"lets say i [have] gaming and on the tablet i have youtube and then spotify for 1 second and then
+> youtube … if i choose spotify then i will have 1 second of spotify and still need two more
+> decisions to make on the top and bottom between gaming and youtube"*
+
+Two halves, and the second is what keeps the first honest:
+
+1. **A `once` decision matches on its window alone.** The cast is evidence, not a key. It is still
+   written to the record, because **R15** makes today's decisions tomorrow's rules and a signature
+   not captured now cannot be recovered later — and it is still what a `scope: always` **rule**
+   matches on, because "whenever *these* things compete, X wins" genuinely is a statement about the
+   cast.
+2. **A `foreground` pick can only settle time its activity was actually running.** Where the pick is
+   absent the owner has answered nothing, and the segment goes on asking. `ignore` and `relabel`
+   name the *time* rather than a competitor, so those two do cover the whole window.
+
+Half 2 is **R11** stated for step ④: a decision is data *about* events, never an edit to them.
+Settling the tail anyway — the option the owner was offered and rejected — would have credited
+ActivityWatch with 8 seconds no watcher recorded, or renamed the S25U's launcher time to the app
+that was picked. The owner, explicitly: *"do not write any data … do not remove the launcher from
+the data … of course do not make the launcher named as the one from my S25U."*
+
+⚠️ **So the expected result on that block is a resolved 5m37s and an 8-second crumb that still
+asks.** That is correct, not a residual bug. Absorbing slivers like it is a *presentation* question,
+scoped separately as [4.5](#45--smoothing-and-what-counts-as-a-competitor).
+
+#### What was built
+
+All of it in `aw-server-rust`, [`aw-combined/src/apply.rs`](../../aw-server-rust/aw-combined/src/apply.rs).
+No Kotlin, and **no change to the sheet** — it already recorded everything needed.
+
+| Was | Is |
+|---|---|
+| Pass 1 required `window covers segment` **and** an identical signature | `window covers segment` **and** the decision can act on it |
+| Pass 1 considered every record | `scope: once` only (see the judgment call below) |
+| A pick that was absent still settled the segment, leaving the winner to ⑤ | A pick that is absent matches nothing; the segment stays contended |
+| An unrecognised outcome settled nothing, but still consumed precedence over a rule that *was* understood | `can_act_on` rejects it before precedence is decided |
+
+**One judgment call the owner did not dictate: a `scope: always` record no longer applies through
+the windowed pass.** Every record carries a window — for a rule that is where the owner *was* when
+they made it, not what it applies to — and with the cast no longer checked, a rule would have
+settled whatever else shared that clock. The existing test
+`a_rule_does_not_touch_a_different_contention` caught this on the first run and is the reason the
+rule exists. A rule still settles the block it was made on, through the rule pass, where its cast
+matches by construction; the only visible difference is that such a block now reads *"resolved by
+your rule"* and offers *Undo this rule*, which is what **R16** wanted it to say anyway.
+
+**Deliberately not done:** `deliberate_background` is still copied to a segment verbatim, so a slice
+that never contained the ticked app still claims it was deliberately in the background. Filtering it
+per segment is correct but splits blocks that would otherwise coalesce, which is 4.5's argument to
+have, not this step's.
+
+**Also deliberately not done: the owner's four duplicate records were left alone.** Under
+window-only matching they are now genuinely identical and inert — `wins()` picks one
+deterministically and the other three change nothing. Tombstoning them would be a data change for
+no benefit.
+
+#### Verified locally, and what that does not cover
+
+`cargo test --workspace` — green, including all 16 of 4.2's own tests unchanged. Seven new tests in
+[`aw-combined/tests/stretch.rs`](../../aw-server-rust/aw-combined/tests/stretch.rs), each a block
+whose cast changes part-way through — the shape 4.2's tests never built:
+
+| Test | What it pins |
+|---|---|
+| `a_decision_settles_a_block_whose_loser_changes_part_way_through` | the owner's first case: gaming vs YouTube-then-Spotify, one answer, whole hour settled |
+| `a_pick_settles_only_the_time_it_was_actually_running` | the owner's second case: pick Spotify, get the Spotify stretch, and **two** questions still open either side |
+| `a_pick_never_credits_an_activity_that_had_already_stopped` | the real S25U block: 0–50 settles, the tail stays contended, and the launcher is neither renamed nor removed |
+| `a_once_decision_no_longer_needs_its_cast_to_match` | the 4.2a change on its own |
+| `i_was_away_covers_the_whole_window_however_the_cast_changes` | `ignore` names the time, not a competitor |
+| `a_rule_still_matches_on_the_cast_and_not_on_time` | **R16** unchanged |
+| `a_rule_whose_pick_is_absent_resolves_nothing` | half 2 reached through the other pass |
+
+⚠️ **Not verified: anything on a device.** `cargo clippy` could not run (not installed for this
+toolchain), and `cargo fmt --check` is red on `aw-combined` — but it was already red on `beta` before
+this change, on files this step never touched, and the Android build workflow does not run either.
+
 ### 4.3 — Undo ✅ VERIFIED ON DEVICE 2026-09-10
 Tombstones; segment returns to shaded. *(R12)*
 
@@ -2252,6 +2376,65 @@ two devices' overlapping totals, and resolving an overlap in Combined changes th
 > the first thing beyond it; everything after that is convenience.
 
 ---
+
+### 4.5 — Smoothing, and what counts as a competitor ⬜ ← *owner-requested 2026-09-10*
+> *"i think we should give the user an option where we round small decisions … or the user can
+> decide the time, or can turn it off and get the most literal … there should be rules about this
+> merging and i don't know what they are."*
+
+Raised while [4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--built-2026-09-10---not-on-device)
+was being scoped, and deliberately sequenced **after** it. Rounding would have swallowed the
+8-second sliver that exposed 4.2a's bug, and the bug would still be there, silently eating every
+overlap where a device switches app mid-block. **Smooth on top of a matcher that is known correct,
+never before.**
+
+#### Three problems that feel like one
+
+| # | Problem | Question it answers | State |
+|---|---|---|---|
+| 1 | A short **contention** | "should I be *asked*?" | ✅ exists — `min_contention`, default 60s, [`classify.rs`](../../aw-server-rust/aw-combined/src/classify.rs). **D15 said "exposed as a setting"; nothing ever exposed it.** |
+| 2 | A short **sliver inside a stretch** | "should this be its own *block*, and count separately?" | ⬜ this step |
+| 3 | A device parked on its **launcher** while the other is in use | "is this device even *competing*?" | ⬜ this step, and not a threshold at all |
+
+They are different numbers. One slider driving both will make one of them feel wrong.
+
+#### Candidate rules, in precedence order
+
+1. **The owner's answer outranks everything below.** Anything with a `resolved_by` is never
+   absorbed, merged or relabelled.
+2. **Noise floor, ~5s, not user-facing.** Below it nothing is ever its own block. The owner's real
+   day contains 1-second and 17-millisecond segments; this is watcher jitter, not a preference.
+3. **Went-and-came-back.** `A, B, A` with B short → B absorbs into A. The strongest rule of the set:
+   the bracket *is* the evidence. Upstream already has the idea for events —
+   [`aw-transform/src/flood.rs`](../../aw-server-rust/aw-transform/src/flood.rs).
+4. **Transit apps.** `A, Home, B` with Home short is navigation, not an activity; absorb **forward**
+   into B.
+5. **`A, B, C` with B short and no bracket** stays literal. Genuinely ambiguous — guessing is worse.
+6. **A decided stretch never shatters.** Slivers inside a decision's window join their neighbour
+   regardless of size, so an answered block does not come back as three.
+7. **Three or more devices: absorb the run in one pass, never pairwise** — pairwise depends on which
+   pair is looked at first, which breaks **R18**. Ties by duration, then label, then uuid.
+8. **"Off" means literal.** Everything but 1 and 2 is switchable.
+
+⚠️ **Absorption always moves seconds from one label to another**, which is the same objection 4.2a
+settled for decisions. So it must be a **view-layer** transform computed after the pipeline, never
+written into stored data or into a decision record: change the number and the day recomputes, with
+nothing lost. **The owner has already ruled on the data itself — *"do not write any data … do not
+remove the launcher from the data"* — so #3 can only ever change what *competes*, never what is
+stored or drawn.**
+
+On **idle**: it mostly self-solves on Android, and expecting it to solve #3 is a mistake. The
+watcher only records while the screen is on, so an idle device produces no events and is not a
+participant. What does not self-solve is a screen that is **on and sitting on the launcher** — which
+is a large share of the owner's overlaps (4.2's own check block was `One UI Home` vs `ActivityWatch`,
+and there is a segment at 14:49:36 of `One UI Home` contending with `One UI Home`).
+
+#### Two decisions needed before this can be built
+
+1. **Default sliver threshold for #2.** Owner floated "10 seconds or a minute"; the suggestion on
+   the table is **15s**, leaving contention at 60s.
+2. **Does a device on its home screen compete at all?** Suggested: no, as a toggle defaulting to
+   "does not compete". This changes what existing history *means*, so it is the owner's call.
 
 ## Phase 5 — Make the UI usable on a phone
 
