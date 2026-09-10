@@ -107,15 +107,19 @@ class WebUIFragmentTest {
 
     @Test
     fun `WebAppInterface forwards native settings requests by name`() {
-        // Roadmap 4.1b-i. With the native action bar hidden there is no drawer, so this
-        // bridge is the only way left to reach Sync Settings and API Authentication.
+        // Roadmap 4.1b-i. With the native action bar hidden at every width there is no
+        // drawer at all, so this bridge is the only way left to reach Sync Settings, API
+        // Authentication and Open in browser. Every name the web UI can send is listed
+        // here on purpose: a name the bridge forwards but MainActivity does not handle
+        // is a dead button, and the dead button is the failure mode this guards.
         val opened = mutableListOf<String>()
         val bridge = WebAppInterface(onExport = { _, _, _ -> }, onOpenNative = { opened.add(it) })
 
         bridge.openNativeSettings("sync")
         bridge.openNativeSettings("auth")
+        bridge.openNativeSettings("browser")
 
-        assertEquals(listOf("sync", "auth"), opened)
+        assertEquals(listOf("sync", "auth", "browser"), opened)
         assertTrue(bridge.hasNativeSettings())
     }
 

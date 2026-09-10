@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import net.activitywatch.android.AuthSettingsActivity
+import net.activitywatch.android.MainActivity
 import net.activitywatch.android.R
 import net.activitywatch.android.SyncSettingsActivity
 import net.activitywatch.android.ensureDashboardApiKey
@@ -519,6 +520,15 @@ class WebUIFragment : Fragment() {
      */
     private fun openNativeScreen(screen: String) {
         val activity = activity ?: return
+        // "browser" is not an Activity of ours -- it hands the dashboard to whatever
+        // browser the user has, which is MainActivity's job because it owns the URL and
+        // the API key that authenticates it.
+        if (screen == "browser") {
+            activity.runOnUiThread {
+                if (isAdded) (activity as? MainActivity)?.openDashboardInBrowser()
+            }
+            return
+        }
         val intent = when (screen) {
             "sync" -> Intent(activity, SyncSettingsActivity::class.java)
             "auth" -> Intent(activity, AuthSettingsActivity::class.java)

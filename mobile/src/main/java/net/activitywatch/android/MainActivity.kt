@@ -78,20 +78,15 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         return buildDashboardUrl(url, dashboardApiKey)
     }
 
-    private fun openDashboardInBrowser(url: String = baseURL) {
+    // Internal, not private: with the drawer gone this is reached from
+    // `Settings > This device` in the web UI, through WebUIFragment's bridge.
+    internal fun openDashboardInBrowser(url: String = baseURL) {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(authenticatedUrl(url))))
         } catch (e: ActivityNotFoundException) {
             Snackbar.make(binding.root, R.string.no_browser_found, Snackbar.LENGTH_SHORT).show()
         }
     }
-
-    /**
-     * Roadmap 4.1b. The same 600dp line Android itself uses to separate a phone from a
-     * tablet, read from the current configuration so a foldable that changes shape is
-     * asked again rather than assumed.
-     */
-    private fun isPhoneWidth(): Boolean = resources.configuration.smallestScreenWidthDp < 600
 
     override fun onFragmentInteraction(item: Uri) {
         Log.w(TAG, "URI onInteraction listener not implemented")
@@ -160,12 +155,19 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         // of 4.1b-i. R30 is the standing warning here: these screens have been unreachable
         // on a stock device once before, which is why that group is a prerequisite for this
         // and not a follow-up.
-        if (isPhoneWidth()) {
-            supportActionBar?.hide()
-            // With no hamburger, a drawer that can still be swiped open is a surface with no
-            // way back to it that the user knows about. Lock it shut rather than half-there.
-            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
-        }
+        // Every width, not just phones.
+        //
+        // 4.1b hid this on phones only, out of caution: the drawer was the sole way to
+        // three Android-only screens, and orphaning a setting is exactly the defect R30
+        // records. That caution is spent -- all three now live in `Settings > This
+        // device`, at every width -- and the tablet was still stacking two title bars,
+        // which is the defect 4.1b was opened to fix. A tablet is not a phone, but it is
+        // not a reason to keep a second title bar whose only remaining content is a
+        // duplicate of the web UI's own navbar.
+        supportActionBar?.hide()
+        // With no hamburger, a drawer that can still be swiped open is a surface with no
+        // way back to it that the user knows about. Lock it shut rather than half-there.
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
 
         // Ensure API key exists in config before the server starts so it picks it up at init.
         dashboardApiKey = ensureDashboardApiKey(this)
