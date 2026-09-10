@@ -1933,6 +1933,36 @@ alone, when it was the better answer everywhere.**
 4. **Carry-over is the default now.** Anything the phone work improved that is not *about* being
    small — the pinned head and foot on the resolution sheet, the swatch/device/duration on each
    option, the drag-to-scrub minimap — already applies at every width, and stays that way.
+5. **And a fifth, found by plugging the tablet in.** Asked whether the tablet had been left out, it
+   turned out it had, in the most visible way possible: the **SM-X520 was still stacking two title
+   bars** — the native one and the web UI's navbar directly beneath it — which is the exact defect
+   4.1b was opened to fix, left in place on the device that shows it most plainly. See
+   [4.1b-ii](#41b-ii--the-native-action-bar-goes-at-every-width).
+
+#### 4.1b-ii — The native action bar goes at every width ✅ BUILT
+
+4.1b hid it on phones only (`smallestScreenWidthDp < 600`), out of caution: the drawer was the sole
+route to three Android-only screens, and orphaning a setting is exactly what **R30** records. That
+caution is now spent, and keeping it had a cost the tablet was paying every time it was opened.
+
+What was behind the hamburger, and where it is now:
+
+| Drawer item | Where it lives |
+|---|---|
+| Home, Activity, Raw Data, Combined, Settings | The web UI's own navbar, already |
+| Sync Settings, API Authentication | `Settings ▸ This device` (4.1b-i) |
+| **Open in browser** | `Settings ▸ This device` — **added here**, and it was the real hole |
+| Report bugs | Never implemented; it showed a snackbar saying so. The web UI's footer has a real link |
+
+**Open in browser was already orphaned on the phone by 4.1b and nobody noticed** — which is
+precisely how R30 happened the first time, and the reason this table exists rather than a sentence
+claiming the drawer was empty. It goes through the same `Android.openNativeSettings` bridge under
+the name `browser`, handled by `MainActivity` because it owns the URL and the API key that
+authenticates it. `WebUIFragmentTest` now lists **every** name the web UI can send: a name the
+bridge forwards but `MainActivity` ignores is a dead button, and that is the failure mode to guard.
+
+A tablet is not a phone. That is not a reason to keep a second title bar whose only remaining
+content duplicates the navbar underneath it.
 
 #### What the redesign must fix, restated as acceptance criteria
 
@@ -2406,6 +2436,11 @@ per device, with unresolved contention striped (**R8**).
   the fold-outs on a desktop too, and "I was doing both" became **one checkbox per other activity**
   — the single tick had no answer for a three-way overlap and marked every loser deliberate.
   `aw-webui@27c6f1c`, `aw-android@23478c8`.
+- 📱 **Then the tablet was plugged in, and it was still showing two title bars.** 4.1b hid the
+  native one on phones only, out of caution about orphaning the drawer's contents; that caution was
+  spent once 4.1b-i rehoused them, and **Open in browser turned out to be already orphaned on the
+  phone** — R30 repeating, unnoticed. It joins `Settings ▸ This device`, and the action bar is now
+  hidden at every width. `aw-webui@c8c8a7a`, `aw-android@1755401`.
 - Next: **4.2 — Persist + apply decisions**.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
