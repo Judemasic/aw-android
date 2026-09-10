@@ -23,7 +23,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
+import net.activitywatch.android.AuthSettingsActivity
 import net.activitywatch.android.R
+import net.activitywatch.android.SyncSettingsActivity
 import net.activitywatch.android.ensureDashboardApiKey
 import org.json.JSONObject
 import java.io.File
@@ -426,7 +428,13 @@ class WebUIFragment : Fragment() {
         myWebView.settings.setSupportZoom(true)
         myWebView.settings.builtInZoomControls = true
         myWebView.settings.displayZoomControls = false
-        myWebView.addJavascriptInterface(WebAppInterface(::queueExport), "Android")
+        // Roadmap 4.1b-i. The web UI's Settings page needs a way to reach the two screens
+        // that exist only as native activities, so it can carry them once the native action
+        // bar -- and with it the drawer that used to be their only entrance -- is gone.
+        myWebView.addJavascriptInterface(
+            WebAppInterface(::queueExport, ::openNativeScreen),
+            "Android",
+        )
         arguments?.let {
             it.getString(ARG_URL)?.let { it1 -> myWebView.loadUrl(it1) }
         }
@@ -498,6 +506,29 @@ class WebUIFragment : Fragment() {
                     },
                 )
             }
+        }
+    }
+
+    /**
+     * Roadmap 4.1b-i. Starts one of the Android-only settings activities on behalf of the
+     * web UI's "This device" settings group.
+     *
+     * Called from the WebView's JavaScript thread, so it hops to the UI thread; and the
+     * fragment can be detached by the time it lands, which is why every step is guarded
+     * rather than assumed.
+     */
+    private fun openNativeScreen(screen: String) {
+        val activity = activity ?: return
+        val intent = when (screen) {
+            "sync" -> Intent(activity, SyncSettingsActivity::class.java)
+            "auth" -> Intent(activity, AuthSettingsActivity::class.java)
+            else -> {
+                Log.w(TAG, "Ignoring request for unknown native settings screen: $screen")
+                return
+            }
+        }
+        activity.runOnUiThread {
+            if (isAdded) startActivity(intent)
         }
     }
 
@@ -667,7 +698,26 @@ internal fun writeExport(context: Context, uri: Uri, source: File): Boolean {
 
 class WebAppInterface(
     private val onExport: (content: String, filename: String, mimeType: String) -> Unit,
+    private val onOpenNative: (screen: String) -> Unit,
 ) {
+    /**
+     * Roadmap 4.1b-i. Lets the web UI show its "This device" settings group only where
+     * there is a device to settle -- the same bundle runs in a desktop browser, where
+     * these screens do not exist.
+     */
+    @JavascriptInterface
+    fun hasNativeSettings(): Boolean = true
+
+    /**
+     * Opens one of the Android-only settings screens. Unknown names are ignored rather
+     * than crashed on: this is called from a web page, and a bundle newer than the app
+     * may well ask for a screen this version has never heard of.
+     */
+    @JavascriptInterface
+    fun openNativeSettings(screen: String) {
+        onOpenNative(screen)
+    }
+
     private val lock = Any()
     private val buffer = StringBuilder()
     private var filename: String = "export"

@@ -16,6 +16,7 @@ import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -85,6 +86,13 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
     }
 
+    /**
+     * Roadmap 4.1b. The same 600dp line Android itself uses to separate a phone from a
+     * tablet, read from the current configuration so a foldable that changes shape is
+     * asked again rather than assumed.
+     */
+    private fun isPhoneWidth(): Boolean = resources.configuration.smallestScreenWidthDp < 600
+
     override fun onFragmentInteraction(item: Uri) {
         Log.w(TAG, "URI onInteraction listener not implemented")
     }
@@ -137,6 +145,27 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         drawerToggle.syncState()
 
         binding.navView.setNavigationItemSelectedListener(this)
+
+        // Roadmap 4.1b. On a phone the app was showing two top bars stacked: this one,
+        // and aw-webui's own navbar inside it. The owner chose the web one to survive --
+        // it is the bar that knows which page you are on -- so this bar goes, and with it
+        // 90px of the ~580 the combined screen had to work with.
+        //
+        // Only on a phone. A tablet has the height to spare and is not what 4.1b redesigned
+        // (R35), so it keeps the bar it has always had.
+        //
+        // Nothing is stranded by this. Every drawer destination -- Home, Activity, Raw Data,
+        // Combined, Settings -- is in aw-webui's navbar, and the two that were not, Sync
+        // Settings and API Authentication, are reachable through Settings ▸ This device as
+        // of 4.1b-i. R30 is the standing warning here: these screens have been unreachable
+        // on a stock device once before, which is why that group is a prerequisite for this
+        // and not a follow-up.
+        if (isPhoneWidth()) {
+            supportActionBar?.hide()
+            // With no hamburger, a drawer that can still be swiped open is a surface with no
+            // way back to it that the user knows about. Lock it shut rather than half-there.
+            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        }
 
         // Ensure API key exists in config before the server starts so it picks it up at init.
         dashboardApiKey = ensureDashboardApiKey(this)
