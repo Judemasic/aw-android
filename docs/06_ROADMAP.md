@@ -2528,49 +2528,97 @@ closed, the pill sits below the drawing and covers nothing.
 drawing. Nothing is unreachable — that is what the inset buys — but the honest fix is to move
 stepping into the sheet itself, which is a redesign of the peek row and was not what was asked for.
 
-### 4.4 — Activity, across devices (a new tab) ⬜ ← *owner-requested 2026-09-10*
+### 4.4 — Activity **is** the combined day ✅ BUILT (2026-09-10) — ⚠️ not yet seen on a device
 
 > *"the way the Activity now works for a single bucket but works for multiple devices and combined —
-> so I think a new tab."*
+> so I think a new tab."* — 2026-09-10, and then, the same evening, **the tab was withdrawn**:
+> *"adding the new tab will make it too much on the UI, so now the combined activity is the default
+> activity, and note that I can make it the default landing page in the settings, and I can still
+> select the old activity like before."*
 
-aw-webui's **Activity** view ([`views/activity/Activity.vue`](../../aw-server-rust/aw-webui/src/views/activity/Activity.vue),
-`ActivityView.vue`) answers *"what did I do today"* — top apps, categories, the day's totals — for
-**one host's buckets**, chosen by a host picker. Everything Phase 3 built now makes the same
-question answerable across **all** synced devices at once: `aw-combined` already segments, classifies
-and attributes the day (**R6/R17**), so each stretch of time has exactly one device and app that
-counts toward totals. Feeding *those* attributed slices into Activity's existing summaries gives a
-genuinely multi-device day, with no double-counting when two devices were awake at once.
+That second message is the design. A fifth top-level nav entry is more than a phone can carry
+(**R35**), and the combined day is not a *different* question from "what did I do today" — it is
+the same question asked properly. So it takes the name.
 
-- **A new tab, not a mode of Combined.** Combined stays the *resolve and find* screen (4.1b);
-  this is the *what did I do* screen. Two jobs, two tabs.
-- **Reuse the Activity components** — the same top-apps / category / total summaries, fed from the
-  combined attribution instead of one host's bucket queries. Do not fork the view.
-- **Contested time needs an honest treatment.** Segments still awaiting a decision are attributed
-  *provisionally*. Decide whether they count, count as their provisional pick, or are shown
-  separately — and make it visible rather than silent.
-- **Categorise from the Activity tab itself** ← *owner-requested 2026-09-10*:
-  > *"in the activity we are gonna build, we should be able to edit such a thing from the activity —
-  > now the uncategorised take you to the settings categorisation to edit them."*
+- **Activity is now a dropdown led by "All devices."** The per-device pages are unchanged and sit
+  one level down, exactly as before.
+- **Either can be the landing page.** `Settings ▸ Appearance ▸ Landing page` gained *Activity (all
+  devices)* and *Combined timeline* alongside the per-host entries.
 
-  Today, tapping uncategorised activity leaves the screen: aw-webui routes to **Settings ▸
-  Categorization** (`UncategorizedNotification.vue`, and the Category Builder's
-  `?builder=open` deep link), which is a different page, a different scroll position and a
-  round trip back. The owner is looking at the thing they want to categorise *right now*, and
-  the rule they want to write is *"this app, this category"* — so the edit belongs where the
-  activity is. Give the row an inline **assign a category** control that appends a rule to an
-  existing category or creates a new one, saves, and recomputes the day in place. The store
-  already supports it — `appendClassRule(classId, pattern)` exists precisely for this, and is
-  what the Category Builder calls. Settings stays the place for editing the *whole set*.
+#### Not a new view — a new host
 
-  This applies to **both** Activity tabs — the existing single-host one and the new combined one
-  — so it is a change to the shared Activity components, not to this tab alone. It may be worth
-  splitting out as its own step once 4.4 starts, since it is useful on the current Activity view
-  before the combined one exists.
+Activity's route is already `/activity/:host/…`, so `combined` is reserved as **a host name that is
+not a host**, and everything else happens in the store. `query_combined_full` reads
+`GET /api/0/combined/timeline` and fills exactly the state a desktop query fills, so every existing
+summary, chart, tree and sunburst renders combined data without knowing anything changed. This is
+the roadmap's own *"reuse the Activity components — do not fork the view"* taken literally, and it
+is why the diff is a store action and an adapter rather than a second Activity.
 
-**Check:** on a day with events from two devices, the tab's total active time is not the sum of the
-two devices' overlapping totals, and resolving an overlap in Combined changes the numbers here.
-Separately: an uncategorised app can be given a category without leaving the tab, and the row
-recolours to that category's colour immediately.
+The cost of the sentinel: a real machine called `combined` could not have its own Activity page.
+Hostnames come from watcher buckets and nothing has ever been called that.
+
+#### What the combined day cannot answer, and why it says so
+
+| Panel | Combined? | Why |
+|---|---|---|
+| Top Applications, Top Categories, Category Tree, Category Sunburst | ✅ | the combined segment carries an app label, and a label classifies |
+| The day's total active time | ✅ | `combined_seconds` — the server's figure, truncated once (**4.5b**) |
+| Top Window Titles, Browser domains/URLs/titles, Editor files/projects/languages | ❌ | a combined segment's label is the **app name alone**; the pipeline decides *which device* counted, not which window |
+| Sunburst clock, Daily Timeline (chronological) | ❌ | draw a host's raw buckets, which the combined host has none of |
+| Timeline barchart, the day strip above the tabs | ⏳ | need time bucketed **per sub-period**, which is one combined request per period rather than one. Worth doing; not this step |
+
+Every one of these is marked **unavailable** rather than drawn empty. An empty *"Top Browser
+Domains"* reads as *"you visited no sites"* — a claim about the day rather than about the data, and
+the same class of lie 4.2a was fixed to stop telling.
+
+#### Contended time is labelled, not laundered
+
+Time two devices were both awake for, and that has not been answered, is attributed **provisionally**
+— the pipeline picks a winner so the day has a number at all, but that pick is a guess until it is a
+decision. The view says so: a banner names how many overlaps and how long, and its button goes
+**straight to that day in the Combined timeline with resolve mode already on**. The deep link
+(`/combined?date=YYYY-MM-DD&resolve=1`) is new — before this the only way in was today's timeline and
+a hunt for the day.
+
+This is the first half of the owner's *"also somehow allow me to resolve in the activity?"*. The
+second half — answering an overlap **without leaving** Activity — is
+[4.4a](#44a--categorise-and-resolve-without-leaving-activity).
+
+**Check:** on a day with events from two devices, the total active time is not the sum of the two
+devices' overlapping totals, and resolving an overlap changes the numbers here.
+
+**Checked so far:** `tsc` clean, lint clean, **324 tests pass** (38 suites) including a new
+`combinedActivity.test.node.ts` covering the adapter — app and category rollups, that `ignored` time
+is out of every breakdown, that the total comes from the server rather than a re-sum of rows, the
+unanswered counts, and an empty day. The locale check now **passes**, which it had not since the
+Combined view landed. ⚠️ **Nothing has been opened on a device.**
+
+---
+
+### 4.4a — Categorise and resolve without leaving Activity ⬜ ← *owner-requested 2026-09-10*
+
+> *"in the activity we are gonna build, we should be able to edit such a thing from the activity —
+> now the uncategorised take you to the settings categorisation to edit them."*
+> and *"also somehow allow me to resolve in the activity?"*
+
+Two requests, one shape: **the thing the owner wants to act on is already on the screen, and acting
+on it currently means leaving the screen.**
+
+1. **Categorise in place.** Today, uncategorised activity routes to **Settings ▸ Categorization**
+   (`UncategorizedNotification.vue`, and the builder's `?builder=open` deep link) — a different page,
+   a different scroll position, and a round trip back. The rule the owner wants is *"this app, this
+   category"*, and the store already has the exact call: `appendClassRule(classId, pattern)`, which
+   is what the Category Builder uses. Give an uncategorised row an inline **assign a category**
+   control that appends to an existing category or creates one, saves, and recomputes in place.
+   Settings stays the place to edit the *whole set*.
+2. **Resolve in place.** 4.4 got as far as a banner that hands the owner to the Combined timeline
+   with the right day and resolve mode on. The rest is answering an overlap without the jump —
+   the `ResolutionSheet` component is already self-contained, so the work is giving Activity the
+   segment to pass it and recomputing the day after.
+
+Both apply to **the per-device Activity as well as the combined one**, so they are changes to the
+shared Activity components. (1) is useful today, before any of this; (2) only means anything on the
+combined page.
 
 > **End of 4.1–4.3 = the product the owner originally asked for.** 4.4 was added 2026-09-10 and is
 > the first thing beyond it; everything after that is convenience.
