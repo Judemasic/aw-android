@@ -2703,6 +2703,76 @@ of hazard as D25/D26: those files are replicated, and a partial write propagates
 
 ---
 
+### 4.4d — Combined was showing a different day from every other screen ✅ FIXED (2026-09-11)
+
+Found by putting the two screens side by side on the phone after 4.4 landed. Same date,
+seconds apart:
+
+| | Activity (all devices) | Combined |
+|---|---|---|
+| Time active | **15h 04m 22s** | **14h 31m** |
+| Unanswered overlaps | **62** | **60** |
+
+Neither screen was wrong about what it asked for — **they were asking for different days.**
+Combined computed its day as `moment(date).startOf('day')`, plain midnight, while Activity, the
+Timeline and the day nav all honour the **`Start of day`** setting. At the owner's 04:00 that is two
+24-hour windows four hours apart.
+
+Midnight was also wrong on its own terms: the setting exists *because* a session running past
+midnight belongs to the evening it started in. Combined has had this since it was built — every
+number it has ever shown was for a window nothing else in the app used.
+
+Both screens now derive the day from `get_day_start_with_offset`, so they cannot drift again.
+
+**Fixing the window exposed a second bug**: the axis labels were only ever right by accident. They
+numbered ticks from the start of the *window*, which equals the wall-clock hour only when the day
+starts at midnight — so with 04:00 the axis would have read `00` at four in the morning. Ticks are
+now placed on real hour boundaries and labelled by the clock, so an offset with minutes in it
+(`06:30`) labels `07` rather than putting a tick at `:30` and calling it `06`. The math moved to
+`util/time.hourTicksFor` so it could be tested, and the tests immediately found a third thing: a
+clock string with no colon left the minutes `undefined` and rendered the label **`NaN`**.
+
+---
+
+### 4.4e — How two rules that both match are resolved ⬜ ← *owner question, 2026-09-11*
+
+> *"if I want youtube to be something and youtube G to be something else, how does the app resolve
+> contradicting names?"*
+
+Asked after noticing that `YouTube Morphe` is categorised and `youtube G` is not. **That** part is
+not about conflict at all — the owner's `Media > Fun` rule is `YouTube|Plex|VLC` **without
+`ignore_case`**, unlike their `Social Media` and `Music` rules which have it, so it matches a capital
+`YouTube` only. Measured on the phone: `YouTube Morphe` (30 events) matches, `youtube G` (1 event)
+does not.
+
+The general question has a real answer and a real gap:
+
+1. **Several rules match → the deepest category wins.** `pickDeepest` is
+   `_.maxBy(c => c.name.length)`, so `Media > Fun > Shorts` beats `Media > Fun` beats `Media`. This
+   is what the Categorization page means by *"If several categories match, the deepest one will be
+   chosen"*.
+2. **Two matches at the same depth → whichever comes first in the stored list.** `_.maxBy` returns
+   the first element holding the maximum, and that order is the array order in settings — something
+   the UI neither displays nor lets the owner change. So sibling categories that both match are
+   resolved arbitrarily from the owner's point of view.
+3. **So the reliable way to split `youtube` from `youtube G` is depth, not siblings**: put the
+   specific rule *underneath* the general one. `youtube G` then matches both and the deeper one
+   wins, while `YouTube Morphe` matches only the general one.
+
+⚠️ **There is a priority mechanism, and the UI cannot reach it.** `aw-transform`'s `CategoryRule`
+has an optional `priority` (upstream [#663]) that overrides the depth ranking, defaulting to
+`depth * 10` so explicit values can slot between levels. But the webui's `matchString` does not
+implement priority at all, and `classes_for_query` sends only `[name, rule]` — the field is never
+populated and there is no editor for it. So the server can rank by priority and the app never asks
+it to, and the two classifiers can in principle disagree.
+
+**What a step here would do:** surface the tie-break. Either expose `priority` in the category
+editor and send it, or — cheaper and arguably better — make the editor *warn* when two categories at
+the same depth can both match the same string, since a tie the owner cannot see is worse than one
+they cannot set.
+
+---
+
 ### 4.5 — Smoothing, and what counts as a competitor ⏳ BUILT + INSTALLED (2026-09-10) — ⚠️ device check part-done
 > *"i think we should give the user an option where we round small decisions … or the user can
 > decide the time, or can turn it off and get the most literal … there should be rules about this
