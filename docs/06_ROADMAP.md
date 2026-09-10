@@ -2537,7 +2537,7 @@ two devices' overlapping totals, and resolving an overlap in Combined changes th
 
 ---
 
-### 4.5 — Smoothing, and what counts as a competitor ⏳ BUILT (2026-09-10) — ⚠️ NOT on device
+### 4.5 — Smoothing, and what counts as a competitor ⏳ BUILT + INSTALLED (2026-09-10) — ⚠️ device check part-done
 > *"i think we should give the user an option where we round small decisions … or the user can
 > decide the time, or can turn it off and get the most literal … there should be rules about this
 > merging and i don't know what they are."*
@@ -2663,21 +2663,93 @@ and `pointer-events: none`, so it covers nothing and catches nothing.
 
 #### What was checked
 
-- ✅ `cargo test --workspace` — green. **29 tests in `aw-combined`**: 11 new unit tests in
-  `smooth.rs`, 4 new integration tests in `aw-combined/tests/smoothing.rs` that drive real events
+- ✅ `cargo test --workspace` — green. **`aw-combined` is at 94 tests**: 11 new unit tests in
+  `smooth.rs`, 5 new integration tests in `aw-combined/tests/smoothing.rs` that drive real events
   through the whole public pipeline rather than hand-built segments, and every pre-existing test
   unchanged and still passing.
 - ✅ The properties worth naming, all asserted: **no seconds are created or lost** at any threshold;
   smoothing is **idempotent**; a **gap is never crossed**; an **answer** is never absorbed into an
-  unanswered neighbour; a **question survives any threshold**; and the same events at 10s and at 15s
-  give two different drawings and back again, so nothing is consumed on the way through.
+  unanswered neighbour; a **question survives any threshold**; **raising the threshold never adds
+  blocks**; and the same events at 10s and at 15s give two different drawings and back again, so
+  nothing is consumed on the way through.
 - ✅ `cargo clippy --workspace --all-targets` — no new warnings; the pre-existing ones are all in
   crates this step did not touch.
 - ✅ `aw-webui` lints clean and **builds** (`vue-cli-service build`).
-- ⚠️ **None of it has been seen on a screen.** No browser run, no device run. The Vue half — whether
-  the cursor reads as a cursor, whether the mode button is findable, whether 15s is the right
-  default on the owner's real day — is entirely unverified, and it is the half of this step that is
-  about looking at things.
+- ✅ **Built by CI, installed on both devices, and driven on the S25U over `adb`.** Resolve mode
+  lights up, jumps to the first unanswered block, reads *"1 / 51 unanswered"*, and Next walks to
+  *"3 / 51"* with the sheet following. The **Smoothing** control renders under ⚙ ▸ View with 15s
+  selected. And the cursor does the thing it exists for: the first unanswered block of the day is a
+  `0m` hairline at 11:47, invisible as a block, and the rule drawn across the drawing is what makes
+  the selection findable at all.
+- ✅ **Measured against the API on the hardware**, a fixed past day (2026-09-09) so the data could
+  not move underneath: at 0/5/10/15/30/60s the combined total holds at **48,323s** and the
+  unresolved count holds at **62**, while the seconds folded away climb 165 → 581. Nothing is
+  created, nothing is lost, and no question is smoothed away.
+- ⚠️ **Two defects the measurement found, both fixed** — see [4.5b](#45b--two-defects-the-hardware-found).
+- ⚠️ **What is *not* settled is how much of it is worth having.** Half of the owner's day is
+  sub-15s blocks and rounding still barely moves the drawing, because only a fifth of those crumbs
+  are the shape rule 3 can act on. That is the specification working as written, not a defect — but
+  it is a question for the owner, with numbers, and it is
+  [4.5c](#45c--most-of-the-crumbs-are-not-the-shape-rule-3-was-built-for--raised-by-45s-own-measurement).
+- ⚠️ **Not looked at on the tablet**, and nothing has been checked at desktop width in a browser.
+
+#### 4.5b — Two defects the hardware found
+
+Both came out of measuring the same day at every threshold, and neither could have been found by
+building the thing and looking at it.
+
+1. **Raising the threshold made the day *more* shattered.** 0s gave 304 blocks; 5s gave **306**.
+   Rule 3 sent a bracketed sliver into its `prev` neighbour, while the noise floor sent the very
+   same sliver into its *longer* one — so turning the setting up changed which block a crumb landed
+   in, and a merge that used to happen downstream stopped happening. In the real case the two
+   neighbours were the same app with two different window titles, which `coalesce` will not join, so
+   which side the crumb landed on decided whether anything merged at all. Fixed by separating the
+   two questions: the rules now decide only **whether** a sliver may be absorbed, and **where** is
+   one answer for all of them — the longer neighbour. Both neighbours carry the same label whenever
+   rule 3 fires, so this says exactly the same thing about the day, and it restores the property the
+   setting needs. `raising_the_threshold_never_adds_blocks` pins it, on the shape that broke.
+2. **The day's total lost a second at a 60s threshold** — 48,323 → 48,322. `combined_seconds` added
+   up each block's already-truncated integer `seconds`, so joining two blocks whose sub-second parts
+   both rounded down cost a second. Summed as durations and truncated once. Small, and the whole
+   promise of this transform is that it moves no time.
+
+#### 4.5c — Most of the crumbs are not the shape rule 3 was built for ⬜ ← *raised by 4.5's own measurement*
+
+The step was scoped on the belief that crumbs are what make the timeline look broken. Measured on
+the owner's real day (2026-09-09, S25U), they are — and rounding them away still barely moves the
+drawing. The numbers say why, and they are worth putting to the owner before anything else is built.
+
+| Measured on 2026-09-09, at the 15s default | |
+|---|---|
+| Blocks in the day | **306** |
+| Of those, shorter than 15s | **156** — over half |
+| Of *those*, bracketed `A, B, A` (rule 3 can act) | **23** |
+| Not bracketed (rule 5 leaves them literal) | **131** |
+| Contiguous neighbour pairs that are the same app on the same device | 95 |
+| …of which also agree on whether they are shaded | **9** |
+
+So the shattering is real and it is mostly slivers — but **only 23 of 156 are the "went and came
+back" shape**, and rule 5 deliberately refuses to guess about the other 131. The transform is doing
+exactly what it was specified to do; the specification simply does not cover most of this day.
+
+The last two rows say where the rest of the splits come from, and it is **not** window titles, which
+was the first guess and was wrong. It is **contention boundaries**: 86 of the 95 same-app neighbour
+pairs are the same app on the phone either side of a change in whether the tablet was also awake. A
+long stretch on one device gets chopped into alternating shaded and unshaded pieces by the *other*
+device flicking in and out. That is honest — the shading has to change there — but it is what the
+day is actually made of.
+
+**Two things the owner could be asked, with these numbers in hand:**
+
+1. Should an unbracketed sliver be absorbed too — `A, B, C` with `B` tiny — accepting that the app
+   is then guessing which side it belonged to? That is the 131, and it is the only way rounding
+   reaches most of them.
+2. Should a stretch of one app on one device stay **one block** across a contention change, with the
+   shading drawn inside it rather than splitting it? That is the 86, and it is a drawing question
+   rather than a pipeline one.
+
+Neither should be decided here. Both change what the day means, and 4.5's whole premise is that the
+owner decides that, not the app.
 
 ### 4.6 — Make something not count ⬜ ← *owner-requested 2026-09-10*
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
