@@ -57,7 +57,7 @@
 > and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
 > hardware**, which is the one check that would prove the naming end to end.
 >
-> ✅ **[4.7](#47--one-palette--built-2026-09-10--not-looked-at-on-a-device) answers the owner's
+> ✅ **[4.7](#47--one-palette--built--device-verified-on-the-phone-2026-09-10--not-applied-not-seen-on-the-tablet) answers the owner's
 > colour question (2026-09-10).** The Combined timeline's colours and the Categorization colours were
 > **not** the same and were never the same *kind* of thing — one hashes an app name into four soft
 > Material 200 tones, the other reads a saturated hex stored on the category. They should not be made
@@ -2837,7 +2837,7 @@ makes *"remove it"* safe to offer at all.
 track, or stay drawn in a muted "not counted" style? Drawn-but-muted is the honest one — you can see
 what you excluded — but it is more pixels on a phone.
 
-### 4.7 — One palette ✅ BUILT (2026-09-10) — ⚠️ not looked at on a device
+### 4.7 — One palette ✅ BUILT + DEVICE-VERIFIED ON THE PHONE (2026-09-10) — ⚠️ not applied, not seen on the tablet
 
 > *"while I like the colours of the combined, how do they relate to the colours in the
 > categorisation? Are they the same? If so they need to actually be the same. I would like to add
@@ -2920,8 +2920,18 @@ both devices** and the button was driven over adb: it produced the unsaved-chang
 repainted the swatches, and the repaint was **discarded, not saved** — the owner's stored colours are
 untouched.
 
+**Re-verified on the phone after the fix**, driven over adb on the rebuilt APK
+(CI [34527925761]): every category kept its hue and only lost its loudness — `Work` soft green,
+`Media` soft red, `Games` soft amber, `Social Media` soft yellow, `Music` soft light green, `Comms`
+soft teal, `Uncategorized` still grey. `Fun` was the one that moved: it shared `#F33` with `Media`,
+so the no-collision rule sent it to the adjacent Deep Orange rather than duplicating red — which is
+the rule working, and it stays in the same family. Discarded again afterwards.
+
 **Not checked:** how the new palette looks anywhere it is *used* — the Activity charts, the category
 sunburst, the Timeline. Only the swatches in the settings tree have been seen, and only on the phone.
+**Nothing has been saved**: the owner's stored colours are still the loud ones on both devices, by
+choice — colour is a matter of taste and saving propagates to the other device over the sync, so
+pressing **Save** is left to the owner.
 
 **Open question for the owner:** should the **Combined** timeline colour a block by its *category*
 instead of by its app? Same-category stretches would then share a colour, which makes the day read
