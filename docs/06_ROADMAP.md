@@ -57,11 +57,16 @@
 > and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
 > hardware**, which is the one check that would prove the naming end to end.
 >
-> ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built (2026-09-10) and unverified
-> on device.** A stretch of one app interrupted by an eight-second flick to another no longer draws
-> as three blocks: slivers under the owner's **15s** default join the stretch they interrupted, in
-> the **view only** — the number goes out with the request, the day recomputes, nothing is written,
-> and **Off** brings every sliver back. It also picked up two things the owner asked for in the same
+> ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
+> measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
+> another no longer draws as three blocks: slivers under the owner's **15s** default join the stretch
+> they interrupted, in the **view only** — the number goes out with the request, the day recomputes,
+> nothing is written, and **Off** brings every sliver back. Measuring it on the owner's own day
+> proved the guarantees (the total and the unanswered count do not move at any threshold) and found
+> two defects, both fixed. It also found that **on that day the setting does almost nothing** —
+> every crumb it could still act on sits next to an unanswered overlap, which one of its own rules
+> protects. That is a question for the owner rather than a bug, and it is
+> [4.5c](#45c--on-a-contended-day-the-setting-has-almost-nothing-to-act-on--raised-by-45s-own-measurement). It also picked up two things the owner asked for in the same
 > breath ([4.5a](#45a--resolve-mode-and-a-selection-you-can-find--owner-requested-2026-09-10)): a
 > **resolve mode**, where the same Prev/Next arrows walk only the blocks still asking and answering
 > one moves to the next by itself, and a **selection you can actually find** — the old ring was
@@ -2681,16 +2686,18 @@ and `pointer-events: none`, so it covers nothing and catches nothing.
   selected. And the cursor does the thing it exists for: the first unanswered block of the day is a
   `0m` hairline at 11:47, invisible as a block, and the rule drawn across the drawing is what makes
   the selection findable at all.
-- ✅ **Measured against the API on the hardware**, a fixed past day (2026-09-09) so the data could
-  not move underneath: at 0/5/10/15/30/60s the combined total holds at **48,323s** and the
-  unresolved count holds at **62**, while the seconds folded away climb 165 → 581. Nothing is
-  created, nothing is lost, and no question is smoothed away.
-- ⚠️ **Two defects the measurement found, both fixed** — see [4.5b](#45b--two-defects-the-hardware-found).
-- ⚠️ **What is *not* settled is how much of it is worth having.** Half of the owner's day is
-  sub-15s blocks and rounding still barely moves the drawing, because only a fifth of those crumbs
-  are the shape rule 3 can act on. That is the specification working as written, not a defect — but
-  it is a question for the owner, with numbers, and it is
-  [4.5c](#45c--most-of-the-crumbs-are-not-the-shape-rule-3-was-built-for--raised-by-45s-own-measurement).
+- ✅ **Measured against the API on the hardware**, on a fixed past day (2026-09-09) so the data
+  could not move underneath. At 0 / 5 / 10 / 15 / 30 / 60 / 120s the combined total holds at exactly
+  **48,462s** and the unresolved count holds at exactly **62**, while the seconds folded away climb
+  **165 → 646**. Nothing is created, nothing is lost, and no question is smoothed away — on the
+  owner's own data, not on a fixture.
+- ⚠️ **Two defects the measurement found, both fixed and re-measured** — see
+  [4.5b](#45b--two-defects-the-hardware-found).
+- ⚠️ **And one thing the measurement found that is not a defect at all: on this day the setting
+  does almost nothing.** Above the always-on 5s noise floor, going all the way to 120s removes
+  **zero** blocks and moves four boundaries. The reason is precise and it is
+  [4.5c](#45c--on-a-contended-day-the-setting-has-almost-nothing-to-act-on--raised-by-45s-own-measurement)
+  — it needs the owner, not more code.
 - ⚠️ **Not looked at on the tablet**, and nothing has been checked at desktop width in a browser.
 
 #### 4.5b — Two defects the hardware found
@@ -2708,48 +2715,54 @@ building the thing and looking at it.
    one answer for all of them — the longer neighbour. Both neighbours carry the same label whenever
    rule 3 fires, so this says exactly the same thing about the day, and it restores the property the
    setting needs. `raising_the_threshold_never_adds_blocks` pins it, on the shape that broke.
-2. **The day's total lost a second at a 60s threshold** — 48,323 → 48,322. `combined_seconds` added
+2. **The day's total lost a second at a 60s threshold** — 48,323 → 48,322 on the same day before
+   more of it had synced in. `combined_seconds` added
    up each block's already-truncated integer `seconds`, so joining two blocks whose sub-second parts
    both rounded down cost a second. Summed as durations and truncated once. Small, and the whole
    promise of this transform is that it moves no time.
 
-#### 4.5c — Most of the crumbs are not the shape rule 3 was built for ⬜ ← *raised by 4.5's own measurement*
+#### 4.5c — On a contended day, the setting has almost nothing to act on ⬜ ← *raised by 4.5's own measurement*
 
-The step was scoped on the belief that crumbs are what make the timeline look broken. Measured on
-the owner's real day (2026-09-09, S25U), they are — and rounding them away still barely moves the
-drawing. The numbers say why, and they are worth putting to the owner before anything else is built.
+The step was scoped on the belief that crumbs are what make the timeline look broken. On the owner's
+real day they are — half the blocks are slivers — and **rounding them away still changes almost
+nothing**. Measured on the S25U against 2026-09-09, with the fixed build installed:
 
-| Measured on 2026-09-09, at the 15s default | |
+| Measured on 2026-09-09, S25U | |
 |---|---|
-| Blocks in the day | **306** |
-| Of those, shorter than 15s | **156** — over half |
-| Of *those*, bracketed `A, B, A` (rule 3 can act) | **23** |
-| Not bracketed (rule 5 leaves them literal) | **131** |
-| Contiguous neighbour pairs that are the same app on the same device | 95 |
-| …of which also agree on whether they are shaded | **9** |
+| Blocks in the day (noise floor only, smoothing **Off**) | **304** |
+| Of those, shorter than 15s | **152** — half the day |
+| Of those, the `A, B, A` shape rule 3 acts on | **20** |
+| Of those 20, blocked because a question is involved (rule 1b) | **20 — all of them** |
+| Blocks removed by going from Off to 120s | **0** |
+| Boundaries *moved* by going from Off to 120s | 4 |
 
-So the shattering is real and it is mostly slivers — but **only 23 of 156 are the "went and came
-back" shape**, and rule 5 deliberately refuses to guess about the other 131. The transform is doing
-exactly what it was specified to do; the specification simply does not cover most of this day.
+So there is no bug here, and nothing is misbehaving. Two rules that were both put in deliberately are
+between the setting and the day:
 
-The last two rows say where the rest of the splits come from, and it is **not** window titles, which
-was the first guess and was wrong. It is **contention boundaries**: 86 of the 95 same-app neighbour
-pairs are the same app on the phone either side of a change in whether the tablet was also awake. A
-long stretch on one device gets chopped into alternating shaded and unshaded pieces by the *other*
-device flicking in and out. That is honest — the shading has to change there — but it is what the
-day is actually made of.
+- **Rule 5** leaves an unbracketed sliver literal, because `A, B, C` genuinely does not say which
+  side `B` belonged to. That accounts for 132 of the 152.
+- **Rule 1b** — *a question is never smoothed away, and never absorbed into* — accounts for the
+  other 20, every single one. On a day where two devices contend constantly (62 unanswered blocks),
+  the crumbs mostly live right next to a contended stretch, and rule 1b protects all of them. It is
+  the rule most worth having: absorbing a crumb into an unanswered block would quietly change the
+  span the owner is about to be asked about, and therefore the window the decision gets recorded
+  over.
 
-**Two things the owner could be asked, with these numbers in hand:**
+**This is worth putting to the owner before anything else is built**, because both ways out change
+what the day means and neither is the app's call:
 
-1. Should an unbracketed sliver be absorbed too — `A, B, C` with `B` tiny — accepting that the app
-   is then guessing which side it belonged to? That is the 131, and it is the only way rounding
-   reaches most of them.
-2. Should a stretch of one app on one device stay **one block** across a contention change, with the
-   shading drawn inside it rather than splitting it? That is the 86, and it is a drawing question
-   rather than a pipeline one.
+1. **Loosen rule 1b in one direction only.** Never absorb a segment that is *itself* unanswered —
+   that would delete a question and must stay forbidden — but allow a settled crumb to join an
+   unanswered neighbour. The cost is exactly the objection above: the block the owner is asked about
+   grows by a few seconds of something else. That is the whole of the 20.
+2. **Loosen rule 5.** Absorb an unbracketed sliver too, accepting that the app is then guessing which
+   side it belonged to. That is the 132, and it is the only route that reaches most of the day.
 
-Neither should be decided here. Both change what the day means, and 4.5's whole premise is that the
-owner decides that, not the app.
+Worth saying plainly: **the honest answer may be that neither is wanted, and that 4.5's default is
+right to do very little.** The day genuinely is that finely divided, and a drawing that pretends
+otherwise is the thing 4.2a was fixed to avoid. In that case the shattering is a *drawing* problem
+rather than a pipeline one — how a fine mosaic is rendered at a whole-day zoom — and belongs
+somewhere else entirely.
 
 ### 4.6 — Make something not count ⬜ ← *owner-requested 2026-09-10*
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
