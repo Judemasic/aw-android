@@ -49,12 +49,13 @@
 > itself. Fixed in `aw-server-rust@6d74dd5`; both devices now return the same day, segment for
 > segment.
 >
-> ✅ **[4.2b](#42b--a-device-knows-its-own-name) then fixed the naming itself (built 2026-09-10, not
-> yet on a device).** The real device name was never missing — the Android watcher has always written
+> ✅ **[4.2b](#42b--a-device-knows-its-own-name) then fixed the naming itself, verified on both
+> devices 2026-09-10.** The real device name was never missing — the Android watcher has always written
 > it into its own buckets — the server was just asking `gethostname()` instead of looking. It now
 > reads its name back off its own buckets, so a decision, a rule and a peer all spell the same device
-> the same way. ⚠️ **Rules have still never been exercised on hardware**, which is the check that
-> would prove it.
+> the same way — the phone now calls itself `jude_s_s25_ultra` and the tablet `jude_s_tab_s10_fe`,
+> and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
+> hardware**, which is the one check that would prove the naming end to end.
 >
 > **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is unblocked and next**: rounding away
 > small slivers, at the owner's **15s** default. The owner ruled that a device on its home screen
@@ -2313,7 +2314,7 @@ seen, and whether it reads as correct or as a glitch is a question only the scre
 is the argument for [4.5](#45--smoothing-and-what-counts-as-a-competitor), and the reason 4.5 is
 next rather than optional.
 
-### 4.2b — A device knows its own name ✅ BUILT (2026-09-10) — ⚠️ NOT on device yet
+### 4.2b — A device knows its own name ✅ VERIFIED ON BOTH DEVICES 2026-09-10
 > *"so are you planning on fixing it?"*
 
 The half of the `localhost` defect [4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--verified-on-both-devices-2026-09-10)
@@ -2337,7 +2338,8 @@ Rules, decisions and peers now all spell the same device the same way, on every 
    install with no watcher buckets yet it is the only thing there is — and 4.2a's guard still holds
    the line if it is `localhost`.
 2. **`localhost` and `unknown` are discarded, not returned.** Both are what a component says when it
-   does *not* know the name; neither identifies a device to a peer.
+   does *not* know the name; neither identifies a device to a peer. **This one turned out to be
+   load-bearing, not defensive** — see the device check below.
 3. **Disagreeing local buckets fall back rather than vote.** Several different names means this
    device does not know its own, and guessing is precisely how this went wrong the first time.
 4. **`GET /api/0/info` was left alone.** It still reports `gethostname()`. Identity for *decisions*
@@ -2353,9 +2355,32 @@ Rules, decisions and peers now all spell the same device the same way, on every 
 realistic database — own watchers plus a peer's synced buckets, the two "I don't know" names, a
 disagreement, and an empty database.
 
-⚠️ **Not verified on hardware.** The proof this is right is a `scope: always` **rule** made on one
-device applying correctly on the other — which is also the thing that has never been tested at all
-(4.2a). That check belongs to whichever step first exercises rules on device.
+#### Verified on both devices (CI [34506407156], `0603828`, submodule `aff178a`)
+
+Both devices' own buckets, read back over `/api/0/buckets/`, give exactly the answer the rule needs:
+
+| | non-synced buckets | own name resolves to |
+|---|---|---|
+| S25U `ad0c6c34` | `aw-watcher-android{,-media,-unlock,-web}` at `jude_s_s25_ultra`, plus `aw-stopwatch` at **`unknown`** | **`jude_s_s25_ultra`** |
+| Tab S10 FE `7b54cfe9` | the same four at `jude_s_tab_s10_fe`, plus `aw-stopwatch` at **`unknown`** | **`jude_s_tab_s10_fe`** |
+
+🔍 **Judgment call 2 was load-bearing, and only the device showed it.** Every database here contains
+an `aw-stopwatch` bucket whose hostname is the literal string `unknown` — the sentinel
+[`DeviceHostname.kt`](../mobile/src/main/java/net/activitywatch/android/DeviceHostname.kt) documents.
+Had `unknown` not been discarded, *every* device would have seen two disagreeing local names, fallen
+back, and gone on calling itself `localhost` — a fix that changed nothing, with green tests. The
+rule was written from the doc comment rather than from the data, and the data agreed by luck.
+
+And the day still computes the same on both, which is what a change to device identity has to prove
+it did not break: of **539 segments both devices hold, 0 differ** — an improvement on 4.2a's 3, since
+the two nanosecond-boundary rows now fall out as "held by one device only" rather than as a
+disagreement. **56 unresolved on both, 3 `resolved_by` on both**, and the 4.2a block reads line for
+line identical, settled `14:43:51 → 14:49:28` with its eight-second tail still asking.
+
+⚠️ **What this still does not prove: a `scope: always` rule.** The name is now correct on both
+devices, but no rule has ever been made on one device and read on the other — the whole reason
+`localhost` mattered. That check belongs to whichever step first exercises rules on device, and
+[4.6](#46--make-something-not-count) is likely to be it.
 
 ### 4.3 — Undo ✅ VERIFIED ON DEVICE 2026-09-10
 Tombstones; segment returns to shaded. *(R12)*
