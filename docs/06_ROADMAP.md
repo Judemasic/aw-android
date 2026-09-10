@@ -2640,6 +2640,69 @@ combined page.
 
 ---
 
+### 4.4b — A machine that never existed, and the bucket that invented it ✅ FIXED (2026-09-11)
+
+> *"what is that 7b54cfe9-ec39-4ec3-934c-67c81111d8e7 doing in my Activity list — remove it, and see
+> if my tablet has it too and remove it."*
+
+**It is the tablet's `device_id`**, and the phone's Activity menu was offering it as a machine. The
+tablet's menu was offering the phone's, symmetrically. Measured over the device API rather than
+guessed at:
+
+| | |
+|---|---|
+| The bucket | `aw-stopwatch-synced-from-7b54cfe9-ec39-4ec3-934c-67c81111d8e7` |
+| Events in it | **0** |
+| Created | 2026-09-02T19:58:43Z — 14 seconds after the local `aw-stopwatch`, on the first-ever sync |
+| Its `hostname` | the UUID, where **every watcher bucket carries the device's name** |
+
+The trail is exact. Every bucket a *watcher* creates is stamped by `aw-android` with the device's
+name. `aw-stopwatch` is not created by a watcher — it is created by **aw-webui**, through the
+server, the first time the Stopwatch view loads. On 2026-09-02 the server still answered
+`gethostname()` for its own name, which on Android is the `device_id` UUID. So that one bucket got a
+UUID where its neighbours got a name, the sync carried it to the peer as
+`-synced-from-<that UUID>`, and both devices grew a machine that had never existed.
+
+[4.2b](#42b--a-device-knows-its-own-name) fixed how the server *reports* its name. It did not — and
+could not — go back and correct a hostname already frozen into a bucket row.
+
+**Both buckets are deleted** (each confirmed empty first, then removed over the API; the guard
+refused to delete when a request failed rather than proceeding on a null). But deletion alone is
+worth little, because **the sync would put them straight back**: the tablet's staged
+`test.db` still holds `aw-stopwatch` with `hostname = 7b54cfe9-…`, and the phone's holds it with
+`hostname = ad0c6c34-…`. Confirmed by pulling both staged databases and reading them.
+
+So the fix is the **rule**, not the cleanup: the Activity menu now lists a host only if it has
+**window or android data** — something an Activity page could actually be about. One bucket can no
+longer mint a machine, whatever that bucket is called, and the entry stays gone if it syncs back.
+The rule moved out of the navbar's `mounted()` into `hostnames.activityViewsFromBuckets` so it could
+be tested without mounting a navbar; eight tests, including the real stopwatch case. Two existing
+behaviours were preserved deliberately rather than tightened in passing: an **android** host named
+`unknown` is still listed, and a non-android one still is not.
+
+#### 4.4c — A staged bucket's hostname is frozen forever ⬜ ← *found by 4.4b, not fixed*
+
+The deeper bug 4.4b stopped short of. In
+[`aw-sync/src/sync.rs`](../../aw-server-rust/aw-sync/src/sync.rs), `get_or_create_sync_bucket`
+returns an existing staging bucket **untouched** — only the `NoSuchBucket` arm ever writes one. So
+whatever `hostname` a bucket had the first time it was staged is what it keeps, permanently, and it
+is that value the peer reads to name the origin.
+
+The consequence is general, not stopwatch-specific: **a device that corrects its own name can never
+correct what it has already staged.** Every future rename or naming fix is invisible to any peer
+that already holds the old staged copy.
+
+Not fixed because it is not a one-liner: `AccessMethod` has `get_bucket` and `create_bucket` and no
+`update_bucket`, so it needs a trait method plus both implementations (`Datastore` and `AwClient`),
+and it touches the one code path where a mistake corrupts synced history. It is also **not urgent** —
+4.4b makes the visible symptom impossible — so it deserves its own step with its own tests rather
+than being bolted onto a UI fix.
+
+⚠️ **Do not "fix" this by editing the staged databases in the Syncthing folder by hand.** Same family
+of hazard as D25/D26: those files are replicated, and a partial write propagates.
+
+---
+
 ### 4.5 — Smoothing, and what counts as a competitor ⏳ BUILT + INSTALLED (2026-09-10) — ⚠️ device check part-done
 > *"i think we should give the user an option where we round small decisions … or the user can
 > decide the time, or can turn it off and get the most literal … there should be rules about this
