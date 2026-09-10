@@ -57,7 +57,7 @@
 > and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
 > hardware**, which is the one check that would prove the naming end to end.
 >
-> ✅ **[4.7](#47--one-palette--built--device-verified-on-the-phone-2026-09-10--not-applied-not-seen-on-the-tablet) answers the owner's
+> ✅ **[4.7](#47--one-palette--verified-on-both-devices-and-applied-2026-09-10) answers the owner's
 > colour question (2026-09-10).** The Combined timeline's colours and the Categorization colours were
 > **not** the same and were never the same *kind* of thing — one hashes an app name into four soft
 > Material 200 tones, the other reads a saturated hex stored on the category. They should not be made
@@ -68,9 +68,24 @@
 > installed on both devices**, and driving the button over adb caught it renaming a category (`Work`
 > green → red) — repainting now preserves hue, and the chase turned up that every shipped category
 > colour is short-form hex which the first parser read as black. ⚠️ **The owner's own colours have
-> not been repainted** — the preview was discarded, not saved, and pressing Save is theirs to do. It
-> carries an open question: should Combined colour by *category* rather than by app?
-> `aw-webui@6a8ec12` → `aw-server-rust@c435dec`.
+> ✅ **The owner then ran it, reported PASS, and saved it** — the Activity view follows the same
+> colours, and *Sync Now* carried the change to the tablet, which came back identical. Its open
+> question — should Combined colour by *category* rather than by app? — **the owner answered yes**,
+> and [4.7a](#47a--combined-colours-by-category-too--built-2026-09-10--not-yet-seen-on-a-device)
+> built it: Categorization is now the single place a colour is decided, and the single place to
+> change one. `aw-webui@585aa98` → `aw-server-rust@0fc78c5`.
+>
+> ⏳ **[4.4](#44--activity-is-the-combined-day--built-2026-09-10--not-yet-seen-on-a-device) changed
+> shape and is built (2026-09-10).** The owner withdrew the new tab — *"adding the new tab will make
+> it too much on the UI"* — so **the combined day *is* Activity**, with the per-device pages one
+> level down in the dropdown and either settable as the landing page. Deliberately not a new view:
+> the route already takes a `:host`, so `combined` is reserved as a host that is not a host, and
+> `query_combined_full` fills the same store state a desktop query fills, so every existing summary,
+> tree and sunburst renders combined data unchanged. Panels the combined day genuinely cannot answer
+> — titles, browser, editor, the clock, the chronological timeline — are marked **unavailable rather
+> than drawn empty**. Unanswered contention gets a banner that deep-links into that day with resolve
+> mode already on. ⚠️ **Not yet opened on a device.** What is left of the owner's two "do it from
+> Activity" requests is [4.4a](#44a--categorise-and-resolve-without-leaving-activity).
 >
 > ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
 > measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
@@ -2885,7 +2900,7 @@ makes *"remove it"* safe to offer at all.
 track, or stay drawn in a muted "not counted" style? Drawn-but-muted is the honest one — you can see
 what you excluded — but it is more pixels on a phone.
 
-### 4.7 — One palette ✅ BUILT + DEVICE-VERIFIED ON THE PHONE (2026-09-10) — ⚠️ not applied, not seen on the tablet
+### 4.7 — One palette ✅ VERIFIED ON BOTH DEVICES AND APPLIED 2026-09-10
 
 > *"while I like the colours of the combined, how do they relate to the colours in the
 > categorisation? Are they the same? If so they need to actually be the same. I would like to add
@@ -2975,11 +2990,38 @@ soft teal, `Uncategorized` still grey. `Fun` was the one that moved: it shared `
 so the no-collision rule sent it to the adjacent Deep Orange rather than duplicating red — which is
 the rule working, and it stays in the same family. Discarded again afterwards.
 
-**Not checked:** how the new palette looks anywhere it is *used* — the Activity charts, the category
-sunburst, the Timeline. Only the swatches in the settings tree have been seen, and only on the phone.
-**Nothing has been saved**: the owner's stored colours are still the loud ones on both devices, by
-choice — colour is a matter of taste and saving propagates to the other device over the sync, so
-pressing **Save** is left to the owner.
+✅ **The owner ran it and reported PASS on 2026-09-10**, and it is now **applied**: the muted set was
+saved on the phone, the Activity view was confirmed to follow the same colours, and *Sync Now* carried
+it to the tablet, which came back identical. That is the palette verified end to end — the repaint,
+the sync of a categorisation change between two devices, and the colours reaching a screen that
+*uses* them rather than just lists them.
+
+#### 4.7a — Combined colours by category too ✅ BUILT (2026-09-10) — ⚠️ not yet seen on a device
+
+The step above left one open question: should the Combined timeline colour a block by its *category*
+rather than by its app? The owner settled it in the same breath as reporting the pass —
+*"you only use the colours in the categorisation, and I can change what I want"*.
+
+So Combined no longer hashes the app name into a fixed four-tone scale. `colorFor` asks the
+categories, which makes Categorization the single place a colour is decided **and** the single place
+to change one — Combined had been the one screen the owner's category colours had no say over.
+
+Two limits, both written up where the function lives:
+
+- **A rule that matches on window *title* will not match here.** The combined track's label is the
+  app name alone, so such a rule colours a block in Activity and not in Combined.
+- **A label matching no category still falls back to the app hash**, so uncategorised time stays
+  distinguishable instead of collapsing into one flat colour.
+
+The lookup is cached per label and dropped when the categories change — a real day is several
+hundred blocks, and matching every category regex on every redraw is not free on a phone. The
+categories are awaited before the first draw, or the day paints itself in the fallback and stays
+there.
+
+Fixed a latent bug reached on the way: `fallbackColor` guarded with `localStorage !== undefined`,
+which does not evaluate to `false` where the name is undeclared — it **throws a ReferenceError**.
+Only `typeof` is safe on a name that may not exist. Harmless in a WebView, fatal in node, which is
+why the tests found it and no amount of using the app would have.
 
 **Open question for the owner:** should the **Combined** timeline colour a block by its *category*
 instead of by its app? Same-category stretches would then share a colour, which makes the day read
