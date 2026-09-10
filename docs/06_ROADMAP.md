@@ -1964,6 +1964,19 @@ bridge forwards but `MainActivity` ignores is a dead button, and that is the fai
 A tablet is not a phone. That is not a reason to keep a second title bar whose only remaining
 content duplicates the navbar underneath it.
 
+**Verified on the SM-X520 (landscape, 1316dp):** one top bar, the ⚙ beside the day nav with no
+fold-outs above the data, `Settings ▸ This device` listing all three rows, and **Open in browser
+actually launching Chrome on `127.0.0.1:5600` already signed in** — the one part that would
+otherwise have been a dead button, which is why it was worth tapping rather than reading.
+
+🐛 **And the tablet's own day printed `4h 60m`.** Both copies of the duration formatter floored the
+hours and rounded the remaining minutes independently, so 299.6 minutes became `floor(4.99) = 4`
+hours and `round(59.6) = 60` minutes with nothing to carry the one into the other. Fixed in
+`CombinedTimeline.fmt` and `ProportionalTimeline`'s default by rounding the total *first*, then
+splitting it. It needs a real day landing within half a minute of the hour, which is why months of
+test data never produced one — the same reason the truncating stat strip only showed up on
+hardware. `aw-webui@9f38b41`.
+
 #### What the redesign must fix, restated as acceptance criteria
 
 1. **One scroller, or none.** A thumb-drag anywhere on the screen must move something useful. No
@@ -2440,7 +2453,11 @@ per device, with unresolved contention striped (**R8**).
   native one on phones only, out of caution about orphaning the drawer's contents; that caution was
   spent once 4.1b-i rehoused them, and **Open in browser turned out to be already orphaned on the
   phone** — R30 repeating, unnoticed. It joins `Settings ▸ This device`, and the action bar is now
-  hidden at every width. `aw-webui@c8c8a7a`, `aw-android@1755401`.
+  hidden at every width, verified on the tablet down to Open in browser actually launching Chrome.
+  `aw-webui@c8c8a7a`, `aw-android@1755401`.
+- 🐛 **`4h 60m`**, printed by the tablet on its own day. Two copies of the duration formatter
+  floored the hours and rounded the minutes independently, with nothing to carry. Round the total
+  first. `aw-webui@9f38b41`, `aw-android@5726ef6`.
 - Next: **4.2 — Persist + apply decisions**.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
