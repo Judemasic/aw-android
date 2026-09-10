@@ -30,7 +30,9 @@
 > HTTP). **3.5b is verified on device** (the owner confirmed pinch-zoom works), and **3.5c has taken
 > the native screen out** — there is now exactly one combined view, the Vue one, and the drawer's
 > "Combined timeline" entry opens it. **4.1, the resolution sheet, is built** and verified in a
-> browser at phone and desktop width; **4.2, persisting decisions, is next.**
+> browser at phone and desktop width. **4.2 is built and verified on one machine** — decisions are
+> stored, applied (step ④) and carried between devices by the sync; the two-device round trip is
+> the part still owed. **4.3, undo, is next**, and most of its plumbing is already in place.
 >
 > ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
 > now 3.5b's acceptance list. Separately,
@@ -1998,9 +2000,52 @@ hardware. `aw-webui@9f38b41`.
 4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout, and
 **4.4** is a separate screen. Nothing here blocks anything else. **Next: 4.2.**
 
-### 4.2 — Persist + apply decisions ⬜
+### 4.2 — Persist + apply decisions ⏳ *done in code and verified against a live server; the
+two-device half is unverified on hardware (2026-09-10)*
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
 **Check:** resolve on A → after sync, B shows the same resolution and no longer asks. *(R26)*
+
+**Built.** Step ④ exists at last: `aw-combined::decision` (the record and the §4.2 merge) and
+`aw-combined::apply` (the step), run by `compute_segments` between ③ and ⑤. Storage is the
+datastore's key-value table, one row per record; the shared copy is still `decisions.jsonl` behind
+SAF, carried both ways by a new `syncSharedDecisions` pass whose decision-making half
+(`planDecisionSync`) is pure and unit-tested. `POST /api/0/combined/decisions` is what the sheet
+calls; there is deliberately no "recompute" call, because the pipeline applies whatever is stored
+and re-reading the day *is* the recomputation.
+
+**Three judgment calls**, each recorded where it was made:
+
+1. **A decision's window *covers* a segment rather than equalling it.** §2.3 says "recorded for this
+   specific window", but the sheet asks about a **coalesced** block — a run of atomic segments — so
+   equality would have matched nothing at all.
+2. **An outcome this build does not recognise resolves nothing.** [`05`](05_DATA_MODEL.md) §8 says
+   ignore what we do not understand; settling a segment on the strength of a word we cannot read
+   would hide an open question rather than answer it.
+3. **`device_role` is the hostname, not a "phone"/"tablet" role.** The role in
+   [`05`](05_DATA_MODEL.md) §3 lives in `devices/<uuid>/meta.json` behind SAF, which neither Rust
+   nor the web view can open. 4.1 had been writing the *local display name* into the signature —
+   which on a peer reads as a different string, or literally "This device" — so this fixes a rule
+   key that could never have matched anywhere but where it was written. ⚠️ The cost is that a rule
+   does not survive **renaming** a device; revisit if roles ever reach the server.
+
+**Two things fixed on the way**, both found by running it rather than reading it:
+
+- 🐛 **`aw-datastore::get_key_values` hard-coded a `settings.` filter**, so a caller with its own key
+  prefix could write rows it could never read back. It looked exactly like a broken write. The guard
+  now takes its prefix from the caller's own pattern.
+- Records are **normalised to one spelling** when stored, so the same decision arriving at a device
+  by two routes is the same bytes either way.
+
+**Verified against a live server** (not a mock): a two-device hour of YouTube-vs-Kindle read back
+`contended/unresolved`; posting the decision made it `settled`, counted to the tablet, `resolved_by`
+the decision's id, with `YouTube` carried as deliberate background; posting a tombstone put it back
+to `contended/unresolved`. 14 new pipeline tests (`aw-combined/tests/decisions.rs`) cover exact vs
+rule precedence, `ignore`, `relabel`, revocation, input-order independence and the peer's view; 8
+new Kotlin tests cover the sync plan. All 149 Kotlin unit tests pass.
+
+⚠️ **What is not verified: the actual two-device round trip.** Everything above is one machine.
+Whether a decision made on the S25U reaches the tablet through Syncthing and settles the same block
+there is [4.2's check](#42--persist--apply-decisions-), and it needs both devices and a sync cycle.
 
 ### 4.3 — Undo ⬜
 Tombstones; segment returns to shaded. *(R12)*
@@ -2458,7 +2503,20 @@ per device, with unresolved contention striped (**R8**).
 - 🐛 **`4h 60m`**, printed by the tablet on its own day. Two copies of the duration formatter
   floored the hours and rounded the minutes independently, with nothing to carry. Round the total
   first. `aw-webui@9f38b41`, `aw-android@5726ef6`.
-- Next: **4.2 — Persist + apply decisions**.
+- ✅ **4.2 built (2026-09-10).** Step ④ of the pipeline finally exists: `aw-combined::decision` +
+  `aw-combined::apply`, storage in the datastore's key-value table, `POST /api/0/combined/decisions`
+  for the sheet, and a `syncSharedDecisions` pass that carries lines both ways between that store
+  and `decisions.jsonl`. Verified against a **live server**: contended → settled → (tombstone) →
+  contended again, with the pick, the rule flag and the deliberate-background set all coming back
+  right. 14 new Rust tests, 8 new Kotlin tests, 149 Kotlin tests green.
+- 🐛 **A datastore trap cost an afternoon and is now gone:** `get_key_values` hard-coded a
+  `settings.` prefix filter, so decisions were written and then never listed. It read as a broken
+  write. The guard now takes its prefix from the caller's pattern.
+- 🐛 **4.1 was writing a rule key that could not work anywhere but where it was written.** The
+  signature's `device_role` was this device's *display name* for the peer — a nickname, or the words
+  "This device". It is the hostname now.
+- ⏳ **Unverified: the two-device round trip.** Everything above is one machine.
+- Next: **4.3 — Undo**, whose records already travel and already revoke.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
