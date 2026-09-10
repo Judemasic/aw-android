@@ -57,9 +57,16 @@
 > and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
 > hardware**, which is the one check that would prove the naming end to end.
 >
-> **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is unblocked and next**: rounding away
-> small slivers, at the owner's **15s** default. The owner ruled that a device on its home screen
-> **does** compete — so that half of 4.5 is dropped, and replaced by
+> ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built (2026-09-10) and unverified
+> on device.** A stretch of one app interrupted by an eight-second flick to another no longer draws
+> as three blocks: slivers under the owner's **15s** default join the stretch they interrupted, in
+> the **view only** — the number goes out with the request, the day recomputes, nothing is written,
+> and **Off** brings every sliver back. It also picked up two things the owner asked for in the same
+> breath ([4.5a](#45a--resolve-mode-and-a-selection-you-can-find--owner-requested-2026-09-10)): a
+> **resolve mode**, where the same Prev/Next arrows walk only the blocks still asking and answering
+> one moves to the next by itself, and a **selection you can actually find** — the old ring was
+> `currentColor`, which on a block is white. The owner ruled that a device on its home screen
+> **does** compete, so that half of 4.5 stayed dropped and lives on as
 > **[4.6](#46--make-something-not-count)**: letting the owner take time or an app out by hand,
 > instead of the app inferring it.
 >
@@ -2530,7 +2537,7 @@ two devices' overlapping totals, and resolving an overlap in Combined changes th
 
 ---
 
-### 4.5 — Smoothing, and what counts as a competitor ⬜ ← *owner-requested 2026-09-10*
+### 4.5 — Smoothing, and what counts as a competitor ⏳ BUILT (2026-09-10) — ⚠️ NOT on device
 > *"i think we should give the user an option where we round small decisions … or the user can
 > decide the time, or can turn it off and get the most literal … there should be rules about this
 > merging and i don't know what they are."*
@@ -2595,6 +2602,82 @@ and there is a segment at 14:49:36 of `One UI Home` contending with `One UI Home
    rule the app infers.
 
 This step is **unblocked and buildable**. Rules 1–8 above stand as written, minus #3.
+
+#### What was built
+
+| Where | What it does |
+|---|---|
+| `aw-combined/src/smooth.rs` | **New.** Step ⑦. Takes the coalesced segments and a threshold, returns a shorter list. Pure, deterministic, and never touches a datastore. |
+| `aw-combined/src/lib.rs` | `Segment` gains `smoothed_seconds` and `absorbed_labels` — what a block swallowed, so it can say so. |
+| `aw-combined/src/coalesce.rs` | Sums and unions those two when it merges, and never *compares* them: a footnote must not hold two identical stretches apart. |
+| `aw-server/src/combined.rs` | Runs ⑥ then ⑦ on every read, and puts both new fields in the JSON. |
+| `aw-server/src/endpoints/combined.rs` | `GET /api/0/combined/timeline?…&sliver=<seconds>`. Clamped, not rejected. Absent = 15s, `0` = off. |
+| `aw-webui` `CombinedTimeline.vue` | The **Smoothing** control under ⚙ ▸ View (Off / 10s / 15s / 30s / 60s), the smoothed-block note, resolve mode, and stepping from where the selection is in time. |
+| `aw-webui` `ProportionalTimeline.vue` | A two-ring selection outline, and a cursor drawn right across the drawing at the selected block's start and end. |
+| `aw-webui` `stores/settings.ts` | `combined_view` gains `sliverSeconds` and `resolveMode`, so both survive a restart. |
+
+**Rule 4 — transit apps — was deliberately not implemented, and it is the one judgment call the
+roadmap did not dictate.** As written it absorbs `A, Home, B` forward into `B`, which needs the app
+to decide which apps are "transit". That is precisely the inference the owner rejected on the
+launcher (*"yes it counts leave it"*), and rule 5 already says an unbracketed sliver stays literal.
+Left in, the two rules contradict each other; taken out, nothing is guessed and the launcher is
+treated exactly like every other app. Choosing what does not count stays
+[4.6](#46--make-something-not-count), by hand.
+
+Two smaller calls, both conservative. A segment that is still **asking** (`unresolved`) neither
+absorbs nor is absorbed, so no question can ever be smoothed away — today the 60s contention floor
+already implies that, but it is the guarantee that matters most and it is enforced rather than left
+to another rule's constant. And **Off** disables rule 6 as well as rule 3, because rule 8 says
+everything but 1 and 2 is switchable and "literal" ought to mean literal.
+
+#### 4.5a — Resolve mode, and a selection you can find ← *owner-requested 2026-09-10*
+> *"i also want to add a mode resolve or something like that where the next takes you to the next
+> unresolved, and right now the currently selected segment is not really clear which one"*
+
+Both asked for while 4.5 was being started, and both about *finding* something on the drawing rather
+than about the data underneath it, so they were built alongside 4.5 rather than scoped away.
+
+**Resolve mode.** The stepper walked every block in the active track. On a day of several hundred
+that is not a way to reach the six still asking — and the shaded slivers that mark them are exactly
+the ones too small to hit with a thumb, which is why the stepper exists at all. The mode button
+beside the arrows restricts them to `unresolved` blocks on the combined track, the counter reads
+*"3 / 6 unanswered"* instead of a bare number, and when there are none left it says *"nothing left
+to answer"* rather than showing an empty control. Answering one **advances to the next by itself** —
+a sweep, not a return to the block just finished with. That is a departure from 4.2's behaviour,
+which puts the answered block back under the selection so the owner can watch their answer land;
+both are right, so the mode is what decides which happens.
+
+**Stepping from where you are.** `stepIndex` is `-1` whenever the selection is not one of the blocks
+the arrows walk, and `step` used to read that as "start from the beginning of the day". In resolve
+mode that is the *normal* case — the block just answered is, by then, not one of the unanswered ones
+— so it now steps from the selection's **start time** instead. The same change fixes the ordinary
+case, where tapping a device-track block and pressing Next threw you back to 00:00.
+
+**The selection ring.** It was `outline: 2px solid currentColor`, and `currentColor` on a block is
+`#fff` — invisible on a pale activity, a hairline on a dark one. It is a white ring inside an accent
+ring now, so one of the two always has contrast whatever colour the activity was given. That still
+does not answer *"which one?"* at a whole-day zoom, where the selected block is three pixels of a
+crowded lane and the ring around it is the same size as the block, so `ProportionalTimeline` also
+draws a pair of rules straight across the drawing at the selection's start and end. Last in the DOM
+and `pointer-events: none`, so it covers nothing and catches nothing.
+
+#### What was checked
+
+- ✅ `cargo test --workspace` — green. **29 tests in `aw-combined`**: 11 new unit tests in
+  `smooth.rs`, 4 new integration tests in `aw-combined/tests/smoothing.rs` that drive real events
+  through the whole public pipeline rather than hand-built segments, and every pre-existing test
+  unchanged and still passing.
+- ✅ The properties worth naming, all asserted: **no seconds are created or lost** at any threshold;
+  smoothing is **idempotent**; a **gap is never crossed**; an **answer** is never absorbed into an
+  unanswered neighbour; a **question survives any threshold**; and the same events at 10s and at 15s
+  give two different drawings and back again, so nothing is consumed on the way through.
+- ✅ `cargo clippy --workspace --all-targets` — no new warnings; the pre-existing ones are all in
+  crates this step did not touch.
+- ✅ `aw-webui` lints clean and **builds** (`vue-cli-service build`).
+- ⚠️ **None of it has been seen on a screen.** No browser run, no device run. The Vue half — whether
+  the cursor reads as a cursor, whether the mode button is findable, whether 15s is the right
+  default on the owner's real day — is entirely unverified, and it is the half of this step that is
+  about looking at things.
 
 ### 4.6 — Make something not count ⬜ ← *owner-requested 2026-09-10*
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
