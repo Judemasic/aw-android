@@ -2582,6 +2582,10 @@ per device, with unresolved contention striped (**R8**).
   is the wasted space the owner reported on the tablet; `device_role` written as a uuid because
   nothing ever filled the hostname map; and a "Change this answer" heading next to a "Change answer"
   button.
+- ✅ **The fixes re-verified on the tablet** (CI 34483581160, `b55f96e`): the detail panel sits
+  beside the timeline with nothing to scroll past, the Settings error banner is gone, the heading
+  stutter is gone, and — the one that mattered — the decision made under the *old* uuid-role
+  spelling still reads **Resolved**, counted to S25u, after the hostname change.
 - ⏳ **Still unverified: phone → tablet, and a `scope: always` rule on hardware.**
 - Next: **4.3 — Undo**, whose records already travel and already revoke.
 
