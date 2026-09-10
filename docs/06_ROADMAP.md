@@ -2050,7 +2050,11 @@ and re-reading the day *is* the recomputation.
    nor the web view can open. 4.1 had been writing the *local display name* into the signature —
    which on a peer reads as a different string, or literally "This device" — so this fixes a rule
    key that could never have matched anywhere but where it was written. ⚠️ The cost is that a rule
-   does not survive **renaming** a device; revisit if roles ever reach the server.
+   does not survive **renaming** a device; revisit if roles ever reach the server. The server reads
+   the hostname out of the `-synced-from-<peer>` suffix its own bucket ids carry, so no caller has
+   to supply it. **Records written before that fix carry the uuid in `device_role`, and still
+   apply**: a segment offers both spellings and a decision matching either wins, because a resolved
+   block going back to asking after an update is worse than never having resolved it.
 
 **Two things fixed on the way**, both found by running it rather than reading it:
 
