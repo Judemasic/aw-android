@@ -8,6 +8,7 @@ import android.os.Looper
 import android.system.Os
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import org.json.JSONArray
 import org.json.JSONObject
 import org.threeten.bp.Instant
 import java.io.File
@@ -309,6 +310,12 @@ class SyncInterface(context: Context) {
             // database transfer above, so its failures are collected rather than fatal.
             syncSharedSettings(deviceId)?.let { problems += it }
 
+            // Step 8: the owner's decisions (roadmap 4.2, R26). Same shape as step 7 and for the
+            // same reason -- the records live in the server's datastore and the shared copy lives
+            // behind SAF, so this is the only place the two can meet. Independent of everything
+            // above: a failed database transfer must not cost us a decision that was ready to go.
+            syncSharedDecisions(deviceId)?.let { problems += it }
+
             if (problems.isEmpty()) {
                 SyncOutcome(true, "Successfully completed multi-device sync")
             } else {
@@ -527,6 +534,80 @@ class SyncInterface(context: Context) {
         }
         return problems.takeIf { it.isNotEmpty() }?.joinToString("; ")
     }
+
+    /**
+     * Carry the owner's decisions both ways (`05_DATA_MODEL.md` §4, roadmap 4.2, **R26**).
+     *
+     * Publish the ones authored here into our own `decisions.jsonl` -- **only** ours: **R20** says
+     * one writer per file, and a peer's decision that reached us through a previous import belongs
+     * in the file its author owns, not in ours. Then import every line the shared folder has that
+     * the server does not hold, so this device applies the same decisions the deciding device does.
+     *
+     * The decision of what moves is [planDecisionSync], which is pure and unit-tested. It needs no
+     * remembered state, unlike the settings sync: ids are globally unique and records are
+     * append-only, so "is this one already there" is a question both sides can answer from what
+     * they hold. Running this twice in a row does nothing the second time.
+     *
+     * Read in place, not copied first, for the reason [syncSharedSettings] gives: a torn read of a
+     * line-oriented file costs at worst a truncated last line, which the parser keeps as
+     * `SharedRecord.Unknown` and the next cycle reads whole.
+     *
+     * @return null when there is nothing to report, or a short problem string for the cycle.
+     */
+    private fun syncSharedDecisions(deviceId: String): String? {
+        val uriStr = AWPreferences(appContext).getSyncDirUri() ?: return null
+        if (deviceId == UNKNOWN_DEVICE_ID) return null
+        val shared = SharedFolder.open(appContext, uriStr) ?: return null
+
+        val rust = RustInterface(appContext)
+        val localLines = readLocalDecisions(rust) ?: return "could not read this device's decisions"
+        val sharedLines = shared.readAllSharedLines(SHARED_DECISIONS_FILE)
+        val plan = planDecisionSync(localLines, sharedLines, deviceId)
+        if (plan.isEmpty) return null
+
+        val problems = mutableListOf<String>()
+        if (plan.linesToPublish.isNotEmpty()) {
+            if (shared.appendSharedLines(deviceId, SHARED_DECISIONS_FILE, plan.linesToPublish)) {
+                Log.i(TAG, "Published ${plan.linesToPublish.size} decision(s)")
+            } else {
+                problems += "could not publish decisions"
+            }
+        }
+        if (plan.linesToImport.isNotEmpty()) {
+            try {
+                val result = JSONObject(rust.putDecisions(JSONArray(plan.linesToImport).toString()))
+                if (result.optBoolean("success")) {
+                    Log.i(
+                        TAG,
+                        "Imported ${result.optInt("stored")} decision(s) from peers" +
+                            ", skipped ${result.optInt("skipped")}",
+                    )
+                } else {
+                    problems += "could not import decisions"
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not import decisions: ${e.message}")
+                problems += "could not import decisions"
+            }
+        }
+        return problems.takeIf { it.isNotEmpty() }?.joinToString("; ")
+    }
+
+    /**
+     * Every decision line the server holds, or null if it would not answer.
+     *
+     *
+     * An empty list is a legitimate answer -- the owner has resolved nothing yet -- and is not the
+     * same as a failure, which must not be allowed to look like "there is nothing to publish".
+     */
+    private fun readLocalDecisions(rust: RustInterface): List<String>? =
+        try {
+            val array = JSONArray(rust.getDecisions())
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotBlank() } }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read decisions: ${e.message}")
+            null
+        }
 
     /**
      * This device's stored settings, values as the raw JSON bodies the datastore holds -- never

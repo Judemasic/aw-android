@@ -264,12 +264,25 @@ internal class SharedFolder(private val context: Context, private val root: Docu
     }
 
     /** Parse one device's copy of [fileName]; an absent or unreadable file is simply no records. */
-    fun readShared(deviceUuid: String, fileName: String): List<SharedRecord> {
-        val devicesDir = root.findFile(SHARED_DEVICES_DIR) ?: return emptyList()
-        val deviceDir = devicesDir.findFile(deviceUuid) ?: return emptyList()
-        val file = deviceDir.findFile(fileName)?.takeIf { it.isFile } ?: return emptyList()
-        return parseSharedJsonl(readText(file))
+    fun readShared(deviceUuid: String, fileName: String): List<SharedRecord> =
+        parseSharedJsonl(readSharedText(deviceUuid, fileName))
+
+    /** One device's copy of [fileName] as text, or null when there is no such file. */
+    fun readSharedText(deviceUuid: String, fileName: String): String? {
+        val devicesDir = root.findFile(SHARED_DEVICES_DIR) ?: return null
+        val deviceDir = devicesDir.findFile(deviceUuid) ?: return null
+        val file = deviceDir.findFile(fileName)?.takeIf { it.isFile } ?: return null
+        return readText(file)
     }
+
+    /**
+     * Every device's copy of [fileName] as raw, non-blank lines, in the same uuid order
+     * [readAllShared] uses. For the caller that has to move lines rather than records.
+     */
+    fun readAllSharedLines(fileName: String): List<String> =
+        listDeviceUuids().flatMap { uuid ->
+            (readSharedText(uuid, fileName) ?: "").lines().filter { it.isNotBlank() }
+        }
 
     /**
      * Every device's copy of [fileName], concatenated -- the input [mergeDecisions] and
@@ -296,8 +309,19 @@ internal class SharedFolder(private val context: Context, private val root: Docu
      *
      * @return true when every line is on disk. An empty [records] writes nothing and succeeds.
      */
-    fun appendShared(deviceUuid: String, fileName: String, records: List<SharedRecord>): Boolean {
-        if (records.isEmpty()) return true
+    fun appendShared(deviceUuid: String, fileName: String, records: List<SharedRecord>): Boolean =
+        appendSharedLines(deviceUuid, fileName, records.map { it.toJsonLine() })
+
+    /**
+     * Append already-serialised [lines], for a caller that must not let them be re-spelled.
+     *
+     * Decisions come out of the server as the lines it stored (roadmap 4.2), already in one
+     * canonical spelling. Parsing and re-serialising them here through `JSONObject` would produce a
+     * third spelling of the same record -- harmless to the merge, which keys on `id`, but it would
+     * make every dump of the file misleading and any future byte-level compaction wrong.
+     */
+    fun appendSharedLines(deviceUuid: String, fileName: String, lines: List<String>): Boolean {
+        if (lines.isEmpty()) return true
         val devicesDir = findOrCreateDir(root, SHARED_DEVICES_DIR) ?: return false
         val deviceDir = findOrCreateDir(devicesDir, deviceUuid) ?: return false
 
@@ -317,7 +341,7 @@ internal class SharedFolder(private val context: Context, private val root: Docu
         // Every line this app writes is newline-terminated, so a plain append lands on a fresh
         // line. A file whose last line was truncated mid-transfer is the exception, and the parser
         // keeps that damaged line as SharedRecord.Unknown rather than letting it eat ours.
-        val text = records.joinToString("") { it.toJsonLine() + "\n" }
+        val text = lines.joinToString("") { it.trimEnd('\n') + "\n" }
         return appendText(file, text)
     }
 

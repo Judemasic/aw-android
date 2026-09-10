@@ -94,6 +94,23 @@ class RustInterface(context: Context? = null) {
      */
     external fun setSetting(key: String, value: String): String
 
+    /**
+     * Every decision and tombstone this device holds, as a JSON array of `decisions.jsonl` lines
+     * (roadmap 4.2).
+     *
+     * Lines, not parsed objects, and the sync depends on that: what it does with them is copy them
+     * into the shared folder unchanged, so that the file holds the same canonical spelling the
+     * server stores rather than this process's idea of how to write JSON.
+     */
+    external fun getDecisions(): String
+
+    /**
+     * Store decisions and tombstones read out of the shared folder. [lines] is a JSON array of raw
+     * lines; each is keyed by its own `id`, so re-importing the same file is a no-op rather than a
+     * duplicate. Returns `{"success": true, "stored": n, "skipped": n}`.
+     */
+    external fun putDecisions(lines: String): String
+
     external fun migrateHostname(hostname: String): String
     external fun migrateWatcherAndroidBucketNames(): String
 

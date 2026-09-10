@@ -428,3 +428,84 @@ internal object Ulid {
     fun tombstoneId(now: Instant = Instant.now(), random: Random = Random.Default): String =
         "t_" + generate(now, random)
 }
+
+// ---------------------------------------------------------------------------------------------
+// Decision sync -- 05_DATA_MODEL.md §4, roadmap 4.2
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What one decision-sync cycle has to move, in both directions.
+ *
+ * Both halves are **raw lines**, never records: the whole contract of `decisions.jsonl` is that the
+ * line a device wrote is the line every other device reads. See [SharedFolder.appendSharedLines].
+ */
+internal data class DecisionPlan(
+    /** Our own decisions that are not yet in our own file in the shared folder. */
+    val linesToPublish: List<String>,
+    /** Lines in the shared folder that this device's server does not hold yet. */
+    val linesToImport: List<String>,
+) {
+    val isEmpty: Boolean get() = linesToPublish.isEmpty() && linesToImport.isEmpty()
+}
+
+/**
+ * Decide which decision lines to publish and which to import.
+ *
+ * Unlike [planSettingsSync] this needs **no memory of what it did last time**, and that is the
+ * point. A setting has one current value, so "did the owner change it here, or has a peer's change
+ * not arrived yet?" can only be answered by remembering what we last agreed to. Decisions are
+ * append-only records with globally unique ids, so the question is only ever *is this id present*,
+ * which both sides can answer from what they are holding right now. That makes this function
+ * idempotent: running it twice in a row publishes and imports nothing the second time.
+ *
+ * @param localLines every record the server holds, as raw lines (ours and peers' alike).
+ * @param sharedLines every line in every device's `decisions.jsonl`.
+ * @param deviceUuid this device -- only records it authored are ours to publish (**R20**: one
+ *   writer per file, so a peer's decision that reached us through the server is never written into
+ *   our file, only into the one its author owns).
+ *
+ * A line neither side can parse is left where it is: not published, not imported, not deleted
+ * (**§8**). It is either a newer build's record or a half-written transfer, and both outlast us.
+ */
+internal fun planDecisionSync(
+    localLines: List<String>,
+    sharedLines: List<String>,
+    deviceUuid: String,
+): DecisionPlan {
+    val sharedIds = sharedLines.mapNotNull { idOfRecord(it) }.toSet()
+    val localIds = localLines.mapNotNull { idOfRecord(it) }.toSet()
+
+    val toPublish = mutableListOf<String>()
+    val publishing = mutableSetOf<String>()
+    for (line in localLines) {
+        val record = parseSharedLine(line) ?: continue
+        val id = idOf(record) ?: continue
+        if (authorOf(record) != deviceUuid) continue // not ours to write (R20)
+        if (id in sharedIds || !publishing.add(id)) continue
+        toPublish += line
+    }
+
+    val toImport = mutableListOf<String>()
+    val importing = mutableSetOf<String>()
+    for (line in sharedLines) {
+        val id = idOfRecord(line) ?: continue
+        if (id in localIds || !importing.add(id)) continue
+        toImport += line
+    }
+    return DecisionPlan(toPublish, toImport)
+}
+
+/** The id of a decision or tombstone line, or null for anything else (a setting, a broken line). */
+private fun idOfRecord(line: String): String? = parseSharedLine(line)?.let { idOf(it) }
+
+private fun idOf(record: SharedRecord): String? = when (record) {
+    is SharedRecord.Decision -> record.id
+    is SharedRecord.Tombstone -> record.id
+    else -> null
+}
+
+private fun authorOf(record: SharedRecord): String? = when (record) {
+    is SharedRecord.Decision -> record.createdBy
+    is SharedRecord.Tombstone -> record.createdBy
+    else -> null
+}
