@@ -1747,7 +1747,7 @@ Five seeded devices, 16 combined segments, 7 of them contended — driven at **4
    about it, and the 3.5c block stepper's key lookup would have landed on the wrong one of the pair.
    The row index is part of the key now.
 
-### 4.1b — Redesign the combined screen for the phone ⏳ BUILT (2026-09-10) — browser-verified, ⚠️ NOT yet on device
+### 4.1b — Redesign the combined screen for the phone ✅ BUILT + DEVICE-VERIFIED (2026-09-10)
 
 > **Decided by the owner 2026-09-09**, after driving the built app on the S25U. They rejected an
 > incremental fix and chose *"design the phone screen properly"* — treat the phone as its own screen
@@ -1890,27 +1890,70 @@ the live configuration so a foldable is asked again), and the drawer is **locked
 left swipeable with no advertised way back to it. Everything else the drawer held — Home, Activity,
 Raw Data, Combined, Settings — is in aw-webui's navbar already.
 
+#### On the S25U (2026-09-10) — what hardware confirmed, and what it found
+
+Driven over adb on `R3CY901YCEB`. One top bar. A thumb-drag on the timeline scrolls it and the page
+stays put. The minimap jumps. The peek opens with its action inside it, the resolution sheet fits
+one screen with **Save** visible, and `Settings ▸ This device ▸ Sync Settings` launches the real
+`SyncSettingsActivity`. The sheet handle's three states — pull up to expand, release to snap, pull
+down to dismiss — all work in the hand.
+
+Hardware and the owner then found **five things a 412px browser did not**:
+
+| Found | Why the browser missed it |
+|---|---|
+| The stat strip truncated every label — `combin…`, `unresolv…` | Test data had small numbers; `13h 32m` is what overflows |
+| Both native settings screens drew their first row under the status-bar clock | Pre-existing, but 4.1b removed the drawer that used to lead there. `fitsSystemWindows` |
+| The Prev/Next pill "looks bad" — a dark grouped pair inside a white pill, counter hanging off the end | Measurable as *present and tappable*, which is what was measured |
+| The sheet handle looked draggable and was tap-only | A handle that does not drag is a picture of a handle |
+| `Resolve…` read as a truncated word, not as "opens a dialog" | The convention is invisible to a measurement, and to most people |
+
+The last three are the same lesson: **a control can pass every measurement and still be wrong**, and
+only the owner's eye catches that. Fixed in `aw-webui@4a758fa` and the run below.
+
+#### The four the owner found next, on the built screen (`aw-webui@27c6f1c`)
+
+Every one of them was the same mistake wearing different clothes: **a decision made for the phone
+alone, when it was the better answer everywhere.**
+
+1. **"I really was doing both" is now one checkbox per losing activity.** It was already a checkbox
+   rather than a fifth radio, and that part is right — **R6** says exactly one activity counts, so
+   this is a note about the ones that lost, not a second winner. But a *single* tick has no answer
+   when three devices are in play: it silently marked **every** loser deliberate. On a real overlap
+   of Syncthing-Fork / YouTube / Syncthing-Fork, ticking YouTube now writes
+   `deliberate_background: ["YouTube"]` and nothing else — checked against the record the sheet
+   builds. Each row carries its device, because two devices running the same app otherwise produce
+   two rows that read identically (which they did, in the 1280px screenshot).
+2. **The ⚙ is the control model at every width.** The two fold-outs stayed in the flow on wide
+   screens because there was room for them — but room is not a reason to spend 72px above the data
+   on every visit for a control used once a session, and having the phone answer the question one
+   way and the desktop another means two things to learn instead of one. The desktop now opens
+   straight on the data, with the same ⚙ beside the day nav.
+3. **No `Resolve…` left anywhere.** The wide layout still had one.
+4. **Carry-over is the default now.** Anything the phone work improved that is not *about* being
+   small — the pinned head and foot on the resolution sheet, the swatch/device/duration on each
+   option, the drag-to-scrub minimap — already applies at every width, and stays that way.
+
 #### What the redesign must fix, restated as acceptance criteria
 
 1. **One scroller, or none.** A thumb-drag anywhere on the screen must move something useful. No
-   nested scroll container competing with the page. — ⏳ *the page is proven not to move; that the
-   timeline does is the device's to say (headless cannot touch-scroll).*
+   nested scroll container competing with the page. — ✅ *on hardware: the timeline scrolls under a
+   thumb and the page does not move.*
 2. **Every control reachable by thumb**, verified by *scrolling and tapping on hardware*, not by
-   DOM-clicking in a headless browser. — ⏳ *reachable and tappable by real touch events at 412px;
-   hardware still owed.*
+   DOM-clicking in a headless browser. — ✅ *walked on the S25U.*
 3. **One top bar**, not two. — ✅ *native bar hidden on phones; 4.1b-i gave the orphans a home.*
 4. **Chrome well under 334px** before the first block. — ✅ **108px.**
 5. **The resolution sheet is comfortable for ten decisions in a row** — that is now a primary job,
-   not an occasional one. — ⏳ *Save always visible, 44px targets, no duplicated evidence list; how
-   it feels over ten in a row is the device's to say.*
+   not an occasional one. — ✅ *Save always visible, 44px targets, one screen. The "also deliberate"
+   ticks are per-activity now, which is what makes a three-way overlap answerable at all.*
 6. Still **R35**: whatever this becomes must not break the tablet or the 1280px desktop layout. —
-   ✅ *1280px measured unchanged; portrait tablet takes the compact layout deliberately.*
+   ✅ *1280px re-measured after the ⚙ change: no horizontal scroll, layout intact, and it gained the
+   phone's chrome saving rather than losing anything.*
 
 #### Not blocked by this
 
 4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout, and
-**4.4** is a separate screen. Nothing here blocks anything else. **Next: the device test**, then
-4.2.
+**4.4** is a separate screen. Nothing here blocks anything else. **Next: 4.2.**
 
 ### 4.2 — Persist + apply decisions ⬜
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
@@ -2348,15 +2391,22 @@ per device, with unresolved contention striped (**R8**).
   action bar. The Activity remark turned out not to be about Combined at all — it asks for the
   Activity view computed across every device, as its own tab: now
   **[4.4](#44--activity-across-devices-a-new-tab)**.
-- ⏳ **4.1b and 4.1b-i built 2026-09-10, browser-verified, not yet on device.** One scroller, the
-  fold-outs behind a ⚙, a peek-sized detail sheet with **Resolve… inside it**, a scrubbing minimap,
-  a floating stepper, and 334px of chrome down to **108px**. The native action bar is gone on
+- ✅ **4.1b and 4.1b-i built and verified on the S25U 2026-09-10.** One scroller, the fold-outs
+  behind a ⚙, a peek-sized detail sheet with the resolve action **inside** it, a scrubbing minimap,
+  a draggable sheet handle, and 334px of chrome down to **108px**. The native action bar is gone on
   phones, and Sync Settings and API Authentication live in `Settings ▸ This device`.
-- ⚠️ **Headless cannot touch-scroll** — proven against a trivial control page — so "does a thumb-drag
-  move the timeline" is the device's to answer, along with how the whole thing feels.
+- ⚠️ **Headless cannot touch-scroll** — proven against a trivial control page — so the thumb-drag
+  question was only ever answerable on hardware, where it passed.
 - 🐛 That run also caught two ways a verification can quietly check the *old* code: `--webpath`
   losing to the server's embedded copy, and Edge reusing a cached bundle across runs.
-- Next: **install and drive it on the S25U**, then **4.2 — Persist + apply decisions**.
+- 👁️ **Five defects survived a passing browser run and were caught by eye** — a truncating stat
+  strip, two screens under the status bar, an ugly stepper, a handle that only looked draggable,
+  and an ellipsis that read as a cut-off word. Then four more from the owner on the built screen,
+  all the same shape: **a phone decision that was the better answer everywhere.** The ⚙ now holds
+  the fold-outs on a desktop too, and "I was doing both" became **one checkbox per other activity**
+  — the single tick had no answer for a three-way overlap and marked every loser deliberate.
+  `aw-webui@27c6f1c`, `aw-android@23478c8`.
+- Next: **4.2 — Persist + apply decisions**.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
 Steps ⑤ and ⑥ of `04` §2. `aw-combined::attribute` now runs inside `compute_segments` right after
