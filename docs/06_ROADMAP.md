@@ -2101,11 +2101,11 @@ overlaps still asking. **That is R26.**
    `-synced-from-<peer>` suffix its own bucket ids already carry.
 4. 👁️ **"Change this answer" next to a button reading "Change answer."**
 
-⚠️ **Still unverified: the phone → tablet direction**, and any decision with `scope: always`. Both
-are the same code paths — the merge is symmetric and the rule pass is unit-tested — but neither has
-been run on hardware.
+⚠️ ~~**Still unverified: the phone → tablet direction**~~, and any decision with `scope: always`.
+**Phone → tablet ran on hardware in [4.3](#43--undo--verified-on-device-2026-09-10)**, carrying a
+tombstone written on the S25U to the tablet. A `scope: always` rule is still unverified on hardware.
 
-### 4.3 — Undo ✅ BUILT (2026-09-10) — browser-built, ⚠️ NOT yet on device
+### 4.3 — Undo ✅ VERIFIED ON DEVICE 2026-09-10
 Tombstones; segment returns to shaded. *(R12)*
 
 **Built, and it was almost entirely a UI step.** The pipeline has understood tombstones since 4.2 —
@@ -2140,6 +2140,27 @@ does it snap to the correct position."* `ProportionalTimeline` only emitted `vie
 `onScroll`, so until the first scroll the parent kept its `{0, 24h}` default and drew the box across
 the whole day. It now re-emits on mount and whenever the mapping from minute to pixel changes — the
 data, the zoom, the axis, the measured width.
+
+✅ **The check, run on the hardware — and it closed 4.2's open direction as a side effect.** On the
+**S25U**, the 24-minute block at 11:47–12:11 that 4.2 had resolved *on the tablet* opened with
+**Change answer / Undo / Details**. Pressing **Undo**: the header count went **41 → 42**, the block
+went from solid to **shaded**, its badge from **Resolved** to **Unresolved overlap**, its actions
+back to **Resolve overlap**, and provisional attribution flipped back to One UI Home — the selection
+staying on the same block throughout. The store held
+`t_01M25WY0T0Q4MJDXNK4VMD01P0 → revokes d_01M25QFD0WP0ZC03VT6NHYGNAN`.
+
+That tombstone was written on the **phone** and revokes a decision written on the **tablet**, which
+is exactly the direction 4.2 flagged as never having run on hardware. Sync Now logged
+**`Published 1 decision(s)`** on the S25U at 16:57:20 and **`Imported 1 decision(s) from peers,
+skipped 0`** on the Tab S10 FE twenty seconds later, after which the tablet's own timeline returned
+that window as `contended`, `unresolved: true`, `resolved_by: null`. **⚠️ phone → tablet is no
+longer unverified.** A `scope: always` rule on hardware still is.
+
+The decision was then re-posted so the day is as the owner left it: 41 unresolved, that block
+settled to ActivityWatch with One UI Home as deliberate background.
+
+**Also verified on the phone, same run —** the minimap box opens over the *start* of the day rather
+than the whole of it, and narrows correctly once zoomed. See [4.3c](#43c--the-phone-overlays-covered-the-drawing).
 
 #### 4.3a — Why two devices disagree on the unresolved count ✅ INVESTIGATED 2026-09-10 — **not a bug**
 The owner, on seeing both screens at once: *"the phone and tablet have a mismatched number of
@@ -2178,6 +2199,30 @@ trailing minutes read as *not yet known* rather than *idle* — and so a total o
 that is about to change says so. The data is already there: the newest event per contributing
 bucket. **Check:** with one device deliberately un-synced for ten minutes, the other's combined
 screen shows its data ending where it does, and the unresolved count carries a "may change" mark.
+
+#### 4.3c — The phone overlays covered the drawing ✅ VERIFIED ON DEVICE 2026-09-10
+The owner, looking at the S25U: *"this is not very pretty, not being able to see the stuff under the
+sheet — also the prev/next buttons block the timeline even if the sheet is not open."*
+
+Both floating controls sat on top of the drawing with no way to get at what was under them.
+
+- **The stepper now has a strip of its own.** It is `position: fixed`, so nothing in the flow
+  accounted for it and it covered blocks whether or not anything was selected. Its height is
+  measured and taken off the drawing's, so the timeline stops above it.
+- **The detail peek stays an overlay, but is no longer a dead end.** Shrinking the timeline on
+  selection would re-lay-out the drawing and move the block just tapped out from under the thumb,
+  which is the opposite of what 4.1b is for. Instead `ProportionalTimeline` gained `bottomInset` —
+  empty scroll length past the end of the drawing — and the view passes the peek's measured height
+  while a block is selected. An open sheet also lifts the stepper back over the drawing; the peek is
+  taller than that overshoot, so one inset covers both.
+
+✅ **Checked on the S25U.** With the sheet open, scrolling to the end of the day brings the last
+block, the `7h 10m quiet` stub and the closing axis label all clear of both overlays. With the sheet
+closed, the pill sits below the drawing and covers nothing.
+
+⚠️ **Known and left alone:** while the sheet *is* open the pill still rides above it and over the
+drawing. Nothing is unreachable — that is what the inset buys — but the honest fix is to move
+stepping into the sheet itself, which is a redesign of the peek row and was not what was asked for.
 
 ### 4.4 — Activity, across devices (a new tab) ⬜ ← *owner-requested 2026-09-10*
 
