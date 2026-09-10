@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    fitsSystemWindows because this screen has no action bar of its own, so without it
+    the first row sits under the status-bar clock. It was always so, but roadmap 4.1b-i
+    made Settings ▸ This device the sanctioned way in, and 4.1b took away the bar that
+    used to lead here, so it is worth the one attribute.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:padding="16dp">
 
     <LinearLayout
