@@ -57,7 +57,9 @@
 > [1.9](#19--a-sync-that-failed-must-not-report-success) for what that does and does not prove, and
 > for **why the Syncthing-managed sync folder must never be renamed to force a failure** (D25/D26).
 >
-> **The only thing still owed is a decision, not code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_)** (below).
+> **[1.10](#110--timeline-truncates-every-peers-name-at-the-first-_) is closed by upstream** — the
+> bug we reported as [aw-webui#967] was fixed by [aw-webui#970] and merged 2026-09-09. Nothing to
+> write; it arrives with the next merge of upstream into the fork.
 >
 > **Where the repos stand (2026-09-08), both pushed:**
 >
@@ -77,15 +79,15 @@
 > silent no-ops) and [#956] (category JSON import over SAF). Worth a glance next time a device is in
 > hand.
 >
-> **Waiting on the owner, not on code: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_).**
+> **No longer waiting on anyone: [1.10](#110--timeline-truncates-every-peers-name-at-the-first-_) was fixed upstream 2026-09-09.**
 > The Timeline labels every peer `android-synced-from-jude` because aw-webui cuts the hostname at
 > its first underscore. **You do not have to rename to work around this** — the Timeline's
 > `Filters ▸ Host:` dropdown reads the untruncated `hostname` metadata and already distinguishes
 > the devices. Renaming to underscore-free names (`S25U`, `Tab-S10FE`) fixes the *label* too, but
 > costs: the old sync directory is stranded as a phantom peer, **and already-synced buckets keep
 > their old ids**, so history splits across `…-synced-from-jude_s_s25_ultra` and
-> `…-synced-from-s25u`. Read 1.10 before deciding. `a2ca625` does **not** fix it — the bug is still
-> live on upstream master.
+> `…-synced-from-s25u`. **Do not rename: [aw-webui#970] fixed the label upstream on 2026-09-09**, so
+> the cost above buys nothing now. Read 1.10.
 >
 > **Phase 2 starts at [2.1](#21--shared-folder-layout--version)**, and note the debt 1.1 left it:
 > the restore guard from [`05`](05_DATA_MODEL.md) §7 belongs with `meta.json`, because an app backup
@@ -138,7 +140,7 @@ has to be true before any feature exists.
 > | 1.7 | ✅ on device | owner reached Sync settings and tapped **Sync Now** on the tablet |
 > | 1.8 | ✅ on device | Activity **0.0s → 317.5s**; **aw-webui#959 fixed upstream** by #960 |
 > | 1.9 | ✅ on device | healthy: `failed=0`, export precedes callback. failure: `Sync failed:` at **warn** level, 2026-09-08 |
-> | 1.10 | 🔎 found | Timeline truncates peer names at the first `_` — upstream, still unfixed on master |
+> | 1.10 | ✅ fixed upstream | Timeline truncates peer names at the first `_` — fixed by [aw-webui#970], arrives with the next merge |
 > | 1.11 | ✅ on device | tablet: the phone's synced history **48,186s → 399,383s** (8.3×), no re-sync |
 
 ### 1.0a — Export the logging init under its JNI name ✅ VERIFIED ON DEVICE 2026-09-02
@@ -470,7 +472,28 @@ on screen. The 317.5s is small only because it counts events recorded *after* th
 exactly the caveat above. **Check:** Activity shows a non-zero **Time active** and a populated
 **Top Applications** for a day recorded after this build.
 
-### 1.10 — Timeline truncates every peer's name at the first `_` 🔎 FOUND 2026-09-03, NOT FIXED
+### 1.10 — Timeline truncates every peer's name at the first `_` ✅ FIXED UPSTREAM 2026-09-09
+
+> ## ✅ Upstream fixed it, and we are the ones who reported it
+> Filed as **[aw-webui#967]** and fixed by **[aw-webui#970]**, *"handle synced buckets where origin
+> hostname contains underscores"*, **merged to `master` 2026-09-09**. The fix is the obvious one and
+> the one this section argued for: `formatTimelineBucketLabelHtml` now finds the marker with an
+> `indexOf('-synced-from-')` instead of a regex that assumed a desktop-shaped id, so a hostname full
+> of underscores survives. A regression test came with it.
+>
+> ⚠️ **The fork does not have it yet.** `Judemasic/aw-webui@beta` still carries the old
+> `/^([^_]+)_.*-synced-from-(.+)$/`, so the truncation is still what the app shows today. It arrives
+> with the next upstream merge — there is nothing to write, only a merge to do. **Do not write a
+> local fix**; it would collide with the upstream one for no gain.
+>
+> The rename workaround below is therefore **no longer needed**, and its warning about orphaned sync
+> directories is the reason not to do it anyway. Left in place as the record of what was considered.
+>
+> Checked again 2026-09-10 at the owner's request, along with **[aw-webui#959]** (Android Activity
+> reporting `Time active: 0s`), which was fixed by **[aw-webui#960]** and reached this fork in
+> [1.11](#111--bump-aw-webui-past-the-960-fix) — that is the bump that lifted the 4.2% ceiling.
+
+**Originally, 2026-09-03:**
 Reported by the owner: *"in the timeline the names are different from the activity … I don't know
 which for the S25U and which for the tab."* Not a naming preference — the hostname is being
 **cut off**, and with three devices every peer would look identical.
@@ -640,6 +663,8 @@ inferred. `created` was filled in by the server. The real `timelineLabels.ts` th
 [aw-webui#682]: https://github.com/ActivityWatch/aw-webui/issues/682
 [aw-server-rust#649]: https://github.com/ActivityWatch/aw-server-rust/issues/649
 [aw-webui#960]: https://github.com/ActivityWatch/aw-webui/pull/960
+[aw-webui#967]: https://github.com/ActivityWatch/aw-webui/issues/967
+[aw-webui#970]: https://github.com/ActivityWatch/aw-webui/pull/970
 
 ### 1.9 — A sync that failed must not report success ✅ VERIFIED ON DEVICE 2026-09-03 (failure path 2026-09-08)
 Found by reading upstream **[PR #251]**, which fixes the same class of bug: *"a failed SAF mirror
@@ -2000,8 +2025,7 @@ hardware. `aw-webui@9f38b41`.
 4.2 and 4.3 are data-layer work in Rust and Kotlin and do not depend on the phone layout, and
 **4.4** is a separate screen. Nothing here blocks anything else. **Next: 4.2.**
 
-### 4.2 — Persist + apply decisions ⏳ *done in code and verified against a live server; the
-two-device half is unverified on hardware (2026-09-10)*
+### 4.2 — Persist + apply decisions ✅ VERIFIED ON BOTH DEVICES 2026-09-10
 Write to `decisions.jsonl`; apply exact matches, then signature rules; mark `auto_resolved`.
 **Check:** resolve on A → after sync, B shows the same resolution and no longer asks. *(R26)*
 
@@ -2043,9 +2067,39 @@ to `contended/unresolved`. 14 new pipeline tests (`aw-combined/tests/decisions.r
 rule precedence, `ignore`, `relabel`, revocation, input-order independence and the peer's view; 8
 new Kotlin tests cover the sync plan. All 149 Kotlin unit tests pass.
 
-⚠️ **What is not verified: the actual two-device round trip.** Everything above is one machine.
-Whether a decision made on the S25U reaches the tablet through Syncthing and settles the same block
-there is [4.2's check](#42--persist--apply-decisions-), and it needs both devices and a sync cycle.
+✅ **The check, run on the hardware, in the direction tablet → phone.** On the **Tab S10 FE**: an
+unresolved 24-minute overlap (`One UI Home` on the tablet against `ActivityWatch` on the S25U,
+11:47–12:11) was resolved in favour of ActivityWatch, with One UI Home ticked as deliberate. The
+block immediately re-read as **Resolved**, counted to S25U, over the note *"You resolved this —
+ActivityWatch on S25u counted. You meant One UI Home to be running too."* Sync Now then wrote
+`devices/7b54cfe9…/decisions.jsonl` (797 bytes, one line, canonical). Syncthing carried it. On the
+**S25U**, the next sync logged **`Imported 1 decision(s) from peers, skipped 0`**, and that device's
+own `/api/0/combined/timeline` came back with the same block `settled`, `unresolved: false`,
+`resolved_by: d_01M25QFD0WP0ZC03VT6NHYGNAN`, `deliberate_background: ["One UI Home"]`, and 30 other
+overlaps still asking. **That is R26.**
+
+**Four defects the device run found that the browser run had not:**
+
+1. 🐛 **`this.rows` instead of `this.tracks`** in the selection restore — `rows` is the name of the
+   field *inside* a track, so it iterated `undefined` and threw the moment a decision was saved.
+   The save and the reload had already succeeded, so the only symptoms were a selection quietly not
+   returning and an error banner that surfaced a screen later, on **Settings**.
+2. 🐛 **The detail panel wrapped below the timeline** instead of sitting beside it — the owner, on
+   the tablet in landscape: *"a lot of wasted space between the end of the timeline and the
+   details"*. `flex-grow-1` leaves `flex-basis: auto` and a whole day is wider than the row, so the
+   300px panel dropped to the next line, under the drawing's full height. It is a real side panel
+   now.
+3. 🐛 **`device_role` was a uuid, not a hostname** — found by reading the published line rather than
+   trusting the code. Nothing ever filled the hostname map: it is a query parameter for Android's
+   sake and the web view has no way to supply one. Both sides fell back identically so decisions
+   *worked*, but a rule keyed on a uuid can never mean anything on a device that has not met that
+   uuid, which is the whole point of a role (`04` §3). The server now reads peers' names out of the
+   `-synced-from-<peer>` suffix its own bucket ids already carry.
+4. 👁️ **"Change this answer" next to a button reading "Change answer."**
+
+⚠️ **Still unverified: the phone → tablet direction**, and any decision with `scope: always`. Both
+are the same code paths — the merge is symmetric and the rule pass is unit-tested — but neither has
+been run on hardware.
 
 ### 4.3 — Undo ⬜
 Tombstones; segment returns to shaded. *(R12)*
@@ -2515,7 +2569,16 @@ per device, with unresolved contention striped (**R8**).
 - 🐛 **4.1 was writing a rule key that could not work anywhere but where it was written.** The
   signature's `device_role` was this device's *display name* for the peer — a nickname, or the words
   "This device". It is the hostname now.
-- ⏳ **Unverified: the two-device round trip.** Everything above is one machine.
+- ✅ **Verified on both devices the same day.** Resolved on the tablet, `Sync Now`, then the S25U
+  logged `Imported 1 decision(s) from peers, skipped 0` and its own timeline came back with that
+  block settled by the same decision id. **R26 holds on hardware.**
+- 🐛 **Four defects the device run found and the browser run had not**, all fixed the same day: a
+  selection restore reading `this.rows` when the computed is `tracks` (threw on every save, and the
+  banner appeared a screen later on Settings); the detail panel wrapping *below* the timeline, which
+  is the wasted space the owner reported on the tablet; `device_role` written as a uuid because
+  nothing ever filled the hostname map; and a "Change this answer" heading next to a "Change answer"
+  button.
+- ⏳ **Still unverified: phone → tablet, and a `scope: always` rule on hardware.**
 - Next: **4.3 — Undo**, whose records already travel and already revoke.
 
 ### 2026-09-09 (later) — 3.3: provisional attribution + coalesce
