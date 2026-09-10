@@ -57,6 +57,17 @@
 > and the day still computes identically on both. ⚠️ **Rules have still never been exercised on
 > hardware**, which is the one check that would prove the naming end to end.
 >
+> ✅ **[4.7](#47--one-palette--built-2026-09-10--not-looked-at-on-a-device) answers the owner's
+> colour question (2026-09-10).** The Combined timeline's colours and the Categorization colours were
+> **not** the same and were never the same *kind* of thing — one hashes an app name into four soft
+> Material 200 tones, the other reads a saturated hex stored on the category. They should not be made
+> identical, but they should look like one application: `aw-webui/src/util/palette.ts` is now the
+> single source, the category defaults and the colour picker moved onto the same Material 200 tier,
+> *Randomize* stops producing arbitrary hexes, and a new **"Muted colours"** button repaints an
+> existing category set without touching its rules. No app changes colour. ⚠️ **Built and
+> test-verified only — never opened on a device**, and it carries an open question: should Combined
+> colour by *category* rather than by app? `aw-webui@666a5a6` → `aw-server-rust@9912cdb`.
+>
 > ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
 > measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
 > another no longer draws as three blocks: slivers under the owner's **15s** default join the stretch
@@ -2533,9 +2544,29 @@ genuinely multi-device day, with no double-counting when two devices were awake 
 - **Contested time needs an honest treatment.** Segments still awaiting a decision are attributed
   *provisionally*. Decide whether they count, count as their provisional pick, or are shown
   separately — and make it visible rather than silent.
+- **Categorise from the Activity tab itself** ← *owner-requested 2026-09-10*:
+  > *"in the activity we are gonna build, we should be able to edit such a thing from the activity —
+  > now the uncategorised take you to the settings categorisation to edit them."*
+
+  Today, tapping uncategorised activity leaves the screen: aw-webui routes to **Settings ▸
+  Categorization** (`UncategorizedNotification.vue`, and the Category Builder's
+  `?builder=open` deep link), which is a different page, a different scroll position and a
+  round trip back. The owner is looking at the thing they want to categorise *right now*, and
+  the rule they want to write is *"this app, this category"* — so the edit belongs where the
+  activity is. Give the row an inline **assign a category** control that appends a rule to an
+  existing category or creates a new one, saves, and recomputes the day in place. The store
+  already supports it — `appendClassRule(classId, pattern)` exists precisely for this, and is
+  what the Category Builder calls. Settings stays the place for editing the *whole set*.
+
+  This applies to **both** Activity tabs — the existing single-host one and the new combined one
+  — so it is a change to the shared Activity components, not to this tab alone. It may be worth
+  splitting out as its own step once 4.4 starts, since it is useful on the current Activity view
+  before the combined one exists.
 
 **Check:** on a day with events from two devices, the tab's total active time is not the sum of the
 two devices' overlapping totals, and resolving an overlap in Combined changes the numbers here.
+Separately: an uncategorised app can be given a category without leaving the tab, and the row
+recolours to that category's colour immediately.
 
 > **End of 4.1–4.3 = the product the owner originally asked for.** 4.4 was added 2026-09-10 and is
 > the first thing beyond it; everything after that is convenience.
@@ -2801,6 +2832,80 @@ makes *"remove it"* safe to offer at all.
 **Open question for the owner, when this comes up:** does ignored time disappear from the combined
 track, or stay drawn in a muted "not counted" style? Drawn-but-muted is the honest one — you can see
 what you excluded — but it is more pixels on a phone.
+
+### 4.7 — One palette ✅ BUILT (2026-09-10) — ⚠️ not looked at on a device
+
+> *"while I like the colours of the combined, how do they relate to the colours in the
+> categorisation? Are they the same? If so they need to actually be the same. I would like to add
+> these muted colours to the categorisations."*
+
+**They were not the same, and they were not even the same kind of thing.** The app was colouring
+things two ways, out of two unrelated sets of hexes:
+
+| | What decides the colour | Where it is used | What it looked like |
+|---|---|---|---|
+| **By app identity** | the app or window name, hashed | Combined timeline, Timeline, Calendar, activity sunburst | four soft Material **200** tones — `#90CAF9`, `#FFE082`, `#EF9A9A`, `#A5D6A7` |
+| **By category** | a hex stored on the category | Categorization settings, category sunburst, category charts | fully saturated — `#0F0`, `#F33`, `#F80`, `#FCC400`, `#A8FC00`, `#9FF` |
+
+So the honest answer to *"are they the same?"* is **no, and they should not be made identical** —
+an app is not a category, and a colour that means "this is Firefox" cannot also mean "this is Work"
+without one of the two lying. What was wrong is narrower and entirely fixable: **the two looked like
+they came from different applications.** On top of that, the colour picker's *Randomize* button
+handed out any hex in the sixteen million, so a category added by hand was usually louder than
+either set.
+
+#### What this step did
+
+[`aw-webui/src/util/palette.ts`](../../aw-server-rust/aw-webui/src/util/palette.ts) is now the one
+place a colour is defined. It holds the full Material **200** tier — 18 hues — which is the tier the
+four app-hash tones already came from, so the family already had four members and simply gained the
+rest. Every entry has roughly the same lightness, which is what makes a set look like a set: nothing
+shouts over its neighbours, and dark text stays readable on all of it.
+
+- **The app hash keeps its exact four**, deliberately (`APP_HASH_SCALE`, pinned by a test). Widening
+  it would repaint every app the owner has learned to recognise in the Combined timeline, which is a
+  different decision from making the categories quieter.
+- **The default category set** moves onto named entries of the same tier
+  ([`classes.ts`](../../aw-server-rust/aw-webui/src/util/classes.ts)). `Uncategorized` stays `#CCC`,
+  because it is the absence of a category rather than one of them.
+- **The colour picker** ([`ColorPicker.vue`](../../aw-server-rust/aw-webui/src/components/ColorPicker.vue))
+  offers the palette as its swatches, and *Randomize* now randomises **within** it.
+- **"Muted colours"**, a new button in Categorization settings. Changing the defaults only ever
+  reaches a *fresh* install — anyone who has saved a category has their own stored colours, and
+  *Restore defaults* would take their rules with it. So repainting an existing set has to be its own
+  action: it repaints every category that carries its own colour, in palette order, and it
+  **leaves inherited colours inherited and the rules untouched.**
+- **A new category now arrives with a colour** — the first palette entry not already in use. It used
+  to arrive with none, which draws as the same grey as uncategorised time, so a freshly added
+  category was invisible in every chart until someone opened it and picked a hex by hand.
+
+#### Judgment calls
+
+- **A category set is repainted only when asked.** Silently rewriting stored colours on upgrade
+  would be an edit to the owner's data, which is the thing Phase 4 is built not to do (**R11**).
+- **Colours are handed out in hue order, not re-shuffled**, so the repainted set reads as a spectrum
+  and two sibling categories do not land on near-identical tones.
+- **Combined still colours by app, not by category.** Making it colour by category is a real option
+  — `getCategoryColorFromString` already exists and it is close to a one-line change in
+  `colorFor()` — but it changes what the screen *means*, and the combined track's label is the app
+  name alone, so any category rule that matches on window **title** would silently stop matching.
+  Left for the owner to decide; see the open question below.
+
+**Checked:** `tsc --noEmit` clean, lint clean, **299 tests pass** (37 suites) including a new
+`palette.test.node.ts` that pins the app-hash four, that every default category colour is in the
+palette, that repainting is idempotent and leaves inherited colours and `Uncategorized` alone, and
+that *Randomize* never leaves the palette. **Not checked:** how it actually looks — nothing has been
+built into an APK or opened on a device yet.
+
+**Open question for the owner:** should the **Combined** timeline colour a block by its *category*
+instead of by its app? Same-category stretches would then share a colour, which makes the day read
+as "what kind of thing was I doing"; the cost is that two different apps in one category become
+indistinguishable, and rules that match on window title stop applying. Answer this before 4.4, since
+the new Activity tab has to make the same choice.
+
+`aw-webui@666a5a6` → `aw-server-rust@9912cdb`.
+
+---
 
 ## Phase 5 — Make the UI usable on a phone
 
