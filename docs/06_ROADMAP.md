@@ -2724,6 +2724,12 @@ number it has ever shown was for a window nothing else in the app used.
 
 Both screens now derive the day from `get_day_start_with_offset`, so they cannot drift again.
 
+✅ **Verified on the phone (2026-09-11)**, reading the two screens a minute apart: Activity
+*15h 31m / **62** overlaps*, Combined *15h 28m / **62** unresolved*. The overlap counts now match
+exactly; the three-minute difference in the total is the day still running between the two reads.
+Before the fix the same pair read 33 minutes and 2 overlaps apart. The axis also now reads `04` at
+the top of a 4am day instead of `00`.
+
 **Fixing the window exposed a second bug**: the axis labels were only ever right by accident. They
 numbered ticks from the start of the *window*, which equals the wall-clock hour only when the day
 starts at midnight — so with 04:00 the axis would have read `00` at four in the morning. Ticks are
@@ -2766,10 +2772,56 @@ implement priority at all, and `classes_for_query` sends only `[name, rule]` —
 populated and there is no editor for it. So the server can rank by priority and the app never asks
 it to, and the two classifiers can in principle disagree.
 
-**What a step here would do:** surface the tie-break. Either expose `priority` in the category
-editor and send it, or — cheaper and arguably better — make the editor *warn* when two categories at
-the same depth can both match the same string, since a tie the owner cannot see is worse than one
-they cannot set.
+#### ❌ Priority is **not** the answer to what the owner asked for
+
+This entry first proposed exposing `priority`. The owner took it apart the same evening, and they
+are right:
+
+> *"say I have two categories at depth 0, one named Fun one named Work, both match regex `youtube`.
+> Now if I put the priority to Work then everything that has youtube in it will be categorised by
+> Work. What I meant: YouTube will be conflicted, then the app asks me what it should be, I put Fun,
+> then it never asks me again for that app. But then `youtube G` comes — again a conflict — but I
+> want this one to be Work. Does priority solve this?"*
+
+**No.** `priority` is a property of **the rule**, so it resolves *every* collision between those two
+rules identically and forever. Set Work above Fun and `YouTube Morphe` goes to Work too — exactly
+what the owner does not want.
+
+**Nor does depth.** `Fun` and `Work` are siblings, so neither is deeper; and even nested, depth is
+still a property of the *categories*, so it still yields one answer for every colliding string.
+
+What the owner described needs the decision keyed on **the activity**, not on the pair of rules:
+ask once per conflicting label, store `label → category`, never ask again for that label, and treat
+a new colliding label as a new question.
+
+**This is 4.2a's lesson again, in a different room.** There, a resolution was recorded against the
+*cast of competitors* and blocks that should have settled stayed shaded, because the key was wrong —
+it had to be the stretch of time the question was actually about. Here the question is *"what is this
+app"*, so the key must be the app.
+
+The two mechanisms answer different questions and can coexist, with the per-app decision winning:
+
+| | Answers | Scope |
+|---|---|---|
+| `priority` | "when these two rules fight, X wins" | every colliding string, forever |
+| per-app decision | "this app is X" | one label |
+
+**What a step here would do**, then — and it is no longer "expose priority":
+
+1. **Detect the tie** and say so, rather than resolving it invisibly by array order.
+2. **Ask once per colliding label**, and store the answer keyed on the label.
+3. **Make the stored answers visible and undoable** — a list of pinned apps. Same argument as
+   [4.6](#46--make-something-not-count): an override the owner cannot see is one they will forget
+   and then mistrust the totals over.
+4. **Sync them.** It is a decision like any other, so both devices must agree (**R18**).
+5. **Inert, not silent, if the rules stop colliding.** If the regexes are later edited so there is
+   no conflict, the stored answer should still be visible rather than quietly still applying.
+
+⚠️ **Known cost, accepted:** keying on the exact label means `YouTube Morphe` and a future
+`YouTube Whatever` are different labels and each ask once. Bounded by the number of distinct app
+names, so not unbounded. If it proves noisy, the refinement is to offer *"just this app"* versus
+*"anything matching youtube"* **at the moment the owner answers** — not to move the key back onto the
+rule.
 
 ---
 
