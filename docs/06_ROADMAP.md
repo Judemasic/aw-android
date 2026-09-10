@@ -65,8 +65,12 @@
 > single source, the category defaults and the colour picker moved onto the same Material 200 tier,
 > *Randomize* stops producing arbitrary hexes, and a new **"Muted colours"** button repaints an
 > existing category set without touching its rules. No app changes colour. ⚠️ **Built and
-> test-verified only — never opened on a device**, and it carries an open question: should Combined
-> colour by *category* rather than by app? `aw-webui@666a5a6` → `aw-server-rust@9912cdb`.
+> installed on both devices**, and driving the button over adb caught it renaming a category (`Work`
+> green → red) — repainting now preserves hue, and the chase turned up that every shipped category
+> colour is short-form hex which the first parser read as black. ⚠️ **The owner's own colours have
+> not been repainted** — the preview was discarded, not saved, and pressing Save is theirs to do. It
+> carries an open question: should Combined colour by *category* rather than by app?
+> `aw-webui@6a8ec12` → `aw-server-rust@c435dec`.
 >
 > ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
 > measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
@@ -2883,19 +2887,41 @@ shouts over its neighbours, and dark text stays readable on all of it.
 
 - **A category set is repainted only when asked.** Silently rewriting stored colours on upgrade
   would be an edit to the owner's data, which is the thing Phase 4 is built not to do (**R11**).
-- **Colours are handed out in hue order, not re-shuffled**, so the repainted set reads as a spectrum
-  and two sibling categories do not land on near-identical tones.
+- **Repainting preserves hue.** The first version handed colours out in palette order, which read
+  fine in a test and was plainly wrong the moment it ran on the phone: it turned `Work` from green
+  to soft *red*. Hue is the part of a colour that carries the meaning — green was chosen because it
+  reads as green — so a repaint that moves it has renamed the category rather than toned it down.
+  Each colour is now answered by the palette entry nearest it on the colour wheel, and two
+  categories never land on the same entry while unused ones remain.
 - **Combined still colours by app, not by category.** Making it colour by category is a real option
   — `getCategoryColorFromString` already exists and it is close to a one-line change in
   `colorFor()` — but it changes what the screen *means*, and the combined track's label is the app
   name alone, so any category rule that matches on window **title** would silently stop matching.
   Left for the owner to decide; see the open question below.
 
-**Checked:** `tsc --noEmit` clean, lint clean, **299 tests pass** (37 suites) including a new
-`palette.test.node.ts` that pins the app-hash four, that every default category colour is in the
-palette, that repainting is idempotent and leaves inherited colours and `Uncategorized` alone, and
-that *Randomize* never leaves the palette. **Not checked:** how it actually looks — nothing has been
-built into an APK or opened on a device yet.
+#### Two defects the device found, and one the tests found chasing them
+
+1. **"Muted colours" renamed a category.** Covered above: palette-order assignment turned `Work`
+   green → red. Seen by installing the build and pressing the button, not by reading the diff.
+2. **Every category colour parsed as black.** Writing the hue match exposed it: the shipped
+   defaults are written in the **short** hex form — `#0F0`, `#F33`, `#9FF`, `#CCC` — and the first
+   parser accepted only `#RRGGBB`. Every category would have been read as chroma zero and sent to
+   the two neutral browns/greys. Caught by the tests before it reached hardware.
+3. **Half the palette counted as grey.** The threshold separating "a hue" from "a grey" was set for
+   full-strength colours, and the Material 200 tier is pale by design. The tier splits cleanly and
+   the constant now sits in the gap: sixteen hues at chroma ≥ 0.19, two neutrals at ≤ 0.09.
+
+**Checked:** `tsc --noEmit` clean, lint clean, **309 tests pass** (37 suites) including a new
+`palette.test.node.ts` that pins the app-hash four, checks every default category colour is in the
+palette, sweeps the whole colour wheel to prove no colour is ever moved more than 35° of hue, checks
+the short hex form parses, checks repainting is idempotent and leaves inherited colours and
+`Uncategorized` alone, and checks *Randomize* never leaves the palette. The build was **installed on
+both devices** and the button was driven over adb: it produced the unsaved-changes banner and
+repainted the swatches, and the repaint was **discarded, not saved** — the owner's stored colours are
+untouched.
+
+**Not checked:** how the new palette looks anywhere it is *used* — the Activity charts, the category
+sunburst, the Timeline. Only the swatches in the settings tree have been seen, and only on the phone.
 
 **Open question for the owner:** should the **Combined** timeline colour a block by its *category*
 instead of by its app? Same-category stretches would then share a colour, which makes the day read
