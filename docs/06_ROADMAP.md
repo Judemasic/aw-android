@@ -47,13 +47,20 @@
 > Android device calls itself `localhost`**, so a peer's decision named *itself* by a string that
 > means a different device on every machine, and the tablet settled the owner's tail in favour of
 > itself. Fixed in `aw-server-rust@6d74dd5`; both devices now return the same day, segment for
-> segment. ⚠️ **`localhost` is still not an identity**, which is a live risk for `scope: always`
-> rules — see 4.2a's closing note.
+> segment.
 >
-> Raised in the same conversation and deliberately sequenced *after* it:
-> **[4.5](#45--smoothing-and-what-counts-as-a-competitor)**, rounding away small slivers and deciding
-> whether a device parked on its launcher competes at all. Rounding first would have hidden the
-> sliver that exposed 4.2a. It needs two answers from the owner before it can start.
+> ✅ **[4.2b](#42b--a-device-knows-its-own-name) then fixed the naming itself (built 2026-09-10, not
+> yet on a device).** The real device name was never missing — the Android watcher has always written
+> it into its own buckets — the server was just asking `gethostname()` instead of looking. It now
+> reads its name back off its own buckets, so a decision, a rule and a peer all spell the same device
+> the same way. ⚠️ **Rules have still never been exercised on hardware**, which is the check that
+> would prove it.
+>
+> **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is unblocked and next**: rounding away
+> small slivers, at the owner's **15s** default. The owner ruled that a device on its home screen
+> **does** compete — so that half of 4.5 is dropped, and replaced by
+> **[4.6](#46--make-something-not-count)**: letting the owner take time or an app out by hand,
+> instead of the app inferring it.
 >
 > ⚠️ **Do not treat the current native screen as the intended one** — its defect list, in 3.4, is
 > now 3.5b's acceptance list. Separately,
@@ -2275,8 +2282,8 @@ here"*, not a licence to guess. The fallback goes on existing for the case it wa
 rule that outlived the device that made it — pinned by
 `a_role_still_finds_a_device_this_day_has_never_heard_of`.
 
-⚠️ **The deeper problem is not fixed and is not this step's to fix: `localhost` is not an
-identity.** A *signature* carrying it means different things on different devices, so a
+⚠️ **The deeper problem was not fixed here — see [4.2b](#42b--a-device-knows-its-own-name), which
+fixed it. `localhost` is not an identity.** A *signature* carrying it means different things on different devices, so a
 `scope: always` rule recorded on one device can key on a role that names another device entirely.
 Rules have never been verified on hardware, and this is why that matters. Naming devices properly —
 the `devices/<uuid>/meta.json` role [`05_DATA_MODEL.md`](05_DATA_MODEL.md) §3 always intended, or
@@ -2305,6 +2312,50 @@ but *"a resolved block followed by an eight-second shaded crumb"* is a thing the
 seen, and whether it reads as correct or as a glitch is a question only the screen can answer. It
 is the argument for [4.5](#45--smoothing-and-what-counts-as-a-competitor), and the reason 4.5 is
 next rather than optional.
+
+### 4.2b — A device knows its own name ✅ BUILT (2026-09-10) — ⚠️ NOT on device yet
+> *"so are you planning on fixing it?"*
+
+The half of the `localhost` defect [4.2a](#42a--a-decision-answers-a-stretch-of-time-not-a-cast-of-competitors--verified-on-both-devices-2026-09-10)
+deliberately left alone. 4.2a stopped a bad name from being *acted on*; this stops it being
+*written*.
+
+**The name was never missing — it was being asked for in the wrong place.** The embedded server
+answered `gethostname()`, which on Android is `localhost` on every device. But the Android watcher
+has always created its buckets with the real name, derived from `Settings.Global.DEVICE_NAME` in
+[`DeviceHostname.kt`](../mobile/src/main/java/net/activitywatch/android/DeviceHostname.kt) — and it
+is the *same* name a peer reads off the `-synced-from-<peer>` suffix, which is exactly the property
+a role needs. So `own_hostname` in
+[`endpoints/combined.rs`](../../aw-server-rust/aw-server/src/endpoints/combined.rs) now reads the
+name back off this device's **own** buckets, the ones without that suffix.
+
+Rules, decisions and peers now all spell the same device the same way, on every machine.
+
+#### Judgment calls
+
+1. **`gethostname()` stays as the fallback.** On a desktop it is a real name. On a fresh Android
+   install with no watcher buckets yet it is the only thing there is — and 4.2a's guard still holds
+   the line if it is `localhost`.
+2. **`localhost` and `unknown` are discarded, not returned.** Both are what a component says when it
+   does *not* know the name; neither identifies a device to a peer.
+3. **Disagreeing local buckets fall back rather than vote.** Several different names means this
+   device does not know its own, and guessing is precisely how this went wrong the first time.
+4. **`GET /api/0/info` was left alone.** It still reports `gethostname()`. Identity for *decisions*
+   is what was broken; changing what every other caller of `/info` sees is a separate blast radius,
+   and nothing on the Android side routes on it.
+5. **Nothing rewrites existing records.** The four decisions already carrying `device_role:
+   "localhost"` are `scope: once`, matched by window since 4.2a, and therefore unaffected. Editing
+   stored history to fix a naming bug is the thing the owner has ruled out twice.
+
+#### Checked
+
+`cargo test --workspace` green. Four new tests in `endpoints/combined.rs` pin the rule against a
+realistic database — own watchers plus a peer's synced buckets, the two "I don't know" names, a
+disagreement, and an empty database.
+
+⚠️ **Not verified on hardware.** The proof this is right is a `scope: always` **rule** made on one
+device applying correctly on the other — which is also the thing that has never been tested at all
+(4.2a). That check belongs to whichever step first exercises rules on device.
 
 ### 4.3 — Undo ✅ VERIFIED ON DEVICE 2026-09-10
 Tombstones; segment returns to shaded. *(R12)*
@@ -2506,12 +2557,57 @@ participant. What does not self-solve is a screen that is **on and sitting on th
 is a large share of the owner's overlaps (4.2's own check block was `One UI Home` vs `ActivityWatch`,
 and there is a segment at 14:49:36 of `One UI Home` contending with `One UI Home`).
 
-#### Two decisions needed before this can be built
+#### Both decisions answered by the owner, 2026-09-10
 
-1. **Default sliver threshold for #2.** Owner floated "10 seconds or a minute"; the suggestion on
-   the table is **15s**, leaving contention at 60s.
-2. **Does a device on its home screen compete at all?** Suggested: no, as a toggle defaulting to
-   "does not compete". This changes what existing history *means*, so it is the owner's call.
+1. **Default sliver threshold for #2: 15s.** *"okay 15s"* — leaving contention at 60s, as suggested.
+2. **A device on its home screen does compete.** *"yes it counts leave it"* — so **problem #3 is
+   dropped from this step**, and rule 4 (transit apps) applies to the launcher only as a *short*
+   sliver like any other app, never as a class of thing that stops competing. The owner's reason is
+   the better one: the launcher is real screen time, and hiding it would make the day lie.
+
+   What the owner asked for **instead** is the ability to take something out by hand —
+   [4.6](#46--make-something-not-count). Not counting should be a thing the owner *chooses*, not a
+   rule the app infers.
+
+This step is **unblocked and buildable**. Rules 1–8 above stand as written, minus #3.
+
+### 4.6 — Make something not count ⬜ ← *owner-requested 2026-09-10*
+> *"does the app have a way to remove things and make them not count? if not we should add it"*
+
+**Partly, and only in one place.** The resolution sheet's third option — *"Neither — I was away /
+this time counts as nothing"* — already writes an `ignore` decision, and `ignore` already works end
+to end: [`apply.rs`](../../aw-server-rust/aw-combined/src/apply.rs) sets `seg.ignored`, and
+[`combined.rs`](../../aw-server-rust/aw-server/src/combined.rs) leaves ignored segments out of the
+combined total.
+
+The gap is **when the sheet appears at all**. It only opens on a *contended* block. So today:
+
+| The owner wants to… | Possible today? |
+|---|---|
+| Drop an overlapping stretch | ✅ *"Neither — I was away"* |
+| Drop a stretch where only one device was active | ❌ no sheet ever opens on it |
+| Drop **an app**, everywhere, always | ❌ nothing expresses this |
+| See what was dropped, and put it back | ⚠️ only via [4.3](#43--undo)'s undo of that one decision |
+
+#### What this step is
+
+1. **Let any block be tapped, not just a shaded one.** A settled block should open the same sheet,
+   with *"this time counts as nothing"* available. This is the whole of the second row above, and
+   probably most of the value.
+2. **"Never count this app"** — a `scope: always` `ignore` keyed on the app alone. It is the first
+   thing in the app that genuinely needs rules to work across devices, so it lands
+   **after** [4.2b](#42b--a-device-knows-its-own-name) is verified on hardware, not before.
+3. **A list of what is being dropped**, with undo per entry. An exclusion the owner cannot see is an
+   exclusion they will eventually forget and mistrust the totals over.
+
+⚠️ **Ignoring is still a decision, never an edit (R11).** Nothing is deleted, nothing is rewritten:
+the per-device tracks underneath keep showing the time exactly as recorded, and the day recomputes
+if the decision is undone. This is the same guarantee 4.2a and 4.5 are both built on, and it is what
+makes *"remove it"* safe to offer at all.
+
+**Open question for the owner, when this comes up:** does ignored time disappear from the combined
+track, or stay drawn in a muted "not counted" style? Drawn-but-muted is the honest one — you can see
+what you excluded — but it is more pixels on a phone.
 
 ## Phase 5 — Make the UI usable on a phone
 
