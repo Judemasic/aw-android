@@ -103,9 +103,10 @@
 > colliding. It reaches the server-side classifier as an ordinary rule with a priority nothing else
 > can reach — the first thing in the app to use `priority` at all.
 >
-> ⏳ **[4.4g](#44g--the-combined-days-barchart-from-segments-it-already-has--built-2026-09-11--not-yet-seen-on-a-device)
-> and [4.4h](#44h--show-android-what-it-actually-has-instead-of-nothing--built-2026-09-11--not-yet-seen-on-a-device)
-> are built (2026-09-11), neither seen on a device.** Both came out of the owner's two questions in
+> ⏳ **[4.4g](#44g--the-combined-days-barchart-from-segments-it-already-has--built--installed-2026-09-11--device-check-outstanding)
+> and [4.4h](#44h--show-android-what-it-actually-has-instead-of-nothing--built--installed-2026-09-11--device-check-outstanding)
+> are built and installed on both devices (2026-09-11); the APK is on the phone and the tablet,
+> but nothing in either step has been *looked at* yet.** Both came out of the owner's two questions in
 > [4.4f](#44f--two-things-the-combined-day-does-not-show-and-why--owner-questions-2026-09-11).
 > **4.4g** draws the combined day's Timeline barchart by slicing the segments the day already
 > fetched onto hour boundaries — no extra request — and splits a segment that crosses an hour
@@ -3041,7 +3042,7 @@ Android is a small change to a `v-if` and a label, and is **4.4h**.
 
 ---
 
-### 4.4g — The combined day's barchart, from segments it already has ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+### 4.4g — The combined day's barchart, from segments it already has ✅ BUILT + INSTALLED (2026-09-11) — ⚠️ device check outstanding
 
 Slice the combined response's segments onto sub-period boundaries client-side and fill
 `category.by_period` and the `periodusage` strip from them, rather than leaving both unavailable.
@@ -3094,7 +3095,7 @@ guess.
 
 ---
 
-### 4.4h — Show Android what it actually has, instead of nothing ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+### 4.4h — Show Android what it actually has, instead of nothing ✅ BUILT + INSTALLED (2026-09-11) — ⚠️ device check outstanding
 
 The per-screen rows already come back on Android, merged by `["app", "classname"]`, and nothing
 renders them. The only panel that reads `classname` is `top_bundle_ids`, gated on iOS.
