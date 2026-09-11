@@ -2680,6 +2680,14 @@ around then"*. Removing it would have traded one affordance for another rather t
 ✅ **Both halves reported PASS by the owner on the phone (2026-09-11)** — categorising an app from
 Activity, and answering an overlap from the banner without leaving the page.
 
+**An unplanned argument for this control existing,** found while measuring something else on the
+phone: the owner's `Google Wallet` is stored as `Google\u00A0Wallet` — Google names the app with a
+**non-breaking space**, and the watcher records exactly what the platform hands it. A category rule
+typed by hand in Settings uses an ordinary space and would therefore **never match it**, silently,
+with no error and nothing on screen to explain why that app stayed uncategorised. The inline control
+copies the stored label, so it cannot make that mistake. Any app whose name contains a character
+that is hard to type is in the same position.
+
 **A search box on the uncategorised list**, asked for by the owner after using it (2026-09-11).
 The list is the day's apps ranked by time with a "show more" underneath, which is fine for finding
 the biggest offender and useless for finding *one named app*. Plain case-insensitive substring, not
@@ -3043,9 +3051,26 @@ not a window title. **Not** by un-hiding `top_titles`: on Android `title` is the
 construction, so that panel would be a duplicate of Top Applications, which is exactly why it is
 hidden.
 
-⚠️ **Check what `classname` is actually worth first.** The measurement in 4.4f counted apps and
-titles, not classnames. If most apps turn out to be single-Activity, the panel is a duplicate under
-a new name and the step should be dropped rather than built.
+✅ **Measured, and it is worth building** (phone, 2026-09-10's data, 2026-09-11). Of **41 apps, 16
+have more than one screen.** WhatsApp alone has seven, and they are not noise:
+
+| Time | Screen |
+|---|---|
+| 3,633s | `com.whatsapp.home.ui.HomeActivity` |
+| 1,075s | `com.whatsapp.calling.ui.VoipActivityV2` |
+| 394s | `com.whatsapp.Conversation` |
+| 187s | `com.whatsapp.companiondevice.LinkedDevicesActivity` |
+| 21s | `com.whatsapp.mediaview.MediaViewActivity` |
+
+That is eighteen minutes **on a call** sitting inside a WhatsApp total that currently says only
+"WhatsApp", and the app already has the rows. So the step stands.
+
+⚠️ **The raw value is not presentable.** `com.whatsapp.calling.ui.VoipActivityV2` is a class path,
+and a panel full of those is worse than no panel. It needs the package prefix dropped and the
+remainder split on camel case — *Voip Activity V2* — with the raw string kept for the rule editor,
+since a category rule written against a screen has to match what is stored. Deciding how much
+prettifying is safe is part of this step, not a detail of it: over-cleaning two different classes
+into the same display name would merge two rows that are not the same thing.
 
 ---
 
