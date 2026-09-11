@@ -2677,6 +2677,18 @@ answering the same day differently, which is exactly what **4.4d** had to be ope
 shows the surrounding day, which is what you want when the question is *"what was I actually doing
 around then"*. Removing it would have traded one affordance for another rather than adding one.
 
+✅ **Both halves reported PASS by the owner on the phone (2026-09-11)** — categorising an app from
+Activity, and answering an overlap from the banner without leaving the page.
+
+**A search box on the uncategorised list**, asked for by the owner after using it (2026-09-11).
+The list is the day's apps ranked by time with a "show more" underneath, which is fine for finding
+the biggest offender and useless for finding *one named app*. Plain case-insensitive substring, not
+a regex: the box sits directly above a control that writes regexes, and a search that quietly
+treated `c++` as a pattern would both fail to find the app and teach the wrong thing about the field
+below it. ⚠️ **It filters what the day's query returned, which is capped at 100 apps per group** —
+so a day with more distinct apps than that has a tail the box cannot reach. The cap is by duration,
+so what it cannot reach is the least-used end.
+
 **Check:** `tsc` clean, lint clean, locale check passes, **366 tests pass** (42 suites) including a
 new `devices.test.node.ts` covering the extracted naming — that a signature never carries a nickname,
 that a raw uuid is never shown, that a heartbeat-split event does not become two identical radio
@@ -2939,12 +2951,101 @@ mistrusting the totals over. Same argument as [4.6](#46--make-something-not-coun
 every synced device, and its rows carry exactly the app label a pin is keyed on. A week, because the
 question is *"what have I actually been running"* and a day is too thin a sample to ask it of.
 
+⚠️ **On the owner's own data there are currently no conflicts at all** (reported 2026-09-11), so
+the panel renders its empty state and the *asking* half of this step is **built but unexercised**.
+That is the correct outcome rather than a disappointing one — their categories genuinely do not
+collide today — but it means the ask-and-store path has been proven only by its tests. The first
+real collision they create is what actually exercises it.
+
 **Check:** `tsc` clean, lint clean, locale check passes in all six languages, **366 tests pass**
 including a new `categoryPins.test.node.ts` — that pinning `youtube G` to Work leaves `YouTube Morphe`
 in Fun (the exact thing `priority` gets wrong), that a pin naming a category which does not match is
 ignored rather than obeyed, that metacharacters in a label are escaped, and that a pin whose collision
 is gone sends no rule to the server. Kotlin: `:mobile:testDebugUnitTest` passes with the allowlist
 assertion added. ⚠️ **Nothing has been opened on a device.**
+
+---
+
+### 4.4f — Two things the combined day does not show, and why ← *owner questions, 2026-09-11*
+
+> *"why in the combined activity the timeline barchart does not work? also does top window titles
+> work on android or not?"*
+
+Both are deliberate, both are in 4.4's own table, and neither was explained where the owner would
+meet it. Measured rather than recalled.
+
+#### The Timeline barchart
+
+Marked **unavailable** on the combined day (`COMBINED_UNAVAILABLE_TYPES` in
+`util/combinedActivity.ts`), which is why it reads "unavailable" rather than drawing an empty chart.
+The barchart wants category time **bucketed per sub-period** — one bar per hour on a day, one per
+day on a week. `query_combined_full` makes exactly **one** request, `GET /api/0/combined/timeline`
+for the whole window, and the store fills `category.by_period` from nothing.
+
+**4.4 assumed the fix was one combined request per bucket** — 24 for an hourly day, each running the
+whole contention pipeline server-side — and shelved it as too expensive. **That assumption is wrong,
+and cheaply so:** the response's segments already carry `start`, `end` and `seconds`, so slicing them
+onto hour boundaries client-side gives exact per-period totals **with no extra requests at all**. The
+same slice would also fill the **day strip above the tabs**, which is hidden today for the same
+reason. Written up as **4.4g**.
+
+#### Top Window Titles on Android
+
+**It does not work on Android, and it is not shown** — `SelectableVisualization.vue` renders
+`top_titles` only when `!activityStore.android.available`. Not a combined-day limitation: it is
+absent on a per-device Android page too.
+
+The reason is that **Android's platform API never gives a window title.** `models/Event.kt` sets
+`title` to the *app name* on purpose — upstream aw-webui changed the shared Android query branch to
+merge on `["app", "title"]` for an iOS ScreenTime patch, and Android events having no title made the
+merge collapse the day to `0s`. Filling the field here was the fix that avoided a third fork.
+
+Measured on the phone over a full day (2026-09-10, `aw-watcher-android`): **374 events, 41 distinct
+apps, 41 distinct titles, and `title != app` in exactly 0 of them.** So a Top Window Titles panel on
+Android would be a second copy of Top Applications, and hiding it is right.
+
+**What Android *does* have is `classname`** — the Activity class actually on screen, e.g.
+`com.sec.android.app.launcher.Launcher`. The query already merges `title_events` by
+`["app", "classname"]`, so the per-screen rows **exist and are fetched**; nothing renders them,
+because the only panel that reads `classname` is gated on iOS (`top_bundle_ids`). Offering it on
+Android is a small change to a `v-if` and a label, and is **4.4h**.
+
+---
+
+### 4.4g — The combined day's barchart and day strip, from segments it already has ⬜ ← *raised by 4.4f, 2026-09-11*
+
+Slice the combined response's segments onto sub-period boundaries client-side and fill
+`category.by_period` and the `periodusage` strip from them, rather than leaving both unavailable.
+No extra requests: the segments carry `start`, `end` and `seconds`.
+
+Two things to get right, both of which have bitten before:
+- **The boundaries are the owner's**, not midnight — `get_day_start_with_offset`, the correction
+  [4.4d](#44d--combined-was-showing-a-different-day-from-every-other-screen--fixed-2026-09-11) had
+  to make. An hour bucket has to be a real clock hour, the way `hourTicksFor` already places ticks.
+- **A segment spanning a boundary is split, not assigned to one side.** Splitting is exact; assigning
+  moves seconds between bars and makes the bars disagree with the day's own total.
+
+`ignored` segments stay out of every bar, for the reason
+[4.4](#44--activity-is-the-combined-day--built-2026-09-10--not-yet-seen-on-a-device) already gives.
+
+**Check:** the bars sum to the same figure the day's "Time active" shows, on a day with events from
+two devices; the axis reads `04` at the top of a 4am day.
+
+---
+
+### 4.4h — Show Android what it actually has, instead of nothing ⬜ ← *raised by 4.4f, 2026-09-11*
+
+The per-screen rows already come back on Android, merged by `["app", "classname"]`, and nothing
+renders them. The only panel that reads `classname` is `top_bundle_ids`, gated on iOS.
+
+Offer it on Android too, under a name that is honest about what it is — the screen inside an app,
+not a window title. **Not** by un-hiding `top_titles`: on Android `title` is the app name by
+construction, so that panel would be a duplicate of Top Applications, which is exactly why it is
+hidden.
+
+⚠️ **Check what `classname` is actually worth first.** The measurement in 4.4f counted apps and
+titles, not classnames. If most apps turn out to be single-Activity, the panel is a duplicate under
+a new name and the step should be dropped rather than built.
 
 ---
 
