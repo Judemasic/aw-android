@@ -4279,39 +4279,55 @@ desktop app also ships. Nothing in any of it is Android-specific by design. So t
 is a matter of getting the desktop build to use the owner's forks instead of upstream, and getting a
 Windows installer out of CI that is not wired to somebody else's signing keys.
 
-#### What is actually in the way (surveyed 2026-09-11, nothing built yet)
+#### What is actually in the way (surveyed on this machine 2026-09-11, nothing built yet)
 
-1. **The desktop checkout is not forked.** `C:\dev\New folder\activitywatch` sits on
-   `ActivityWatch/activitywatch` `master`, not on a fork and not on `beta`. Its `aw-server-rust`
-   submodule points at **upstream** `ActivityWatch/aw-server-rust`, which has none of this work — no
-   `aw-combined`, no exclusions, no combined endpoint. This is exactly the *"if you need to change
-   another submodule, fork it"* the owner anticipated: fork `activitywatch`, branch `beta`, repoint
-   the submodule at the existing fork's `beta`, bump the pointer.
-2. **The `aw-webui` pointer is a second hop.** The desktop's web UI comes through `aw-server-rust`,
-   which is the same submodule-of-a-submodule shape aw-android already uses — so repointing
-   `aw-server-rust` should carry `aw-webui` with it. To be verified, not assumed.
-3. **Release CI is tied to the creator's accounts, not to self-hosted runners.** Every `runs-on` in
-   `release.yml` is a GitHub-hosted runner (`ubuntu-22.04`, `windows-latest`, `macos-latest`,
-   `macos-15-intel`), so the owner's worry does not land where they expected — but the *secrets*
-   do: code signing, macOS notarisation, the winget publish job and the artifact upload all expect
-   credentials a fork does not have. The Windows leg has to be reduced to *"build an installer and
-   attach it to the run"*, with the signing and publishing steps skipped on a fork rather than left
-   to fail.
-4. **Unknown: what the desktop actually shows.** The combined timeline is a Vue view served by
-   `aw-server-rust`, and the desktop bundles `aw-server-rust` — but whether the desktop's route
-   table, its Python `aw-server` alternative, and its settings storage all line up has never been
-   checked. **Measure before promising.**
+**The good news first.** ActivityWatch **v0.13.2** is running on this PC right now, and the installed
+build at `%LOCALAPPDATA%\Programs\ActivityWatch\` already ships **`aw-server-rust.exe`** and
+**`aw-sync.exe`** alongside the Python server. Nothing new has to be packaged. The Rust server is
+already there; it is simply not the one being run.
+
+1. **The desktop runs the *Python* server by default.** `aw-qt/aw_qt/config.py` ships
+   `autostart_modules = ["aw-server", "aw-watcher-afk", "aw-watcher-window"]` — `aw-server`, not
+   `aw-server-rust`. Everything from 3.x and 4.x lives in `aw-combined`, which is Rust. So none of it
+   can run on this PC until the Rust server is the one that starts. That is the single most important
+   fact in this entry, and it was not obvious from anything written down before.
+2. **There is real data in the Python server's database.** `peewee-sqlite.v2.db` is **2.9 MB** and has
+   been written continuously since **2026-08-28** (hostname `Judes-Desktop`, device id
+   `6ad08837-…`). Switching servers without a plan strands a fortnight of desktop history in a file
+   nothing reads any more. `aw-sync.exe` is already installed and is the obvious route, but this must
+   be **decided and tested before the switch, not after**. Nothing here may be destructive.
+3. **The desktop checkout is not forked.** `C:\dev\New folder\activitywatch` sits on
+   `ActivityWatch/activitywatch` `master`, not on a fork and not on `beta`, and its `aw-server-rust`
+   submodule points at **upstream** `ActivityWatch/aw-server-rust`, which has no `aw-combined`, no
+   exclusions and no combined endpoint. This is exactly the *"if you need to change another submodule,
+   fork it"* the owner anticipated: fork `activitywatch`, branch `beta`, repoint the submodule at the
+   owner's existing fork's `beta`, bump the pointer.
+4. **`aw-webui` is reached twice, by two different parents.** Both `aw-server/.gitmodules` (Python)
+   and `aw-server-rust/.gitmodules` declare an `aw-webui` submodule, each pointing at upstream.
+   Repointing `aw-server-rust` should carry the owner's `aw-webui` with it, the same
+   submodule-of-a-submodule shape aw-android already uses — to be verified, not assumed. The Python
+   server's copy can stay upstream, since it is about to stop being the one that runs.
+5. **Release CI is not tied to self-hosted runners — it is tied to the creator's *secrets*.** Every
+   `runs-on` in `release.yml` is GitHub-hosted (`ubuntu-22.04`, `windows-latest`, `macos-latest`,
+   `macos-15-intel`), so the owner's specific worry does not land where they expected. What *will*
+   fail on a fork is code signing, macOS notarisation, the winget publish job and the release upload,
+   all of which expect credentials a fork does not have. The Windows leg has to be reduced to *"build
+   an installer and attach it to the run"*, with signing and publishing skipped on a fork rather than
+   left to fail.
 
 #### Order of work
 
 1. Fork `activitywatch`, push `beta`, repoint `aw-server-rust` at the owner's fork, bump pointers.
-2. Build locally on this machine first — a green local build before a CI run, because CI on a fresh
-   fork is the slowest possible place to find a submodule mistake.
-3. Open the combined timeline on the PC against the PC's own data and see what is missing.
-4. Only then fix `release.yml` for a fork, run it, and install the resulting `.exe` here.
+2. Build **locally on this machine first**. A green local build before any CI run — a fresh fork's CI
+   is the slowest possible place to discover a submodule mistake.
+3. Run the freshly built `aw-server-rust` against a **copy** of the PC's data, on a spare port, and
+   open the combined timeline. See what is actually missing before changing anything the owner uses.
+4. Decide and test the migration off the Python server's database. Nothing destructive, and the
+   existing install stays working until the replacement is proven.
+5. Only then fix `release.yml` for a fork, run it, and install the resulting `.exe` here.
 
 **What has to happen first:** nothing — this is unblocked. It does not wait on the device check for
-4.5d/4.9, which can be reported on at any time.
+4.5d and 4.9, which can be reported on at any time.
 
 ## Phase 5 — Make the UI usable on a phone
 
