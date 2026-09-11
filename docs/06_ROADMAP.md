@@ -103,6 +103,19 @@
 > colliding. It reaches the server-side classifier as an ordinary rule with a priority nothing else
 > can reach — the first thing in the app to use `priority` at all.
 >
+> ⏳ **[4.4g](#44g--the-combined-days-barchart-from-segments-it-already-has--built-2026-09-11--not-yet-seen-on-a-device)
+> and [4.4h](#44h--show-android-what-it-actually-has-instead-of-nothing--built-2026-09-11--not-yet-seen-on-a-device)
+> are built (2026-09-11), neither seen on a device.** Both came out of the owner's two questions in
+> [4.4f](#44f--two-things-the-combined-day-does-not-show-and-why--owner-questions-2026-09-11).
+> **4.4g** draws the combined day's Timeline barchart by slicing the segments the day already
+> fetched onto hour boundaries — no extra request — and splits a segment that crosses an hour
+> rather than giving it to one side. The day strip above the tabs stays hidden: 4.4f was wrong that
+> the same slice could fill it, and the one-request alternative measured 13.3s and 4.2MB on the
+> phone against 0.4s for a single day. **4.4h** gives Android the one per-screen detail it actually
+> has — the Activity class, shown as **Top Screens** with the class path cleaned up — which also
+> needed a query fix, because the Android merge was collapsing every app to a single screen before
+> anything could show them.
+>
 > ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
 > measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
 > another no longer draws as three blocks: slivers under the owner's **15s** default join the stretch
@@ -2697,6 +2710,14 @@ below it. ⚠️ **It filters what the day's query returned, which is capped at 
 so a day with more distinct apps than that has a tail the box cannot reach. The cap is by duration,
 so what it cannot reach is the least-used end.
 
+**And a search box on the *categories*, which is what the owner actually meant (2026-09-11).**
+Picking the app was searchable; choosing what to file it under was a browser `<select>` — on a
+phone, a scroll wheel with no way to type, so finding one category among a few dozen meant scrolling
+past all of them. The select is now a button that opens a picker: a search box, the matching
+categories as rows, and *New category…* at the top. Matching is against the whole `Parent > Child`
+path, so typing a parent finds its children; substring and not a regex, for the same reason the app
+search is not.
+
 **Check:** `tsc` clean, lint clean, locale check passes, **366 tests pass** (42 suites) including a
 new `devices.test.node.ts` covering the extracted naming — that a signature never carries a nickname,
 that a raw uuid is never shown, that a heartbeat-split event does not become two identical radio
@@ -3020,7 +3041,7 @@ Android is a small change to a `v-if` and a label, and is **4.4h**.
 
 ---
 
-### 4.4g — The combined day's barchart and day strip, from segments it already has ⬜ ← *raised by 4.4f, 2026-09-11*
+### 4.4g — The combined day's barchart, from segments it already has ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
 
 Slice the combined response's segments onto sub-period boundaries client-side and fill
 `category.by_period` and the `periodusage` strip from them, rather than leaving both unavailable.
@@ -3039,9 +3060,41 @@ Two things to get right, both of which have bitten before:
 **Check:** the bars sum to the same figure the day's "Time active" shows, on a day with events from
 two devices; the axis reads `04` at the top of a 4am day.
 
+#### What was built
+
+`combinedByPeriod` in `util/combinedActivity.ts` slices the day's segments onto the same
+sub-periods the per-host category query uses, and `query_combined_full` calls it with the response
+it already has — **no extra request**. `timeline_barchart` is off `COMBINED_UNAVAILABLE_TYPES`, so
+the chart draws instead of saying "unavailable".
+
+Both traps are handled and tested: a segment crossing an hour boundary is **split proportionally**
+(09:50→10:10 puts ten minutes in each hour), and the split is proportional to the segment's own
+`seconds` rather than recomputed from the timestamps, so a segment's pieces add back up to exactly
+what the server said and the bars sum to the day's total. The period boundaries come from a new
+shared `subPeriodsOf` in the activity store — the *same* function the per-host query now uses, so
+the two cannot drift into bucketing a day differently, which is the class of bug **4.4d** was.
+
+#### ⚠️ The day strip is not part of this, and the reason 4.4f gave for it was wrong
+
+4.4f claimed the same slice would fill the `periodusage` strip. It cannot. That strip is **31
+neighbouring days**, not sub-periods of this one (`timeperiodsAroundTimeperiod`, ±15), and a day's
+segments say nothing about the days either side of it.
+
+Asking for all 31 days in **one** combined request was the obvious alternative, so it was measured
+on the phone (2026-09-11) rather than guessed at:
+
+| Window | Time | Bytes | Segments |
+|---|---|---|---|
+| 1 day | **0.41s** | 0.2 MB | 363 |
+| 31 days | **13.3s** | 4.2 MB | 8,335 |
+
+Thirteen seconds and four megabytes to draw a navigation strip, on every combined day load. It
+stays hidden, and `Activity.vue` now carries those numbers instead of the old "one request per day"
+guess.
+
 ---
 
-### 4.4h — Show Android what it actually has, instead of nothing ⬜ ← *raised by 4.4f, 2026-09-11*
+### 4.4h — Show Android what it actually has, instead of nothing ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
 
 The per-screen rows already come back on Android, merged by `["app", "classname"]`, and nothing
 renders them. The only panel that reads `classname` is `top_bundle_ids`, gated on iOS.
@@ -3065,12 +3118,36 @@ have more than one screen.** WhatsApp alone has seven, and they are not noise:
 That is eighteen minutes **on a call** sitting inside a WhatsApp total that currently says only
 "WhatsApp", and the app already has the rows. So the step stands.
 
+⚠️ **Correction: the app did *not* already have the rows.** That measurement was taken off the raw
+bucket, and the query the app actually runs throws them away. `canonicalEvents` merges Android
+events by `["app"]` alone before anything else sees them; `merge_events_by_keys` keeps the *first*
+event's other keys, so every app came out carrying exactly one classname, and the
+`["app", "classname"]` merge that fills `title_events` then had nothing left to split. Measured
+through the device's own query API, same day: **41 rows** after the `["app"]` merge, **67** when
+`classname` is merged on as well. So the panel needed a query fix, not just a `v-if`.
+
 ⚠️ **The raw value is not presentable.** `com.whatsapp.calling.ui.VoipActivityV2` is a class path,
 and a panel full of those is worse than no panel. It needs the package prefix dropped and the
 remainder split on camel case — *Voip Activity V2* — with the raw string kept for the rule editor,
 since a category rule written against a screen has to match what is stored. Deciding how much
 prettifying is safe is part of this step, not a detail of it: over-cleaning two different classes
 into the same display name would merge two rows that are not the same thing.
+
+#### What was built
+
+- **The query keeps the screen.** `canonicalEvents` merges Android events by
+  `["app", "classname"]` (iOS ScreenTime is untouched — it still merges on `title`). 41 rows
+  became 67 on the measured day.
+- **`top_bundle_ids` is offered on Android**, titled **Top Screens** there and still **Bundle IDs**
+  on iOS. It is in the default Android Summary view, next to Top Applications. `top_titles` stays
+  hidden on Android for the reason above: a title there *is* the app name.
+- **`util/screenNames.ts` cleans the label, and says where it stops.** Package prefix dropped,
+  camel case split, inner classes read as two names. Deliberately **not** stripped: the `Activity`
+  suffix, so `…Home` and `…HomeActivity` stay two names. Deliberately **not** cleaned at all: an
+  obfuscated class like `com.foo.a`, where a single letter tells the owner less than the path did.
+  Two apps that each have a `MainActivity` give two rows both reading *Main Activity* — they are
+  never merged (rows are per app, coloured by app), and the raw class path is on the row's hover
+  text, which is what a category rule has to match.
 
 ---
 
