@@ -3158,6 +3158,14 @@ into the same display name would merge two rows that are not the same thing.
 
 ---
 
+**Amended 2026-09-11 (4.5c), on the owner reading it:** *"can the top screen have the app before it?
+like youtube main activity"*. Rows are sorted by time across every app, so consecutive rows come from
+different apps, and half a dozen of them read "Main Activity" with nothing to say whose — the
+colour encodes the app, and a colour is not a name. A row is now `YouTube — Main Activity`
+([`screenRowName`](../../aw-server-rust/aw-webui/src/util/screenNames.ts)); an em dash, so the middle
+dot that separates a nested class stays distinguishable from it. The raw class path is still on the
+hover, which is what a category rule has to match.
+
 ### 4.4i — The combined day can carry the screen after all ✅ BUILT + MEASURED ON THE PHONE (2026-09-11) — ⚠️ not yet *looked at* on a device
 
 > *"why you can fix? we built the combined, can't we make it retain this?"* — owner, 2026-09-11,
@@ -3170,10 +3178,17 @@ data. It was a property of **our own JSON**: `combined_row` in `aw-server/src/co
 whole way through the pipeline.
 
 **And it can be carried exactly, not approximately.** The worry worth having was that one drawn
-block might span several screens, in which case any single value would be a lie. It cannot: ⑥
-[`coalesce`](../../aw-server-rust/aw-combined/src/coalesce.rs) glues two blocks together only when
-the winning slice's **whole `data` map** is equal, so the moment WhatsApp goes from its home screen
-to a call the block ends. One block, one screen, by construction.
+block might span several screens, in which case any single value would be a lie. At the time it
+could not: ⑥ [`coalesce`](../../aw-server-rust/aw-combined/src/coalesce.rs) glued two blocks
+together only when the winning slice's **whole `data` map** was equal, so the moment WhatsApp went
+from its home screen to a call the block ended. One block, one screen, by construction.
+
+> ⚠️ **Superseded by [4.5c](#45c--a-hole-of-a-few-milliseconds-is-not-a-gap), and the
+> exactness survives it.** That construction is precisely what made a single stretch of Photos draw
+> as four blocks, which the owner reported the same day. ⑥ now merges on the app, so a block
+> *may* span several screens — and carries `shares`, every screen inside it with the time it
+> held. `title_events` is summed from those, so the numbers are now exact **within** a block as well
+> as across blocks. Read this paragraph as the reason the shares exist, not as current behaviour.
 
 So the row now carries `detail`: the winner's own fields, minus the origin tag this crate adds.
 Whole rather than a hand-picked three keys — the combined track's standing shortcoming has been
@@ -3181,7 +3196,9 @@ that it says nothing finer than a name, and picking three keys today just moves 
 keys out.
 
 `combinedToActivity` builds `title_events` from `(label, classname)`, which is the same shape a
-per-device Android query produces, so the Top Screens panel needs no combined-specific branch.
+per-device Android query produces, so the Top Screens panel needs no combined-specific branch. Since
+4.5c the seconds are summed from each block's `shares` instead of from the one screen it names; a
+response without them falls back to `detail`, which is what a block carried before.
 `top_bundle_ids` comes off `COMBINED_UNAVAILABLE_TYPES`, and the panel appears on the combined day
 only when some device actually reported a screen — a combined day of desktop-only activity gets no
 panel rather than an empty one.
@@ -3425,7 +3442,232 @@ otherwise is the thing 4.2a was fixed to avoid. In that case the shattering is a
 rather than a pipeline one — how a fine mosaic is rendered at a whole-day zoom — and belongs
 somewhere else entirely.
 
-### 4.6 — Make something not count ⏳ *4.6a built 2026-09-11; 4.6b/4.6c not started*
+### 4.5c — A hole of a few milliseconds is not a gap ✅ BUILT + MEASURED ON THE PHONE (2026-09-11) — ⚠️ not yet *looked at* on a device
+
+> *"see how there are repeats even though they are after each other and are the same thing — why?"*
+> — the owner, reading 2026-09-11 08:14 onward on the phone
+
+The day they were looking at, as the server actually returned it:
+
+```text
+08:14:05.709  215.615s  Photos        HomeActivity
+08:17:41.324   11.079s  One UI Home   Launcher
+08:17:52.436    9.108s  Photos        HomeActivity              33ms hole before it
+08:18:01.558    4.226s  Photos        StoryViewActivity         14ms
+08:18:05.792    4.907s  Photos        HomeActivity               8ms
+08:18:11.233    1.570s  Photos        HomeActivity             534ms
+08:18:14.668    2.419s  One UI Home   Launcher
+08:18:18.095    2.164s  One UI Home   Launcher                1008ms
+08:18:20.272   77.760s  Photos        HomeActivity              13ms
+```
+
+**Three separate causes, none of which was smoothing being switched off.**
+
+#### 1. Blocks had to touch *exactly*, and watcher events do not
+
+⑥ `coalesce` merged on `prev.end == next.start`, and ⑦ `smooth` found a sliver's neighbours the same
+way. A watcher does not hand over a seamless day. Measured over the whole of 2026-09-10 on the
+phone, across the 364 gaps between adjacent blocks:
+
+| Hole between two adjacent blocks | Pairs | Total |
+|---|---|---|
+| exactly 0 | 196 | 0s |
+| under 50ms | 73 | 1.1s |
+| 50ms – 1s | 26 | 16.6s |
+| 1s – 2s | 8 | 10.6s |
+| 2s – 5s | 11 | 31.4s |
+| 5s – 15s | 7 | 65.9s |
+| over 15s | 43 | 9.4h |
+
+So 168 of 364 adjacent pairs never met exactly, and `==` called every one of them a gap.
+
+**What that did to ⑦ is the serious part.** A sliver whose neighbour is 33ms away had, as far as
+`prev_of`/`next_of` were concerned, **no neighbour at all** — so it could not be absorbed, by any
+rule, at any threshold. Asked for the same six minutes at `sliver=0`, `sliver=15` and `sliver=60`,
+the phone returned **byte-identical days**. The smoothing setting did nothing.
+
+> ⚠️ **This also means 4.5's own investigation above was misdiagnosed.** That section attributes 132
+> of 152 surviving slivers to **rule 5** — short, unbracketed, left literal. Most of them were not
+> rule 5. A sliver counts as "unbracketed" when the blocks on either side do not match, and a sliver
+> with a hole on one side has nothing on that side to match *with*, so it was classified as rule 5
+> when the truth was that it had no neighbours. The open question that section puts to the owner —
+> loosen rule 5, or loosen rule 1b — was therefore asked about the wrong 132 blocks. **Re-measure
+> before answering it.** Rule 1b's 20 stand; those were real.
+
+The fix is a tolerance, [`JITTER_GAP_MS`](../../aw-server-rust/aw-combined/src/lib.rs) = **2
+seconds**, and the number is evidence rather than taste: the measured holes fall into two clearly
+separated populations — jitter from 0ms to 1.9s, and real absences starting at 8 seconds — with
+**nothing at all between 2 and 5 seconds**. Two seconds catches the whole jitter population,
+including the 1.008s hole between the two One UI Home blocks the owner pointed at, and stays under
+the 5s noise floor, so a bridged hole can never be longer than a stretch the pipeline would have been
+willing to call a block of its own.
+
+**Bridging is a drawing decision and is never allowed to become a counting one.** A merged block's
+span now covers time no watcher recorded, so those milliseconds are accumulated in
+`Segment::bridged_ms` and subtracted back out by `Segment::counted_span()`, which is what every total
+reads — the day's `combined_seconds`, each block's `seconds`, and therefore every figure derived from
+them. Over the measured day the whole correction is **60 seconds out of 43,969**, and the invariant is
+tested directly: *the day counts exactly what the watcher recorded, at every threshold*.
+
+#### 2. One app was four blocks because the *screen* changed
+
+⑥ also required the winning activity's whole `data` map to be equal. On Android that map holds
+`classname`, so `Photos/HomeActivity` and `Photos/StoryViewActivity` were different things and the
+block ended between them. On a desktop the same test means the window *title*, with the same effect.
+
+That exactness was deliberate, and [4.4i](#44i--the-combined-day-can-carry-the-screen-after-all)
+leaned on it: *"a block cannot span two screens"* is what made the combined day's per-screen numbers
+exact. It was also the wrong trade. The day view's job is to show what the owner did, and they used
+Photos once.
+
+⑥ now merges on the activity's **label** — one app on one device is one block, however many of its
+own screens it went through — and the detail moves into `Segment::foreground_shares`: every distinct
+activity inside the block with the milliseconds it held, longest first. The invariant is that a
+block's shares sum to exactly its counted time.
+
+**4.4i's accuracy is not spent by this, it is improved.** The shares reach the web view as each
+block's `shares` array and `title_events` is summed from them, so a screen's total is now exact
+*within* a block as well as across blocks — where before, a block was one screen by construction and
+that construction was what shattered the day.
+
+#### 3. Went-and-came-back only looked one block to each side
+
+The owner's other example: *"the smoothing should take youtube, photos, gallery, then youtube — if
+photos and gallery are less than the smoothing then take them"*. Rule 3 compared a sliver's two
+immediate neighbours, so in `YouTube, Photos, Gallery, YouTube` neither sliver was bracketed by a
+matching pair and both fell through to rule 5. The bracket is the evidence that the stretch was
+really one stretch, and it is no weaker for the detour having touched two apps.
+
+Rule 3 now looks **outward past a whole run** of sub-threshold blocks for the nearest real block on
+each side. Each hop still honours contiguity and rule 1b, so a run may not be crossed over a real gap
+or over somebody's decision.
+
+And rule **3b**: the run is peeled from its **ends**, never from the middle. A sliver with slivers on
+both sides waits until an anchor reaches it. Without that, `A, b1, b2, b3, A` could absorb `b2` into
+`b1`, and `b1+b2` might then be over the threshold — leaving `A, b1(24s), A`, a block of an app the
+day never had for that long. Peeling means every piece of the run lands in an anchor, and since both
+anchors carry the same label by definition, which one it lands in says the same thing about the day.
+
+#### What the owner asked that this answers directly
+
+| Question | Answer |
+|---|---|
+| *"one ui home — should this be taken into the photos or is it more than 15s?"* | 11.079s, so **under** the threshold, and bracketed by Photos on both sides. It should have been absorbed and was not, for cause 1. It is now. |
+| *"maybe you should show the s on the details, right now it only shows the m"* | The detail panel answers to the second. `0m` for an eleven-second block was not a rounding error so much as a refusal to answer. Day *totals* still round to the minute, because a total has no business claiming a seconds figure. |
+| *"see how there are repeats"* | Causes 1 and 2. A block that genuinely does cover several screens now lists them in the detail panel, with the time each held. |
+
+#### Measured on the S25U, 2026-09-11, after installing
+
+The whole point of installing before writing this up: **both of the following were found by measuring
+and neither by the tests**, and both needed a second build.
+
+##### Bug 1 — the threshold was not monotone
+
+The first version of the run-bracket walked outward to the first block that is **not** a sliver. That
+makes *what counts as an anchor* depend on the threshold, so 2026-09-10 came back as:
+
+| Threshold | Blocks |
+|---|---|
+| 15s | 282 |
+| 60s | **290** |
+
+`A(20s), b(10s), A(20s)` has two `A` anchors at 15s and **none** at 60s, where both `A`s are
+themselves slivers and the walk goes straight past them looking for something bigger. Raising the
+number made the day more shattered — the one property this module is not allowed to lose (rule 7).
+
+Replaced with *"any activity appearing on **both** sides of the sliver with nothing but slivers in
+between"*, which grows monotonically with the threshold by construction. Rule 3b became a constraint
+on the **target** rather than on which sliver may move: under rule 3 a sliver may only join a
+neighbour carrying the bracket's own activity, so a run still fills from its ends inward instead of
+building a 24s block of an app the day never had.
+
+##### Bug 2 — smoothing moved 28 seconds across the not-counted line
+
+The owner has a live `Phone UI` → `One UI Home` exclusion (4.6a) on the phone. A block a *rule*
+emptied carries `ignored` with **no `resolved_by` at all** — the owner answered no question about it —
+so `joinable`, which compared only decision ids, read it as freely joinable with any settled block
+beside it. Exact equality on contiguity had been hiding that; once holes stopped being gaps, a counted
+sliver went into an excluded block and the reverse, and the day's total gained **28 seconds** that
+belonged to the not-counted total. `joinable` now compares `ignored` and `not_counted` too.
+**Smoothing is a drawing transform and may never move a second between counting and not counting.**
+
+##### After both fixes, on the same day
+
+| Threshold | Blocks | Counted | Not counted | Recorded |
+|---|---|---|---|---|
+| 0s | 359 | 43,957s | 8,472.3s | 52,429.8s |
+| 5s | 358 | 43,957s | 8,472.3s | 52,429.8s |
+| 15s | **348** | 43,957s | 8,472.3s | 52,429.8s |
+| 30s | 346 | 43,957s | 8,472.3s | 52,429.8s |
+| 60s | 343 | 43,957s | 8,472.3s | 52,429.8s |
+| 300s | 343 | 43,957s | 8,472.3s | 52,429.8s |
+
+- **Monotone**, at every step.
+- **Every column but the first is constant.** The threshold changes how the day is *drawn* and
+  nothing else — not what counts, not what is excluded, not the total recorded.
+- `recorded` of 52,429.8s is the same figure the *old* build reported as its sum of block spans
+  (52,429.828s). Nothing was invented and nothing was lost by the coarser blocks.
+- Blocks at 15s: **365 → 348**, and adjacent same-label pairs **195 → 149** (108 of them within 2s).
+
+##### What is left, and why none of it is this bug
+
+Of the 108 remaining same-label pairs that sit within 2s of each other and still do not merge:
+
+| Held apart by | Pairs |
+|---|---|
+| a different `resolved_by` — one is settled by a decision, its neighbour is not | ~94 |
+| a different winning `device` | ~44 |
+| `absorbed_short_contention` — a brief overlap demoted by the 60s floor | ~34 |
+
+(They overlap; each pair differs by more than one.) Every one is a distinction ⑥ is **documented to
+keep**, and `excluded_labels` never appears as the sole difference, so adding it to the merge test in
+this step splits nothing on its own. On a two-device day with 62 answered overlaps, 348 blocks is what
+the day genuinely is.
+
+##### The owner's own window, 08:14–08:20, before and after
+
+**13 rows → 8.** Reading the new eight:
+
+```text
+08:14:00  5.0s   One UI Home   not counted
+08:14:05  215.0s Photos        HomeActivity 215.6s
+08:17:41  11.0s  One UI Home   not counted
+08:17:52  17.0s  Photos        HomeActivity 12.8s · StoryViewActivity 4.2s
+08:18:09  1.0s   One UI Home   not counted
+08:18:11  1.0s   Photos        HomeActivity 1.6s
+08:18:14  4.0s   One UI Home   not counted
+08:18:20  99.0s  Photos        HomeActivity 96.0s · ManualPeopleTaggingActivity 3.1s
+```
+
+- *"photos then photos then photos then photos"* → **one** 17s block, naming both screens inside it.
+- *"one ui home then one ui home"* (the two 2s blocks 1.008s apart) → **one** 4s block.
+- The 11s One UI Home is **still its own block**, and now for a reason rather than a bug: the owner's
+  own `Phone UI` rule excludes it, and smoothing may not fold excluded time into a block that counts.
+
+> ### ❓ Open question this measurement raises — for the owner
+>
+> **The owner's two wishes pull against each other, and the day above is the evidence.** *"Do not
+> count One UI Home"* plus *"excluded time is drawn, but muted"* (both their own answers, 4.6a) means
+> every launcher visit stays on screen as a muted block — and because it stays, the Photos stretch on
+> either side of it cannot be one block. Four of the eight rows above are muted launcher slivers.
+>
+> A third option exists and is not built: **let an excluded sliver be absorbed for *drawing* while its
+> seconds still count toward nothing.** The absorbed time would be tracked apart from the block's own
+> (the block would say *"4s of One UI Home, not counted"*), so no total changes and the day reads as
+> one stretch of Photos. It is strictly more machinery, and it is the owner's call, because it trades
+> *"I can see exactly what I excluded"* for *"the day reads as what I did"*. Ask before building.
+
+#### Tests
+
+[`aw-combined/tests/jitter.rs`](../../aw-server-rust/aw-combined/tests/jitter.rs), 16 tests, driven
+through the whole public pipeline as events with millisecond-accurate holes — which is the point:
+**every existing test in the crate built its segments so that they met exactly**, which is exactly
+why 59 passing tests never noticed that ⑦ was inert. One of them replays the owner's own nine events
+from 08:14 verbatim and asserts the whole stretch comes back as one block of Photos; six more were
+added after the first install, each shaped by what the real day actually did — the anchors-are-short
+monotonicity case, a day where *every* block is short, and the not-counted boundary.
+
+### 4.6 — Make something not count ✅ ALL THREE BUILT 2026-09-11
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
 
 **Partly, and only in one place.** The resolution sheet's third option — *"Neither — I was away /
@@ -3494,8 +3736,8 @@ matches stops counting. Reasons, in order of weight:
 | | What | State |
 |---|---|---|
 | **4.6a** | The rule itself, honoured by every total on every screen | ✅ built 2026-09-11 |
-| **4.6b** | A list of what is being excluded, with how much time each rule is eating, and undo | ⬜ |
-| **4.6c** | Tap **any** block — not just a shaded one — and answer *"this counts as nothing"* | ⬜ |
+| **4.6b** | A list of what is being excluded, with how much time each rule is eating, and undo | ✅ built 2026-09-11 |
+| **4.6c** | Tap **any** block — not just a shaded one — and answer *"this counts as nothing"* | ✅ built 2026-09-11 |
 
 4.6c is the "I tap something and it doesn't count" half, which the owner was explicit is **not**
 what they were asking for here: *"not just that I tap something and it doesn't count"*. It is still
@@ -3565,6 +3807,73 @@ truncate-once-vs-truncate-per-block difference **4.5b** already documented, not 
 
 ⚠️ **Nobody has looked at a screen.** The numbers are right; whether the panel and the muted blocks
 *read* right is the part still outstanding.
+
+### 4.6b — What is being excluded, and one tap to stop ✅ BUILT (2026-09-11)
+
+4.6a worked, and in working made itself invisible. An excluded app is missing from the day's total,
+from its app list, from its category breakdown and from its active time — which is exactly the point,
+and which also means nothing on the page can say how much went missing or why. The roadmap's own
+reason for this step is the one that matters: *an exclusion the owner cannot see is one they will
+eventually forget and mistrust the totals over.*
+
+**Where it lives.** A collapsed panel in **Activity**, under the uncategorised-apps panel, offered
+only when at least one category carries the flag:
+[`NotCountedPanel.vue`](../../aw-server-rust/aw-webui/src/components/NotCountedPanel.vue). Same place
+for the combined day and for a per-device page, because 4.6a's whole point was that *everywhere*
+means everywhere.
+
+**Three things, deliberately no more:** which rules are on, how much each ate in the period on
+screen, and one tap to stop. A category's rule, colour and children belong to the categorisation
+editor and are one link away.
+
+#### The figure, and the two ways of getting it
+
+| Page | How | Cost |
+|---|---|---|
+| Combined day | Summed from the `not_counted` blocks the response already carries — they are drawn muted, so the data is in hand | **none** |
+| Per-device (Android or desktop) | `notCountedQuery` — the same `canonicalEvents` pipeline with `filter_categories` set to the exclusion list and the exclusion itself left off | one query, and only when there is a rule to ask about |
+
+The per-device query asks the **inverse** of the day's own question rather than a new one, which is
+what stops the two answers drifting: whatever the day dropped is what this counts. A page with no
+exclusions pays nothing at all, and a page that could not work it out says *"not measured on this
+page"* rather than *"0m"* — which would read as a claim that the rules are eating nothing.
+
+#### Two judgment calls
+
+- **Only the categories carrying the flag are listed, not the descendants that inherit it.** Ticking
+  `Social` excludes `Social > Reddit` too, and listing both would read as two rules to revoke when
+  there is one. The *time* is summed over the descendants all the same, because that is what the rule
+  is eating.
+- **"Count it again" unticks, it does not delete.** The category, its regex and its colour are all
+  still wanted; only the *not counting* is being revoked. The key is removed rather than set to
+  `false`, so a category that never counted differently carries no key at all — the same shape 4.6a
+  writes, and one less thing in the synced settings.
+
+Time the owner answered *"I was away"* about is **not** in this list, and neither is time an excluded
+app merely competed for. The first is a decision with its own undo in 4.3; the second still counts —
+the launcher simply stopped being a competitor for it — so showing it here would claim a rule is
+eating time that is in the total.
+
+### 4.6c — Any block can count as nothing ✅ BUILT (2026-09-11)
+
+The second row of 4.6's table, and the half the owner was explicit they were *not* asking for when
+they asked for 4.6: *"not just that I tap something and it doesn't count"*. Still worth having.
+
+The resolution sheet only ever opened on a **contended** block, so on a day where one device was
+awake throughout there was no action on any block at all — no way to say that an hour of it was
+nothing. The detail panel now offers **Doesn't count** on any block, on the peek row on a phone and
+as its own section on a wide screen.
+
+**`scope: once`, deliberately.** `always` would turn one tap into a standing rule keyed on whatever
+happened to be running, and the owner already ruled that a standing rule is a *category* rule (4.6a).
+This is the other half: one stretch, this stretch.
+
+It writes the same `ignore` record the sheet's third option writes, with the same R14 signature shape,
+so nothing downstream needs a second case — and **R11 holds**: the stored events are untouched, the
+per-device tracks below keep showing the time exactly as recorded, and 4.3's existing tombstone undo
+takes it straight back. The button hides itself once the block already counts toward nothing, because
+`Undo` is then the action it wants, and a rule-excluded block is not this block's to change — the rule
+covers every other block it matches too.
 
 ### 4.7 — One palette ✅ VERIFIED ON BOTH DEVICES AND APPLIED 2026-09-10
 
@@ -3699,20 +4008,80 @@ the new Activity tab has to make the same choice.
 
 ---
 
-### 4.8 — Editing an event, in Activity and in Combined ⬜ ← *owner thought, 2026-09-11*
+### 4.8 — Editing an event, in Activity and in Combined ⬜ ← *owner thought 2026-09-11; design proposed, needs a decision*
 
 > *"what about being able to edit events in the combined and the activity, just a thought"*
+> …and, asked to propose something: *"4.8 I don't know, I want you to suggest a way"*
 
-Recorded, not scoped, and **not obviously compatible with R11**, which is the reason it needs
-thinking about rather than building. Every correction the app offers so far is *data about* an
-event — a decision, a relabel, an exclusion — and never a change to the event itself. That is what
-makes every one of them undoable and what lets two devices reach the same day from the same events.
+#### The constraint that shapes the whole answer
 
-An edit that rewrote a watcher's event would break both. An edit expressed as **another decision**
-— "this stretch was actually X" — would not, and `outcome: relabel` is already exactly that for the
-combined track. So the likely shape of this is *"extend relabel to the per-device Activity view and
-give it a way in from a row"*, not *"make events writable"*. Wants the owner's own words on what
-they were picturing before it is scoped.
+Every correction the app offers today is *data about* an event — a decision, a relabel, an exclusion —
+and never a change to the event itself. That is not fussiness. It is what makes all of them undoable,
+and it is what lets two devices reach the same day from the same events (**R11**, **R18**). A watcher
+is also still running: an edit written into a bucket can be overwritten by the next heartbeat that
+merges into it, and a synced copy of the original is sitting on the other device waiting to come back.
+
+So *"make events writable"* is not the shape of this. **"Say something about a stretch of time, and
+let every screen honour it"** is, and the app already has that mechanism working end to end.
+
+#### The proposal: one more outcome, and a way in from a row
+
+Three pieces, smallest first. **Each is independently useful — do them in order and stop whenever it
+is enough.**
+
+##### 4.8a — Relabel from the Combined timeline without going through the overlap sheet
+
+`outcome: relabel` already exists and already works: it replaces what a stretch is *called* while
+leaving whose time it was alone. It is only reachable from the resolution sheet, which only opens on a
+contended block — the same trap 4.6c just got out of.
+
+Add **Call it something else** next to 4.6c's **Doesn't count**, on any block: a text field, one
+`scope: once` decision, undo already built. Perhaps a day of work, no new concepts, no new records, and
+it covers the common case — *"that hour was really me reading, not Chrome"*.
+
+##### 4.8b — Split a block
+
+The one thing no decision can express today. *"This two-hour Firefox block was an hour of work and then
+an hour of nothing."* A decision covers a window, so the honest form is **two decisions over two
+windows**, cut at a time the owner picks — which needs a boundary-picking control on the detail panel
+and nothing else new. Drag the block's edge, or tap to set the cut at the playhead.
+
+Worth doing only if the owner actually wants it; it is the most UI for the least mechanism.
+
+##### 4.8c — The same edit affordance on the per-device Activity rows
+
+This is the half that is **genuinely harder, and where the real decision lies.** The per-device track is
+defined as unmodified stored truth (**R11**) — it is the thing you compare *against* when the combined
+day looks wrong. Two incompatible readings of the owner's request:
+
+| Reading | What it means | Cost |
+|---|---|---|
+| **Relabel reaches per-device views too** | The decision layer is drawn over the per-device rows as well, so a relabelled stretch reads the same everywhere | The per-device view stops being a raw mirror of the bucket, and there is no longer any screen that shows what the watcher actually said |
+| **Per-device stays raw; edits live only in the combined track** | One screen always tells the unvarnished truth | The owner sees their own correction in one place and not the other, which will read as a bug |
+
+⚠️ **A third option, and probably the right one:** keep the per-device rows raw, but give them a
+**visible marker** where a decision covers them — a small badge saying *"you called this X"* that links
+to the combined block. Nothing is rewritten, nothing is hidden, and the two screens stop disagreeing
+silently.
+
+#### What is explicitly not proposed
+
+- **Writing to a watcher's bucket.** Loses R11, loses R18, and loses to the next heartbeat anyway.
+- **Deleting events.** Everything the owner has asked for so far — *"make it not count"* — is
+  satisfied by 4.6 without deleting anything, and 4.6a's *"nothing is deleted, untick it and the time
+  comes back"* is a promise worth keeping.
+- **A second rule language.** Whatever this becomes, it is a `decision` record, for the reason 4.6a
+  chose category rules: one matcher means one answer, and two would eventually disagree about the same
+  day (4.4d).
+
+#### The decision needed before any of it is built
+
+1. Is **4.8a** (relabel any block, from the timeline) what *"edit events"* meant? If yes, it is small and
+   can go next.
+2. Is **4.8b** (split a block) wanted at all, or is a wrong boundary something to live with?
+3. For **4.8c**, which of the three readings above — reaches per-device, stays combined-only, or the
+   badge?
+
 
 ## Phase 5 — Make the UI usable on a phone
 
