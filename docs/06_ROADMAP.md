@@ -2774,9 +2774,17 @@ pushes again and asserts the staged copy picked the correction up while keeping 
 its event and its lack of `$aw.sync.origin`; the other asserts a pulled bucket keeps its origin stamp
 across repeated pulls, since the refresh must not undo what the pull path stamps.
 
-⚠️ **Nothing has been verified on a device.** The symptom this fixes is already invisible thanks to
-4.4b's rule, so what wants checking is that a rename now propagates — see the test instructions for
-the step that installs this.
+✅ **Verified on the phone (2026-09-11)**, against the app's own API rather than a screenshot. A
+scratch bucket was created with the exact UUID hostname 4.4b found (`7b54cfe9-…`) and one event in
+it, then `PUT /api/0/buckets/test-44c-scratch` corrected the hostname to `jude_s_s25_ultra` and
+added a `device_id`. Reading it back: **hostname corrected, `created` byte-identical, the event
+still there.** The guards answer correctly too — a PUT to a bucket that does not exist returns
+**404** rather than silently creating one, and a hostname with a space in it returns **400**. The
+scratch bucket was deleted afterwards; **no real bucket was touched.**
+
+⚠️ **What this does not yet prove** is the end of the chain: that a corrected name *propagates to
+the peer* on the next sync. That needs both devices to sync and is the one part of this step still
+waiting on a real cycle.
 
 ⚠️ **Do not "fix" this by editing the staged databases in the Syncthing folder by hand.** Same family
 of hazard as D25/D26: those files are replicated, and a partial write propagates.
