@@ -3667,6 +3667,101 @@ from 08:14 verbatim and asserts the whole stretch comes back as one block of Pho
 added after the first install, each shaped by what the real day actually did — the anchors-are-short
 monotonicity case, a day where *every* block is short, and the not-counted boundary.
 
+### 4.5d — Counting and smoothing are different questions ✅ BUILT (2026-09-11) — ⚠️ not yet *looked at*
+
+> *"here I did not mean because it is HomeUI, I meant the Photos should be one block because of the
+> smoothing. Whether it is counted or not counted has nothing to do with the smoothing."*
+
+4.5c ended by putting a design tension to the owner as an open question: their *"do not count One UI
+Home"* rule and their *"excluded time is drawn but muted"* rule together stop a stretch of Photos
+drawing as one block, because the launcher sliver between two halves of it is excluded and 4.5c
+forbade smoothing across that line. The question offered a third option — absorb the sliver for
+**drawing** while its seconds still count toward nothing.
+
+The owner's answer rejects the framing rather than picking an option. Smoothing is a question about
+**what the day looked like**; counting is a question about **what the totals say**. They are not the
+same question, and one has no business constraining the other.
+
+#### Why 4.5c tied them together, and why that was a real problem
+
+An earlier version of this moved **28 seconds** of the owner's real day out of the not-counted total
+and into the day's. The cause: a block a *rule* emptied carries `ignored` with no `resolved_by`, so a
+check that compared decision ids alone read it as freely joinable with the counted block beside it,
+and once the sliver was absorbed its seconds were absorbed too. The fix at the time was to forbid the
+join. That kept every total honest and made the drawing wrong.
+
+#### The fix: the verdict travels with the seconds, not with the block
+
+`ForegroundShare` — the per-activity breakdown 4.5c introduced so a block could span several screens
+of one app — gains a `not_counted` flag. `Segment::counted_span` stops being *"span minus bridged"*
+and becomes *"the sum of the shares that count"*, with `uncounted_span` as its mirror. The two plus
+`bridged_ms` always add back up to the drawn span, so nothing can go missing in either direction.
+
+With that in place, `joinable` no longer compares `ignored` or `not_counted` at all — it is back to
+asking only what it should ask, which is whether two blocks were settled the same way. Absorption
+puts a sliver of the **same** verdict into the block's own share (as before, so the per-screen panel
+does not fill with foreign screens) and a sliver of a **different** verdict into a share of its own,
+carrying its own flag.
+
+The result is both halves at once: a stretch of Photos broken by a two-second launcher visit draws as
+**one stretch of Photos**, and those two seconds are in none of its totals. The block's detail panel
+says so in as many words — *"2s of One UI Home is drawn inside this block and left out of every
+total"* — and the share is struck through in the Screens list. An exclusion the owner set can never
+become invisible by being smoothed.
+
+#### Totals stopped being a per-block question
+
+`combined_seconds` used to filter out `ignored` blocks and then sum. That is now wrong in both
+directions — a counted block can hold excluded time, and an excluded block can hold counted time — so
+the filter is gone and `counted_span` does the whole job. The web UI's exclusions panel had the same
+bug in reverse: it summed `s.seconds` over `not_counted` blocks, and `s.seconds` is *only the counted
+part*, so after this change every exclusion would have reported as eating **zero**. It sums the
+shares now.
+
+An `excluded_seconds` figure joins the response, because 4.6b's panel could otherwise only ever say
+*"not measured on this page"* in the one view that actually draws the excluded blocks.
+
+#### What this does not do
+
+It does not smooth a **gap**. See 4.5e — the two are easy to confuse and the answer is different.
+
+### 4.5e — Two Good Lock blocks, eighteen seconds apart ✅ ANSWERED BY MEASUREMENT (2026-09-11) ← *owner question*
+
+> *"at 08:04 - 08:05 Good Lock for 7s, after it 08:05 2s is a second event. Should they be the same
+> event?"*
+
+**No** — and the phone can prove it rather than being reasoned about. Read off `aw-watcher-android`
+for 2026-09-11:
+
+| when | what |
+|---|---|
+| `06:04:53.834 +7.298s` | Good Lock |
+| *(nothing at all for 17.773s)* | |
+| `06:05:18.905 +2.684s` | Good Lock |
+
+and in `aw-watcher-android-unlock`, one event: **`06:05:18.933`**.
+
+The phone was **locked**. The screen went off with Good Lock in front, stayed off for eighteen
+seconds, and was unlocked with Good Lock still in front. Two visits to the same app with a locked
+phone between them are two visits, and joining them would credit eighteen seconds of a dark screen to
+an app.
+
+This is the line between 4.5c and this entry, and it is worth stating plainly, because the two look
+identical on screen:
+
+- **A hole of up to 2 seconds** is the watcher blinking — a transition animation, a write landing
+  late. Measured on the owner's day, holes are bimodal: jitter up to 1.9s, real absences from 8s,
+  nothing in between. 4.5c draws over these and never counts them.
+- **A hole of eighteen seconds** is the phone not being used. Nothing draws over it.
+
+#### What is still missing, and should be built
+
+The timeline draws that eighteen seconds as *blank*, which is indistinguishable from *"the watcher
+missed something"*. The phone knows better: the gap is bracketed by an unlock event, so it can be
+named. A gap that ends in an unlock is **the phone being locked**, and saying so would turn "why are
+there two Good Locks?" into an obvious story. `os.lockscreen.unlocks` is already synced between
+devices. **Not built — proposed.**
+
 ### 4.6 — Make something not count ✅ ALL THREE BUILT 2026-09-11
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
 
@@ -4030,7 +4125,73 @@ the new Activity tab has to make the same choice.
 
 ---
 
-### 4.8 — Editing an event, in Activity and in Combined ⬜ ← *owner thought 2026-09-11; design proposed, needs a decision*
+### 4.9 — Three things the owner found by looking ✅ BUILT (2026-09-11) — ⚠️ not yet *looked at*
+
+None of these were in the roadmap. All three came from using the thing on a phone, which is the only
+place they could have come from.
+
+#### 4.9a — Zoom in far enough to see a two-second block
+
+> *"also allow me to zoom in the timeline more"*
+
+The ceiling was **480 px/hour** — eight pixels to the minute — set on the reasoning that a minute wide
+enough to read is as far as anyone needs to go. That reasoning was about reading a day's *shape* and
+ignored the other job entirely. At 480, the two-second Good Lock block in 4.5e is **a seventh of a
+pixel**: the exact block the owner went looking for could not be examined at any zoom the timeline
+offered.
+
+The ceiling is now **7200 px/hour** — two pixels to the second — which makes a one-second block
+visible and a two-second block tappable. Two new presets, **Minutes** (900) and **Seconds** (3600),
+sit an order of magnitude above the old three, because the useful zooms are not evenly spaced.
+
+#### 4.9b — The sunburst had no way back, and its labels could not be read
+
+> *"touching a category in the sunburst, I have to change tabs for it to return to normal. Also the
+> text is somewhat unreadable."*
+
+Two separate faults in one small component.
+
+**No way back.** Tapping a slice zooms the chart into it (`zoomOnClick`). On a desktop you find your
+way out by hovering the breadcrumb trail — which this view renders commented out — or by clicking the
+centre, which does not take a tap. So the chart stayed zoomed until the whole view was torn down,
+which is exactly what switching tabs and back does. There is now a **Back to all** button, shown only
+while zoomed, translated in all six locales.
+
+**Unreadable labels.** The library ships `font-size: 8px` for every arc label, painted in a single
+flat fill over arcs ranging from pale yellow to dark blue. Eight pixels is below what most people can
+read at all, and one flat colour cannot contrast with both ends of that range. Labels are now 10-13px
+by depth, white, with a dark halo behind the glyph (`paint-order: stroke fill`), which reads on every
+arc colour in both themes. The centre overlay was a fixed 300px box on a chart narrower than that, so
+a long category name ran off both sides of it; it is responsive now.
+
+#### 4.9c — *"What is this?"* — the exclusions panel, found
+
+> *"what is this? the exclusions panel and its 'count it again'"*
+
+A fair question, because it was mounted only on the per-device **Activity** page — never on the
+combined day, which is the view that actually *draws* the excluded blocks and the one the owner
+lives in.
+
+The combined day's summary strip gains an **excluded** stat whenever a rule ate anything, and tapping
+it opens 4.6b's panel in place, with the same one-tap **Count it again**. The panel now accepts
+measured figures from its caller, so on the combined day it shows real per-category seconds instead of
+*"not measured on this page"*.
+
+For the record, since the question was asked directly: the panel lists every category carrying a
+*"do not count time in this category"* rule, how much time that rule ate in the period on screen, and
+a button that unticks the rule — leaving the category, its regex and its colour alone, so the time
+comes straight back. It exists because 4.6a made exclusion work and, in doing so, made it invisible:
+an exclusion the owner cannot see is one they will eventually forget and mistrust the totals over.
+
+### 4.8 — Editing an event, in Activity and in Combined ⏸ DEFERRED by the owner 2026-09-11
+
+> *"and forget 4.8, defer it, because making the app work on PC as well as it does now is more
+> important."*
+
+The design below stands and needs no rework — it is parked, not withdrawn. Its three questions are
+still unanswered and should be asked again when it is picked back up. **4.10 comes first.**
+
+#### 4.8's design, parked
 
 > *"what about being able to edit events in the combined and the activity, just a thought"*
 > …and, asked to propose something: *"4.8 I don't know, I want you to suggest a way"*
@@ -4104,6 +4265,53 @@ silently.
 3. For **4.8c**, which of the three readings above — reaches per-device, stays combined-only, or the
    badge?
 
+
+### 4.10 — Make it work on the PC ⬜ ← *owner-requested 2026-09-11; **this is the next step***
+
+> *"making the app work on PC as well as it does now is more important — you can download it if you
+> want. If you need to change another submodule for this to work, fork it and publish things on the
+> beta. If the update exe is built using GitHub Actions, make sure they work — the default actions
+> are tied to the creator's servers, not the Ubuntu default ones."*
+
+Everything from 3.x and 4.x — the combined pipeline, contention, decisions, exclusions, smoothing,
+the whole combined timeline — lives in **`aw-server-rust`** and **`aw-webui`**, both of which the
+desktop app also ships. Nothing in any of it is Android-specific by design. So this is not a port; it
+is a matter of getting the desktop build to use the owner's forks instead of upstream, and getting a
+Windows installer out of CI that is not wired to somebody else's signing keys.
+
+#### What is actually in the way (surveyed 2026-09-11, nothing built yet)
+
+1. **The desktop checkout is not forked.** `C:\dev\New folder\activitywatch` sits on
+   `ActivityWatch/activitywatch` `master`, not on a fork and not on `beta`. Its `aw-server-rust`
+   submodule points at **upstream** `ActivityWatch/aw-server-rust`, which has none of this work — no
+   `aw-combined`, no exclusions, no combined endpoint. This is exactly the *"if you need to change
+   another submodule, fork it"* the owner anticipated: fork `activitywatch`, branch `beta`, repoint
+   the submodule at the existing fork's `beta`, bump the pointer.
+2. **The `aw-webui` pointer is a second hop.** The desktop's web UI comes through `aw-server-rust`,
+   which is the same submodule-of-a-submodule shape aw-android already uses — so repointing
+   `aw-server-rust` should carry `aw-webui` with it. To be verified, not assumed.
+3. **Release CI is tied to the creator's accounts, not to self-hosted runners.** Every `runs-on` in
+   `release.yml` is a GitHub-hosted runner (`ubuntu-22.04`, `windows-latest`, `macos-latest`,
+   `macos-15-intel`), so the owner's worry does not land where they expected — but the *secrets*
+   do: code signing, macOS notarisation, the winget publish job and the artifact upload all expect
+   credentials a fork does not have. The Windows leg has to be reduced to *"build an installer and
+   attach it to the run"*, with the signing and publishing steps skipped on a fork rather than left
+   to fail.
+4. **Unknown: what the desktop actually shows.** The combined timeline is a Vue view served by
+   `aw-server-rust`, and the desktop bundles `aw-server-rust` — but whether the desktop's route
+   table, its Python `aw-server` alternative, and its settings storage all line up has never been
+   checked. **Measure before promising.**
+
+#### Order of work
+
+1. Fork `activitywatch`, push `beta`, repoint `aw-server-rust` at the owner's fork, bump pointers.
+2. Build locally on this machine first — a green local build before a CI run, because CI on a fresh
+   fork is the slowest possible place to find a submodule mistake.
+3. Open the combined timeline on the PC against the PC's own data and see what is missing.
+4. Only then fix `release.yml` for a fork, run it, and install the resulting `.exe` here.
+
+**What has to happen first:** nothing — this is unblocked. It does not wait on the device check for
+4.5d/4.9, which can be reported on at any time.
 
 ## Phase 5 — Make the UI usable on a phone
 
