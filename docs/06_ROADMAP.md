@@ -3374,7 +3374,7 @@ otherwise is the thing 4.2a was fixed to avoid. In that case the shattering is a
 rather than a pipeline one — how a fine mosaic is rendered at a whole-day zoom — and belongs
 somewhere else entirely.
 
-### 4.6 — Make something not count ⬜ ← *owner-requested 2026-09-10*
+### 4.6 — Make something not count ⏳ *4.6a built 2026-09-11; 4.6b/4.6c not started*
 > *"does the app have a way to remove things and make them not count? if not we should add it"*
 
 **Partly, and only in one place.** The resolution sheet's third option — *"Neither — I was away /
@@ -3411,6 +3411,86 @@ makes *"remove it"* safe to offer at all.
 **Open question for the owner, when this comes up:** does ignored time disappear from the combined
 track, or stay drawn in a muted "not counted" style? Drawn-but-muted is the honest one — you can see
 what you excluded — but it is more pixels on a phone.
+
+#### What the owner said when it came up (2026-09-11)
+
+Asked the three questions this step had been holding:
+
+| Question | Answer |
+|---|---|
+| An excluded app competing with a real one — who gets the time? | *"it should be a rule like the categories because it is not just an app — remember this will also be on the PC"* |
+| Does it apply to the per-device Activity pages too, or only the combined day? | **Everywhere** |
+| Is excluded time still drawn? | **Drawn, but muted** |
+
+The first answer redirected the step. The plan had been a `scope: always` `ignore` decision keyed on
+an app name; the owner asked for **a rule, written the way a category rule is written**, because
+what they want to exclude is not always going to be one literal app and because the same thing has
+to work in aw-webui on a PC.
+
+**So the rule *is* a category rule.** A category carries `data.not_counted: true` and everything it
+matches stops counting. Reasons, in order of weight:
+
+1. The category editor already writes and validates regexes, with match-field selection and a
+   preview against real events. A second rule language needs a second editor.
+2. `classes` is already in the shared-settings allowlist (**2.3**), so an exclusion made on the
+   phone is on the tablet after a sync, for free.
+3. It is the same setting aw-webui uses on a desktop, which is the owner's "this will also be on
+   the PC" requirement satisfied by construction rather than by a second implementation.
+4. One matcher means one answer. Two would eventually disagree about the same day — 4.4d.
+
+#### The split
+
+| | What | State |
+|---|---|---|
+| **4.6a** | The rule itself, honoured by every total on every screen | ✅ built 2026-09-11 |
+| **4.6b** | A list of what is being excluded, with how much time each rule is eating, and undo | ⬜ |
+| **4.6c** | Tap **any** block — not just a shaded one — and answer *"this counts as nothing"* | ⬜ |
+
+4.6c is the "I tap something and it doesn't count" half, which the owner was explicit is **not**
+what they were asking for here: *"not just that I tap something and it doesn't count"*. It is still
+worth having, and it is still the second row of the table above.
+
+### 4.6a — A category that does not count ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+
+**Where it runs: one place, server-side.** A new pipeline step ②b
+([`aw-combined/src/exclude.rs`](../../aw-server-rust/aw-combined/src/exclude.rs)) sits between
+segmentation and classification, and `aw-server/src/combined.rs` reads the rules straight out of
+`settings.classes` rather than taking them as a request parameter. That is what makes the day view,
+the combined timeline and the day's own total agree: they all read one answer.
+
+**An excluded app is not a competitor.** Running ②b *before* ③ classify is the point. The owner's
+launcher sitting on the phone while the tablet is genuinely in use is contention today — a question
+the app asks and the owner has to answer. With the rule, the launcher is removed from the segment
+before anything counts devices, so the question is never asked and the tablet simply has the time.
+A segment left with **no** counted activity keeps every slice, is marked `ignored` **and**
+`not_counted`, and still draws — muted, with *"Not counted"* rather than *"Counts as nothing"*,
+because a rule is not the owner saying they were away.
+
+**Everywhere means the per-device pages too.** `canonicalEvents` emits an `exclude_keyvals` on
+`$category` immediately after `categorize`, so the exclusion lands before the day's total, its app
+list, its category breakdown and its active time are computed. Desktop, multidevice and Android all
+go through it.
+
+**A child of an excluded category is excluded too** (`notCountedCategories` in `util/classes.ts`).
+Deliberately the opposite of how a rule matches — a child is never matched by its parent's pattern —
+because a pattern says what a category *catches* and this says what a total *leaves out*.
+
+⚠️ **A rule beats a per-block decision**, the opposite of ④'s "exact beats rule". ②b runs first and
+a decision cannot act on a slice that is no longer in the segment. Defensible — a standing "this
+never counts" should not be quietly overridden by an answer given before the rule existed — but it
+means the way to count one excluded block again is to narrow the rule, not to tap the block.
+Revisit if it bites.
+
+⚠️ **A rule matching on `title` does less on the combined day than on a per-device page.** Combined
+segments carry an app label and no title (the same limitation 4.4f wrote up), so a title-only rule
+excludes nothing there. Nothing is wrong; it is just narrower than it looks.
+
+**Check:** `cargo check --workspace --tests` clean; **8 new Rust tests** in
+`aw-combined/tests/exclusions.rs` covering the launcher alone, the launcher losing to a real device,
+three-way contention where excluding one leaves two still asking, case sensitivity, `select_keys`,
+and that no rules is byte-for-byte the old behaviour. Webui: **389 tests pass** (43 suites) with 8
+new ones — 5 for child expansion, 3 for where the exclusion lands in the generated query.
+⚠️ **Nothing has been opened on a device.**
 
 ### 4.7 — One palette ✅ VERIFIED ON BOTH DEVICES AND APPLIED 2026-09-10
 
@@ -3544,6 +3624,21 @@ the new Activity tab has to make the same choice.
 `aw-webui@666a5a6` → `aw-server-rust@9912cdb`.
 
 ---
+
+### 4.8 — Editing an event, in Activity and in Combined ⬜ ← *owner thought, 2026-09-11*
+
+> *"what about being able to edit events in the combined and the activity, just a thought"*
+
+Recorded, not scoped, and **not obviously compatible with R11**, which is the reason it needs
+thinking about rather than building. Every correction the app offers so far is *data about* an
+event — a decision, a relabel, an exclusion — and never a change to the event itself. That is what
+makes every one of them undoable and what lets two devices reach the same day from the same events.
+
+An edit that rewrote a watcher's event would break both. An edit expressed as **another decision**
+— "this stretch was actually X" — would not, and `outcome: relabel` is already exactly that for the
+combined track. So the likely shape of this is *"extend relabel to the per-device Activity view and
+give it a way in from a row"*, not *"make events writable"*. Wants the owner's own words on what
+they were picturing before it is scoped.
 
 ## Phase 5 — Make the UI usable on a phone
 
