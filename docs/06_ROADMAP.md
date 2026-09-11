@@ -4456,6 +4456,102 @@ The change was checked by parsing the file and parsing the TOML it embeds, and b
 `manager.py` to confirm the module name is one it handles.
 
 
+#### 4.10c — Four questions the owner asked, and what they found (2026-09-11)
+
+The owner stopped a build to ask four things: whether window titles reach the combined day on a PC;
+what else the old per-device Activity view has that the combined one does not; what the difference
+between Top Windows and Top Screens is; and whether sync will work if they just install Syncthing.
+Answering them found **two bugs and one design limit that was not one**.
+
+**① Window titles on a combined day — a one-line bug.** `screenRows` in
+`aw-webui/src/util/combinedActivity.ts` asked every share for `classname` and skipped any without
+one. `classname` is an Android field — the Activity class — so on a PC *every* share was discarded,
+the row list came back empty and the panel hid itself. The title was in `detail` the whole time,
+carried by the same shares, and simply never read. Rows now take whichever of the two a device
+reports, and the class wins where a device reports both, because a window title changes with every
+document while a screen does not. `windowRowName` in `screenNames.ts` names the desktop rows in the
+same `app — inside` shape as the Android ones, without the camel-case cleaning, since a window
+title is already prose written for a person and splitting it would only mangle it; a title that
+already ends in its own application's name keeps it rather than saying it twice.
+
+**② Top Windows against Top Screens — the same panel, named for its contents.** They were never two
+panels. The panel's name now follows what is in it rather than the platform looking at it, because
+a combined day can hold a phone and a PC at once: screens alone read *Top Screens*, titles alone
+*Top Windows*, and a day with both says so.
+
+**③ Sync — Syncthing is necessary and was not sufficient.** The two sides nest the shared folder
+differently. A desktop's `setup_local_remote` writes `<root>/<device id>/test.db`; Android copies
+its tree out through SAF one level deeper, `<root>/<hostname>/<device id>/test.db`, which
+`SyncInterface.kt` documents. `find_remotes` read **exactly one level**, so a PC sharing a folder
+with a phone saw *nothing at all* — it looked for `<root>/<hostname>/*.db` and found a directory.
+The phone could read the PC and the PC could not read the phone, which is worse than a sync that
+plainly fails, because it looks like it is working from one end. The scan goes two levels now,
+bounded rather than a full walk: the folder is shared with whatever else its owner keeps in it, and
+two covers every layout either side writes. A `.db` lying loose at the root is still not a remote —
+the directory holding a database *is* the device that wrote it, and one with no directory cannot be
+attributed to anybody. Four tests.
+
+**And the desktop had nothing that would start a sync.** `aw-sync` was not in
+`autostart_modules`, and adding the name alone would not have worked: run bare it prints help and
+exits, which aw-qt reads as a module that crashed and restarts until it gives up. `manager.py` now
+gives it a subcommand, the profile, and a `--sync-dir`. The folder is a setting rather than
+aw-sync's own `~/ActivityWatchSync` default, because **it has to be the same name on every device**
+— Syncthing pairs folders by what the people setting them up agreed to call them — so it is one
+setting, `sync_dir`, with one default that matches what aw-android already uses.
+
+> ⚠️ **The default moved after the owner saw it:** it was `~/ActivityWatch-sync`, at the top of the
+> home directory. *"no make it in documents, you default to user and it is a bad habit."* Correct —
+> the home directory belongs to the person, not to the applications running on it, and this is not
+> even a cache that could hide in a data directory: its owner has to open it, point Syncthing at
+> it, and still recognise it a year later. It is `~/Documents/ActivityWatch-sync` now, with a test
+> asserting the default's parent is *not* the home directory so it cannot drift back. Only the
+> leading directory moved; the *name* is the pairing and still matches aw-android. On Android the
+> folder is chosen with a file picker, so the `Documents/` part is desktop-only and need not match.
+
+**④ What else the combined day was missing — and the answer was bigger than the question.** The
+combined day marked the browser, editor and clock panels unavailable, on the grounds that a
+combined segment names one device's *activity* and those things live in buckets the combined track
+never reads. The first half is true; the second was a misreading of why. `ACTIVITY_TYPE` excludes
+`web.tab.current` because a browser tab overlaps its own window for the same instants, so a tab in
+contention with a window would let a tab title win the track. That is an argument about **who wins
+a stretch of time**, and it was taken as an argument that the day can say nothing about them at
+all — on the one screen that shows a whole day across every device.
+
+`aw-server/src/combined.rs` reads `web.tab.current`, `app.editor.activity` and `general.stopwatch`
+now, in the same pass, kept apart from `activity` so nothing about contention changes, and returns
+them under `details` keyed by bucket type. **Each is intersected with the stretches of the day its
+own device actually won** — which is the part a per-device page cannot do, and the reason the
+combined answer is *better* than a per-device one rather than merely available: a phone's browsing
+through an afternoon the desktop held is real browsing that is no part of this day, and a
+per-device browser panel has always counted it anyway.
+
+The clock is not masked. A stopwatch event is the owner starting and stopping a timer over a span
+they chose, not a measurement of a device, and no other device winning the foreground makes ten
+minutes of it not have happened. It is clipped to the requested range, because that is what a day
+is.
+
+Rows are grouped by the event's whole `data` rather than by chosen keys — which field matters
+(domain, file, language) is the view's business, and choosing here would mean deciding per watcher
+which fields count, so a watcher this code has never heard of would reach the day gutted. The web
+UI's `combinedBrowser`, `combinedEditor` and `combinedStopwatch` shape them into exactly what
+`query_browser_completed` and its two siblings already take, so every panel renders unchanged.
+Availability is decided by what came back rather than by which buckets exist, which on a *combined*
+day is the honest test.
+
+**Checked:** `cargo test -p aw-server --lib` (20 in `combined`, 10 of them new), `cargo test -p
+aw-sync` (19, 4 new), `cargo check --workspace --tests`, rustfmt on the touched file, `npx jest`
+(**429**, up from 416), lint 0 errors, `check:locales`, a production `vue-cli-service build`, and —
+new this step — aw-qt's own pytest suite, which 4.10b could not run: a throwaway venv with
+`pytest`, `tomlkit`, `aw-core` and `PyQt6` runs `tests/test_profile_config.py`, **11 passed**,
+6 of them the new `sync_dir` ones.
+
+**Not checked:** nobody has looked at any of it on a device or in a browser. The browser and editor
+panels have never been *seen*; this PC has no browser or editor watcher installed, so even locally
+there is nothing for them to draw yet. Two devices have never actually exchanged a file through a
+shared folder — Syncthing is installed and the devices are paired, but no folder was shared at the
+time of writing.
+
+
 ## Phase 5 — Make the UI usable on a phone
 
 Layer 2 from [`02_ARCHITECTURE.md` §7.2](02_ARCHITECTURE.md) — the part 1.6 cannot fix.
