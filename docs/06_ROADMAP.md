@@ -4552,6 +4552,116 @@ shared folder — Syncthing is installed and the devices are paired, but no fold
 time of writing.
 
 
+#### 4.10d — A page for sync, and the settings that never left the PC (2026-09-11)
+
+Three things the owner asked for in one sitting, and the last one was the important one.
+
+**① A sync page, because "it's in a TOML file" is not an answer.** The desktop's sync had no face:
+`aw-sync` on a timer if something started it, pointed at whatever its default named, reporting to a
+log nobody reads. The phone has had a screen for this the whole time. The owner's words, after being
+offered the page as a question rather than given it: *"i thout i was clear that i eanteda page
+forthe sync / i want a apge that has everyhting a new yser will downlaod the exe and be able from
+this page start sync."*
+
+`/api/0/sync` answers it in one request -- folder, whether it exists, the switch, every device that
+has written into the folder and when each last did, how the last pass went, and whether this build
+can sync at all. One request rather than four, because the answers are only meaningful together: a
+folder with no peers means something different depending on whether sync has ever run, and a page
+fetching them separately could render a coherent screen out of three different moments. `POST`
+changes folder and switch together so it cannot half-succeed; `POST /run` runs a pass and answers
+with the whole status, so the device list updates in the same breath as the result.
+
+It drives the `aw-sync` **binary** rather than linking it: `aw-sync` already depends on `aw-server`,
+so a dependency back would be a cycle -- and running the program that ships beside us is the honest
+shape anyway, since aw-sync has its own profile resolution, logging and exit codes.
+
+The page is `views/Sync.vue`, at `/sync`, in the nav, **and** as a Settings panel -- the owner asked
+for it in Settings specifically, and they are right: somebody who has just installed the exe goes to
+Settings and looks. Same component in both places, with a prop that hides its own heading, because
+two copies of a setup screen is two screens to keep in step and the stale one is the one somebody
+would follow. Neither appears in the Android app, whose server does not mount the endpoint at all.
+
+> **The device list is one row per device, not per file.** Pulling from a peer calls
+> `setup_local_remote(<peer hostname>, our id)`, so after syncing with two phones this PC's own id
+> was in the folder four times -- flat, under its own hostname, and under each phone's. Listing
+> files told its owner they had four computers, and the count grows as the square of the real one.
+> `SyncInterface.kt` documents the same effect from the other side. Found by running the endpoint
+> against the owner's real folder, not by reading.
+
+**② Dark mode, which had never been looked at properly.** *"the yello and the gray it hurts"*, on
+both PC and phone. Two rules in `dark.css` turned a *secondary* button bright amber:
+`.btn-outline-secondary:hover { background: #ffc107 }`, and -- not even conditional --
+`[class*=table-responsive-] > .table .btn-outline-secondary { background: #ffc107 }`. So every plain
+grey button flashed full saturation under the pointer, and inside a table simply *was* bright
+yellow. The grey half is the same pairing from the other side: `.btn-outline-secondary` was given
+the card-border colour for its border, nearly invisible against the page. Faint at rest, searing on
+hover, and never a decision -- two unrelated rules meeting.
+
+Secondary buttons are grey in both states now. Amber is kept for things that mean warning and
+dropped from `hsl(45,100%,51%)` to 72% saturation, because Bootstrap's value is tuned for dark text
+on white paper and on a near-black ground it is a light source. `.text-warning` goes the other way
+and gets *lighter*: thin glyphs need the opposite treatment from a filled block. A solid amber
+button inside a warning alert -- the unresolved-overlap banner on Activity, on screen every day --
+was the loudest pair anywhere, same hue, both saturated, one on top of the other.
+
+**③ The hole the owner found: categories never synced to or from the PC.** *"are the catagories not
+syncing that is a real problem if so / the catagories and wha tdoe s not count and so on all should
+sync ... this si a mess now difrent colors difrent rules and so on."*
+
+They were right, and it was worse than categories. `aw-sync` moves **events** and has never touched
+the shared folder's other two files, because the only devices that had them were Android ones, where
+Kotlin does that work. The owner's folder proved it: `devices/<phone>/` and `devices/<tablet>/` each
+held `settings.jsonl`, `decisions.jsonl` and `meta.json`, and there was no desktop entry at all. Two
+phones agreed about categories, not-counted rules and resolved overlaps; the PC agreed with nobody.
+Events synced, the rules for reading them did not, and the same day totalled differently depending
+on which device was asked.
+
+`aw_combined::settings` ports `SharedSettings.kt` -- the allowlist, the newest-wins merge with a
+lowest-uuid tiebreak, `plan_settings_sync` -- kept pure and kept deliberately close to the Kotlin,
+since two implementations of this rule that disagree do not fail loudly, they converge on different
+answers. `aw_server::shared_store` is the half that touches disk, and runs inside the same pass as
+the event sync so a day's events and the categories that interpret them arrive together.
+
+> ⚠️ **Two defects found while building this, one of which would have destroyed data.**
+>
+> **Joining an established folder.** `local != applied` means "the owner changed this here" -- but
+> on a device that has never synced, `applied` is empty, so *everything* local reads as an edit.
+> This PC's `classes` was whatever aw-webui wrote at first launch. Published with `now` on it, the
+> newest line wins: **two phones' worth of carefully built categories replaced by a third device's
+> defaults, on every device, in one pass.** It never fired on Android because those devices joined
+> an empty folder; adding a desktop to an established set is the case it was waiting for. A device
+> with nothing agreed, joining a folder with something in it, now **accepts before it publishes** --
+> which is also what a person means by "add this computer to my sync". From the second pass the
+> ordinary rule applies, so a real edit made here afterwards still wins. **This is a divergence
+> from the Kotlin, which still has the hole** -- see the open item below.
+>
+> **Republishing peers' decisions.** The first version republished everything it imported, on the
+> theory that a decision should outlive the device that made it. `planDecisionSync` does not do
+> that, and is right not to: a peer's decision already has a home in the file its author owns, and
+> copying it puts one record in two files that two devices then keep appending to. Caught by
+> *running* it -- 118 of the phones' decisions copied into the desktop's file on the first pass. The
+> stray file was deleted; the 117 + 1 originals were untouched.
+
+**Measured, on the owner's own three devices.** With two phones and the PC sharing a real Syncthing
+folder: the PC's categorisation went from 18 factory categories to the phone's 17 (including the
+owner's removal of `ActivityWatch`), 118 decisions were imported, nothing of the phones' was
+republished, and a second pass did nothing at all. An earlier apparent failure to converge was an
+artefact of force-killing the server before its datastore worker flushed, not a sync fault.
+
+**Checked:** `cargo test -p aw-server --lib` (89), `cargo test -p aw-combined` (44), `cargo check
+--workspace --tests`, rustfmt on every new file, `npx jest` (429), lint 0 errors, production build,
+and the endpoints exercised end to end against the real shared folder.
+
+**Not checked:** nobody has *looked* at the sync page or the new dark-mode colours. The browser and
+editor panels from 4.10c still have nothing to draw here, since this PC has no browser or editor
+watcher installed.
+
+**Open, and it matters:** the Kotlin `planSettingsSync` still has the joining hole. Today's devices
+are safe -- their `applied` state is populated -- but a *fresh* phone added to this folder would
+publish its defaults over everything, which is exactly what the Rust side now refuses to do. Port
+the rule to `SharedSettings.kt`.
+
+
 ## Phase 5 — Make the UI usable on a phone
 
 Layer 2 from [`02_ARCHITECTURE.md` §7.2](02_ARCHITECTURE.md) — the part 1.6 cannot fix.
