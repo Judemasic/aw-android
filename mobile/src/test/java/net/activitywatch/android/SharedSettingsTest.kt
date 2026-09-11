@@ -63,6 +63,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to video, "theme" to "\"dark\""),
             merged = emptyMap(),
             applied = emptyMap(),
+            joining = false,
             now = "2026-09-09T12:00:00Z",
             deviceUuid = phone,
         )
@@ -80,6 +81,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to video),
             merged = merged(SharedRecord.Setting("classes", video, "2026-09-08T10:00:00Z", phone)),
             applied = mapOf("classes" to video),
+            joining = false,
             now = "2026-09-09T12:00:00Z",
             deviceUuid = phone,
         )
@@ -93,6 +95,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to fun_),
             merged = merged(SharedRecord.Setting("classes", video, "2026-09-08T10:00:00Z", phone)),
             applied = mapOf("classes" to video),
+            joining = false,
             now = "2026-09-09T12:00:00Z",
             deviceUuid = phone,
         )
@@ -105,6 +108,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to fun_),
             merged = merged(first.linesToAppend.single()),
             applied = first.applied,
+            joining = false,
             now = "2026-09-09T12:30:00Z",
             deviceUuid = phone,
         )
@@ -120,6 +124,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to video),
             merged = merged(SharedRecord.Setting("classes", fun_, "2026-09-09T12:00:00Z", phone)),
             applied = mapOf("classes" to video),
+            joining = false,
             now = "2026-09-09T12:05:00Z",
             deviceUuid = tablet,
         )
@@ -132,6 +137,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to fun_),
             merged = merged(SharedRecord.Setting("classes", fun_, "2026-09-09T12:00:00Z", phone)),
             applied = first.applied,
+            joining = false,
             now = "2026-09-09T12:35:00Z",
             deviceUuid = tablet,
         )
@@ -148,6 +154,7 @@ class SharedSettingsTest {
                 SharedRecord.Setting("startOfDay", "\"05:00\"", "2026-09-09T12:00:00Z", phone),
             ),
             applied = emptyMap(),
+            joining = false,
             now = "2026-09-09T12:05:00Z",
             deviceUuid = tablet,
         )
@@ -163,6 +170,7 @@ class SharedSettingsTest {
             local = emptyMap(),
             merged = emptyMap(),
             applied = emptyMap(),
+            joining = false,
             now = "2026-09-09T12:00:00Z",
             deviceUuid = phone,
         )
@@ -186,6 +194,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to video),
             merged = winner,
             applied = mapOf("classes" to video),
+            joining = false,
             now = "2026-09-09T12:30:00Z",
             deviceUuid = tablet,
         )
@@ -197,6 +206,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to fun_),
             merged = winner,
             applied = mapOf("classes" to fun_),
+            joining = false,
             now = "2026-09-09T12:30:00Z",
             deviceUuid = phone,
         )
@@ -210,6 +220,7 @@ class SharedSettingsTest {
             local = mapOf("classes" to fun_),
             merged = merged(SharedRecord.Setting("classes", video, "2026-09-09T13:00:00Z", tablet)),
             applied = mapOf("classes" to """[{"id":1,"name":["old"]}]"""),
+            joining = false,
             now = "2026-09-09T13:05:00Z",
             deviceUuid = phone,
         )
@@ -226,6 +237,7 @@ class SharedSettingsTest {
             local = mapOf("theme" to "\"dark\"", "views" to "[]", "landingpage" to "\"/home\""),
             merged = merged(SharedRecord.Setting("theme", "\"light\"", "2026-09-09T12:00:00Z", tablet)),
             applied = emptyMap(),
+            joining = false,
             now = "2026-09-09T12:05:00Z",
             deviceUuid = phone,
         )
@@ -243,10 +255,90 @@ class SharedSettingsTest {
             local = emptyMap(),
             merged = merged(SharedRecord.Setting("classes", awkward, "2026-09-09T12:00:00Z", phone)),
             applied = emptyMap(),
+            joining = false,
             now = "2026-09-09T12:05:00Z",
             deviceUuid = tablet,
         )
         assertEquals(awkward, plan.valuesToApply["classes"])
         assertEquals(awkward, plan.applied["classes"])
+    }
+
+    // -- joining a folder that already has devices in it ----------------------------------------
+
+    @Test
+    fun joiningAnEstablishedFolderDoesNotPublishThisDevicesDefaults() {
+        // A new phone, added to a sync that two other devices have been building for weeks. Its
+        // `classes` is whatever aw-webui wrote when its UI first loaded, and nothing has been
+        // agreed here yet -- so the ordinary rule reads that as an edit and publishes it with
+        // `now` on it, which is the newest line, which wins everywhere.
+        val plan = planSettingsSync(
+            local = mapOf("classes" to video),
+            merged = merged(SharedRecord.Setting("classes", fun_, "2026-09-08T10:00:00Z", tablet)),
+            applied = emptyMap(),
+            joining = true,
+            now = "2026-09-09T12:00:00Z",
+            deviceUuid = phone,
+        )
+        assertEquals(
+            "a joining device must not publish over an established folder",
+            emptyList<String>(),
+            plan.linesToAppend.map { it.key },
+        )
+        assertEquals(mapOf("classes" to fun_), plan.valuesToApply)
+        assertEquals(mapOf("classes" to fun_), plan.applied)
+    }
+
+    @Test
+    fun joiningStillOffersAKeyNobodyElseHas() {
+        // Accepting what the folder holds is not the same as having nothing to say.
+        val plan = planSettingsSync(
+            local = mapOf("classes" to video, "startOfDay" to "\"04:00\""),
+            merged = merged(SharedRecord.Setting("classes", video, "2026-09-08T10:00:00Z", tablet)),
+            applied = emptyMap(),
+            joining = true,
+            now = "2026-09-09T12:00:00Z",
+            deviceUuid = phone,
+        )
+        assertEquals(listOf("startOfDay"), plan.linesToAppend.map { it.key })
+    }
+
+    @Test
+    fun joiningAnEmptyFolderPublishesNormally() {
+        // The first device to sync is not joining anything, and must still say what it has.
+        val plan = planSettingsSync(
+            local = mapOf("classes" to video),
+            merged = emptyMap(),
+            applied = emptyMap(),
+            joining = true,
+            now = "2026-09-09T12:00:00Z",
+            deviceUuid = phone,
+        )
+        assertEquals(listOf("classes"), plan.linesToAppend.map { it.key })
+        assertEquals(video, plan.linesToAppend.single().value)
+    }
+
+    @Test
+    fun anEditAfterJoiningStillWins() {
+        // Deferring on the first cycle must not mean deferring forever.
+        val theirs = merged(SharedRecord.Setting("classes", fun_, "2026-09-08T10:00:00Z", tablet))
+        val joined = planSettingsSync(
+            local = mapOf("classes" to video),
+            merged = theirs,
+            applied = emptyMap(),
+            joining = true,
+            now = "2026-09-09T12:00:00Z",
+            deviceUuid = phone,
+        )
+        // The owner now edits the categories on this device.
+        val plan = planSettingsSync(
+            local = mapOf("classes" to video),
+            merged = theirs,
+            applied = joined.applied,
+            joining = false,
+            now = "2026-09-09T13:00:00Z",
+            deviceUuid = phone,
+        )
+        assertEquals(listOf("classes"), plan.linesToAppend.map { it.key })
+        assertEquals(video, plan.linesToAppend.single().value)
     }
 }

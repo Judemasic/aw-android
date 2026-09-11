@@ -102,6 +102,8 @@ internal data class SettingsPlan(
  *   between "the owner edited this here" and "a peer edited it and we have not applied it yet".
  *   Both look like `local != merged`; only a comparison against what we last agreed to tells them
  *   apart. It is device-local state and lives in `AWPreferences` (**R28**).
+ * @param joining true when this device has never agreed anything with this folder. **Read the
+ *   section below before changing it.**
  * @param now the timestamp for lines we publish.
  * @param deviceUuid this device, as `updated_by`.
  *
@@ -120,11 +122,37 @@ internal data class SettingsPlan(
  * changed. It is therefore never published (publishing "absent" would mean publishing this build's
  * defaults over a peer's real choice), but it *is* accepted from a peer, which is what makes a
  * fresh device pick up an established one's categories.
+ *
+ * ## Joining a folder that already has devices in it
+ *
+ * The rule above has a hole. `local != applied` is read as "the owner changed it here" -- but on a
+ * device that has never synced, [applied] is empty, so *everything* local reads as an edit. A fresh
+ * phone's `classes` is whatever aw-webui wrote when its UI first loaded. Published with `now` on
+ * it, that line is the newest, and the newest wins: **every other device's categorisation replaced
+ * by a new phone's defaults, in one cycle.**
+ *
+ * It never fired here because these devices joined a folder that was empty, where there was nothing
+ * to overwrite. Adding a device to an established set is the case it was waiting for, and it was
+ * found on the desktop (`aw_combined::settings`), which is always in exactly that position.
+ *
+ * So a device with nothing agreed, joining a folder with something in it, **accepts first**: every
+ * key the folder already has is taken, and only keys nobody has are published. That is also what a
+ * person means by "add this device to my sync" -- they are asking for their categories *here*, not
+ * offering this device's defaults to everything else. From the second cycle [applied] is populated
+ * and the ordinary rule applies, so a real edit made here afterwards still wins.
+ *
+ * A device joining a genuinely empty folder is not joining anything: [merged] is empty, nothing is
+ * accepted, and it publishes normally.
+ *
+ * This must stay in step with `plan_settings_sync` in `aw-combined/src/settings.rs`. Two
+ * implementations of this rule that disagree do not fail loudly -- they converge on different
+ * answers, and the same day categorises two ways depending on which device is asked.
  */
 internal fun planSettingsSync(
     local: Map<String, String>,
     merged: Map<String, SharedRecord.Setting>,
     applied: Map<String, String>,
+    joining: Boolean,
     now: String,
     deviceUuid: String,
 ): SettingsPlan {
@@ -137,7 +165,11 @@ internal fun planSettingsSync(
         val localValue = local[key]
         val mergedValue = merged[key]?.value
 
-        if (localValue != null && localValue != applied[key]) {
+        // Joining an established folder: whatever this device happens to hold is not an edit,
+        // because it has never agreed anything. Take what is there.
+        val canPublish = !(joining && mergedValue != null)
+
+        if (canPublish && localValue != null && localValue != applied[key]) {
             // Changed here since we last agreed -- publish it and keep it.
             lines += SharedRecord.Setting(key, localValue, now, deviceUuid)
             nextApplied[key] = localValue

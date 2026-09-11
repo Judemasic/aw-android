@@ -498,10 +498,15 @@ class SyncInterface(context: Context) {
 
         val local = readLocalSettings(rust) ?: return "could not read this device's settings"
         val records = shared.readAllShared(SHARED_SETTINGS_FILE)
+        val applied = jsonToMap(prefs.getAppliedSharedSettings())
         val plan = planSettingsSync(
             local = local,
             merged = effectiveSettings(records),
-            applied = jsonToMap(prefs.getAppliedSharedSettings()),
+            applied = applied,
+            // Nothing agreed yet means this device is joining, and a joining device accepts before
+            // it publishes -- see planSettingsSync. Read from stored preferences rather than kept
+            // in memory, so a restarted app does not think it is joining all over again.
+            joining = applied.isEmpty(),
             now = Instant.now().toString(),
             deviceUuid = deviceId,
         )
