@@ -3808,7 +3808,7 @@ truncate-once-vs-truncate-per-block difference **4.5b** already documented, not 
 ⚠️ **Nobody has looked at a screen.** The numbers are right; whether the panel and the muted blocks
 *read* right is the part still outstanding.
 
-### 4.6b — What is being excluded, and one tap to stop ✅ BUILT (2026-09-11)
+### 4.6b — What is being excluded, and one tap to stop ✅ BUILT + MEASURED ON THE PHONE (2026-09-11) — ⚠️ not yet *looked at*
 
 4.6a worked, and in working made itself invisible. An excluded app is missing from the day's total,
 from its app list, from its category breakdown and from its active time — which is exactly the point,
@@ -3853,6 +3853,28 @@ Time the owner answered *"I was away"* about is **not** in this list, and neithe
 app merely competed for. The first is a decision with its own undo in 4.3; the second still counts —
 the launcher simply stopped being a competitor for it — so showing it here would claim a rule is
 eating time that is in the total.
+
+#### Measured on the S25U, 2026-09-11
+
+The new query was run against the phone for 2026-09-10, because it is new aw-query code that nothing
+had executed yet — `filter_keyvals` inverted plus `merge_events_by_keys(["$category"])` either works
+server-side or it does not:
+
+```text
+flagged categories:  [["Phone UI"]]
+excluded name paths: [["Phone UI"]]
+Phone UI      -> 8761.2s
+One UI Home   -> 8761.2s
+```
+
+⚠️ **The same rule reads 8,761.2s on the per-device page and 8,472.3s on the combined day, and both
+are right.** The per-device figure is the phone's own bucket as recorded (**R11** — unmodified truth).
+The combined figure counts each second once across both devices, so 289 seconds of launcher time on the
+phone belong to the tablet on the combined day and are not the rule's to eat there. The panel says
+*"not counted **here**"* for exactly this reason; the two pages count differently and always have.
+
+Not verified: **nothing has looked at the panel.** The numbers are right; whether the rows read right
+on a phone needs eyes.
 
 ### 4.6c — Any block can count as nothing ✅ BUILT (2026-09-11)
 
