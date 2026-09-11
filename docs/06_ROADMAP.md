@@ -4164,6 +4164,41 @@ by depth, white, with a dark halo behind the glyph (`paint-order: stroke fill`),
 arc colour in both themes. The centre overlay was a fixed 300px box on a chart narrower than that, so
 a long category name ran off both sides of it; it is responsive now.
 
+##### Second look, same day: three of the four fixes were wrong in a way only a person would see
+
+> *"okay in the sunburst I see what you were trying to do, so let's make it so touching does the
+> highlight part, touching again does the zoom part. Touching back to all should return to the
+> default — right now it keeps the highlight. Now the text: the unhighlighted, unfocused categories
+> get a weird dark bolded look that is bad. The text of the middle circle is unreadable at all. Also
+> the stretching is good."*
+
+**One tap looks, two taps commit.** `zoomOnClick` fires on the first touch. With a mouse that is
+fine: the slice has already highlighted under the pointer, so the click is a *second* act and the
+looking has already happened. On a phone there is no hover, so the first touch is both — the chart
+jumps before anything has been read. A local `tapBehavior` replaces the library's: first tap
+highlights, second tap on the same slice zooms. The zoom clears the highlight, because carrying the
+dimming into a fresh view greys out everything the zoom just made room for.
+
+**Back to all now goes all the way back.** It undid the zoom and left the highlight, which reads as
+the button not having worked. It undoes both, and it is shown for either — a highlight wants undoing
+even when nothing has been zoomed, and on a touchscreen there was otherwise no way to clear one.
+
+**The dark bolded look had a mechanical cause, not a taste one.** Highlighting dims the arcs by
+setting `fill-opacity` on each group. That value is inherited by the label inside the group, and
+`fill-opacity` fades a *fill* while leaving a *stroke* untouched — so 4.9b's new dark halo stayed at
+full strength while the white letters faded out from under it. Every dimmed label became its own
+outline. Both opacities are now pinned on the text, so labels stay legible and the arcs alone carry
+the dimming.
+
+**The centre readout was never given a surface.** It is bare text painted straight over the arcs, at
+the one place on the chart where every colour meets, so it landed on a different background every
+time and disappeared into the dark ones. It gets a backing panel — sized to its content, rendered
+only when there is something to say, with the dark theme's half in `dark.css` alongside every other
+themed surface. It also falls back to the tapped slice when nothing is under the pointer, which is
+what makes it useful on a phone at all: there is no pointer once the finger has gone.
+
+The stretching — 4.9a's zoom ceiling — was confirmed good and is left alone.
+
 #### 4.9c — *"What is this?"* — the exclusions panel, found
 
 > *"what is this? the exclusions panel and its 'count it again'"*
@@ -4375,12 +4410,50 @@ was never touched, and the import only ever reads.
 1. ~~Fork `activitywatch`, push `beta`, repoint `aw-server-rust` at the owner's fork, bump pointers.~~
    ✅ done 2026-09-11
 2. ~~Build locally and run the Rust server against this PC's data.~~ ✅ done 2026-09-11 — 450 blocks
-3. Fix the Windows legacy-import path, with a test.
-4. Switch `aw-qt`'s default to `aw-server-rust`, after 3.
+3. ~~Fix the Windows legacy-import path, with a test.~~ ✅ done 2026-09-11 — see 4.10b
+4. ~~Switch `aw-qt`'s default to `aw-server-rust`, after 3.~~ ✅ done 2026-09-11 — see 4.10b
 5. Decide what to do about executable names as labels.
 6. Fix `release.yml` for a fork — GitHub-hosted runners are fine, it is the signing, notarisation,
    winget and upload steps that expect credentials a fork does not have — then run it and install the
    resulting `.exe` here.
+
+#### 4.10b — The import path, the default server, and a third fork (2026-09-11)
+
+**The import fix.** `dbfile_path()` becomes `dbfile_paths()`: a list of candidates, most likely
+first, of which the import takes the first that exists. `dirs::data_dir()` stays at the head, so
+Linux and macOS are untouched; the Local-appdata paths are added only under
+`cfg!(target_os = "windows")`, since elsewhere they name the same directory. The log line now says
+*which* file it found. A new test asserts the doubled Local path is among the candidates and runs
+everywhere, unlike `test_legacy_import`, which still needs a real old install and stays ignored.
+
+**Proved end to end — with a synthetic database, because the real one is gone.** ActivityWatch
+v0.13.2 has been *uninstalled* from this PC since 4.10a was written. The install directory under
+`%LOCALAPPDATA%\Programs` is gone, so is the `activitywatch\activitywatch\aw-server` data folder,
+and no aw- process is running. Nothing in this work removed it — the one cleanup command of 4.10a
+deleted only the Roaming *copy* it had made — so it was uninstalled from outside. That leaves no real
+Python database here to import, so the fix was proved instead by writing a peewee-shaped database at
+the exact path the Python server uses and starting a fresh profile against it. The server logged
+`Importing legacy DB from …\activitywatch\activitywatch\aw-server\peewee-sqlite.v2.db` and imported
+one bucket and three events, readable back over the API. The synthetic database and the test profile
+were deleted afterwards.
+
+**The default server.** `aw-qt/aw_qt/config.py` now ships
+`autostart_modules = ["aw-server-rust", …]` in both its default and testing sections. `manager.py`
+already knew the module and already starts a server before the watchers, so this was only a question
+of which name is written there. **Note the limit:** these defaults only fill in keys a config does
+not already have, so a desktop that already has an `aw-qt.toml` keeps running whichever server its
+own file names. That is the right behaviour — flipping a running install's server out from under it
+without asking would be worse — but it means "it now defaults to Rust" is a claim about *fresh*
+installs.
+
+**A third fork.** `aw-qt` is its own submodule and was still upstream's, so per the owner's standing
+instruction it was forked to `Judemasic/aw-qt`, branched `beta`, and `.gitmodules` in `activitywatch`
+repointed at it.
+
+**What was not run:** aw-qt's own pytest suite. This machine has no environment for it — no pytest,
+no `aw_core` — and building one would mean installing a Python toolchain the owner did not ask for.
+The change was checked by parsing the file and parsing the TOML it embeds, and by reading
+`manager.py` to confirm the module name is one it handles.
 
 
 ## Phase 5 — Make the UI usable on a phone
