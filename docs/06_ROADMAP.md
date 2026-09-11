@@ -3158,7 +3158,7 @@ into the same display name would merge two rows that are not the same thing.
 
 ---
 
-### 4.4i — The combined day can carry the screen after all ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+### 4.4i — The combined day can carry the screen after all ✅ BUILT + MEASURED ON THE PHONE (2026-09-11) — ⚠️ not yet *looked at* on a device
 
 > *"why you can fix? we built the combined, can't we make it retain this?"* — owner, 2026-09-11,
 > on being told Top Screens could not work on the combined day.
@@ -3195,7 +3195,11 @@ for a different and still-real reason: they live in buckets the combined pipelin
 **Check:** `cargo check -p aw-server` clean; webui **393 tests pass** (43 suites) with 4 new ones —
 that one app splits into the screens inside it while its own total is unchanged, that a day with no
 screens produces no rows at all, that ignored time stays out of the screens too, and that the panel
-is no longer marked unavailable. ⚠️ **Nothing has been opened on a device.**
+is no longer marked unavailable.
+
+**Measured on the S25U (2026-09-11):** of the day's **363 combined blocks, 363 carry a screen** —
+every one, not most — and WhatsApp splits into its home screen, its call screen and its
+conversation view exactly as the per-device rows do. ⚠️ **Nobody has looked at the panel.**
 
 ---
 
@@ -3497,7 +3501,7 @@ matches stops counting. Reasons, in order of weight:
 what they were asking for here: *"not just that I tap something and it doesn't count"*. It is still
 worth having, and it is still the second row of the table above.
 
-### 4.6a — A category that does not count ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+### 4.6a — A category that does not count ✅ BUILT + MEASURED ON THE PHONE (2026-09-11) — ⚠️ not yet *looked at* on a device
 
 **Where it runs: one place, server-side.** A new pipeline step ②b
 ([`aw-combined/src/exclude.rs`](../../aw-server-rust/aw-combined/src/exclude.rs)) sits between
@@ -3537,7 +3541,30 @@ excludes nothing there. Nothing is wrong; it is just narrower than it looks.
 three-way contention where excluding one leaves two still asking, case sensitivity, `select_keys`,
 and that no rules is byte-for-byte the old behaviour. Webui: **389 tests pass** (43 suites) with 8
 new ones — 5 for child expansion, 3 for where the exclusion lands in the generated query.
-⚠️ **Nothing has been opened on a device.**
+
+#### Measured on the S25U against the owner's own day (2026-09-11)
+
+The rule the owner actually asked for — `One UI Home`, `not_counted` — written to the phone's
+`classes`, the day (2026-09-10) re-read, and the setting restored byte-identically afterwards.
+
+| | Before | After |
+|---|---|---|
+| Counted | 56,531s | **48,038s** |
+| Unanswered overlaps | 4 | **1** |
+| Blocks that stopped counting | — | 67 (8,467s) |
+| Blocks where the launcher was removed but the time still counts | — | 46 (11,184s) |
+
+Three of the four questions that day was asking **were the launcher**, and they are simply gone.
+The 11,184s row is the half that would have been wrong under the other reading of the owner's
+request: the launcher was on the phone while the tablet was genuinely in use, and that time still
+counts — to the tablet.
+
+Nothing was lost or double-counted: the sum of every block's seconds moved by 3s across the change
+(different coalescing), and the gap between `combined_seconds` and the per-block sum is the
+truncate-once-vs-truncate-per-block difference **4.5b** already documented, not a leak.
+
+⚠️ **Nobody has looked at a screen.** The numbers are right; whether the panel and the muted blocks
+*read* right is the part still outstanding.
 
 ### 4.7 — One palette ✅ VERIFIED ON BOTH DEVICES AND APPLIED 2026-09-10
 
