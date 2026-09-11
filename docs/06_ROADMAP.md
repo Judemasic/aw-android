@@ -3034,6 +3034,12 @@ Measured on the phone over a full day (2026-09-10, `aw-watcher-android`): **374 
 apps, 41 distinct titles, and `title != app` in exactly 0 of them.** So a Top Window Titles panel on
 Android would be a second copy of Top Applications, and hiding it is right.
 
+⚠️ **"Not a combined-day limitation" was right; "the combined day cannot do this" was not.** The
+paragraph above is about `top_titles`, and it stands. The claim that the *combined* day could never
+show per-screen detail did not: see
+[4.4i](#44i--the-combined-day-can-carry-the-screen-after-all--built-2026-09-11--not-yet-seen-on-a-device),
+raised by the owner asking why a thing we wrote ourselves could not be changed.
+
 **What Android *does* have is `classname`** — the Activity class actually on screen, e.g.
 `com.sec.android.app.launcher.Launcher`. The query already merges `title_events` by
 `["app", "classname"]`, so the per-screen rows **exist and are fetched**; nothing renders them,
@@ -3149,6 +3155,47 @@ into the same display name would merge two rows that are not the same thing.
   Two apps that each have a `MainActivity` give two rows both reading *Main Activity* — they are
   never merged (rows are per app, coloured by app), and the raw class path is on the row's hover
   text, which is what a category rule has to match.
+
+---
+
+### 4.4i — The combined day can carry the screen after all ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
+
+> *"why you can fix? we built the combined, can't we make it retain this?"* — owner, 2026-09-11,
+> on being told Top Screens could not work on the combined day.
+
+**They were right and the previous answer was wrong.** 4.4f and 4.4h both said a combined segment
+"carries an app label and nothing finer", and that was written as though it were a property of the
+data. It was a property of **our own JSON**: `combined_row` in `aw-server/src/combined.rs` emitted
+`label` and dropped the rest of the winning slice's `data`, which had the `classname` in it the
+whole way through the pipeline.
+
+**And it can be carried exactly, not approximately.** The worry worth having was that one drawn
+block might span several screens, in which case any single value would be a lie. It cannot: ⑥
+[`coalesce`](../../aw-server-rust/aw-combined/src/coalesce.rs) glues two blocks together only when
+the winning slice's **whole `data` map** is equal, so the moment WhatsApp goes from its home screen
+to a call the block ends. One block, one screen, by construction.
+
+So the row now carries `detail`: the winner's own fields, minus the origin tag this crate adds.
+Whole rather than a hand-picked three keys — the combined track's standing shortcoming has been
+that it says nothing finer than a name, and picking three keys today just moves that wall three
+keys out.
+
+`combinedToActivity` builds `title_events` from `(label, classname)`, which is the same shape a
+per-device Android query produces, so the Top Screens panel needs no combined-specific branch.
+`top_bundle_ids` comes off `COMBINED_UNAVAILABLE_TYPES`, and the panel appears on the combined day
+only when some device actually reported a screen — a combined day of desktop-only activity gets no
+panel rather than an empty one.
+
+**What stays unavailable, and why it is not the same case.** `top_titles` is still hidden: on
+Android a title *is* the app name by construction (4.4f measured it — `title != app` in 0 of 374
+events), so the panel would duplicate Top Applications on Android days and be populated only on
+desktop days, which is worse than absent. Browser domains, URLs and editor files stay unavailable
+for a different and still-real reason: they live in buckets the combined pipeline never reads.
+
+**Check:** `cargo check -p aw-server` clean; webui **393 tests pass** (43 suites) with 4 new ones —
+that one app splits into the screens inside it while its own total is unchanged, that a day with no
+screens produces no rows at all, that ignored time stays out of the screens too, and that the panel
+is no longer marked unavailable. ⚠️ **Nothing has been opened on a device.**
 
 ---
 
