@@ -4315,19 +4315,73 @@ already there; it is simply not the one being run.
    an installer and attach it to the run"*, with signing and publishing skipped on a fork rather than
    left to fail.
 
+#### 4.10a — Measured on this PC, 2026-09-11: it already works ✅
+
+Steps 1-3 of the plan below are **done**, and the answer is much better than expected. The fork now
+exists (`Judemasic/activitywatch`, branch `beta`) with `aw-server-rust` repointed at the owner's
+fork; `aw-webui` came along for free through the submodule chain, exactly as hoped.
+
+Then the Rust server was run on this PC on a spare port against an isolated profile:
+
+| | |
+|---|---|
+| `/api/0/info` | `v0.14.0 (rust)`, hostname `Judes-Desktop` |
+| `/` (the web UI) | **HTTP 200** |
+| `/api/0/combined/timeline` | **450 blocks, 16,345 s** — 4h 32m of the owner's real desktop day |
+| labels | `Code.exe`, `explorer.exe`, `UniGetUI.exe` |
+
+**The combined timeline works on a PC, on real PC data, today.** No port is needed. What remains is
+plumbing, not building.
+
+#### The one thing genuinely broken on Windows: the legacy import looks in the wrong folder
+
+`aw-server-rust` already migrates a Python installation automatically — first start with no database
+of its own and it imports one. It was tried here and it **skipped**, reporting *"Did not find an old
+database"*. The reason, once found, is a one-line mismatch:
+
+| | |
+|---|---|
+| Where `legacy_import.rs` looks | `%APPDATA%\activitywatch\aw-server\peewee-sqlite.v2.db` (**Roaming**) |
+| Where the Python server writes | `%LOCALAPPDATA%\activitywatch\activitywatch\aw-server\peewee-sqlite.v2.db` (**Local**, doubled folder) |
+
+`dirs::data_dir()` resolves to Roaming on Windows; `aw-core`'s Python `dirs` resolves to Local. So on
+Windows the automatic migration can never find anything, and every Windows user switching to the Rust
+server silently starts from an empty database.
+
+Proved by copying the file to the path the import expects and starting again:
+
+```
+Importing 2013 events for aw-watcher-afk_Judes-Desktop
+Importing 13904 events for aw-watcher-window_Judes-Desktop
+Successfully imported legacy database
+```
+
+A fortnight of desktop history, imported cleanly. **The migration works; only the path is wrong.**
+The fix is to try the Local path as well as the Roaming one, keeping both so Linux and macOS are
+untouched. The copy and the test profile were deleted afterwards; the owner's running v0.13.2 install
+was never touched, and the import only ever reads.
+
+#### Two things to decide, now that the hard part is known to work
+
+1. **`aw-qt` still autostarts the Python server.** `autostart_modules = ["aw-server", …]`. Flipping it
+   to `aw-server-rust` is what actually turns this on for the owner — and must come after the import
+   fix, or the first launch starts empty.
+2. **Windows labels are executable names.** `Code.exe`, not *Visual Studio Code*. Every category rule
+   the owner wrote against Android app names will miss on the PC. Not a blocker, but the day reads
+   badly until it is dealt with — and it is the same class of problem 4.4h solved for Android.
+
 #### Order of work
 
-1. Fork `activitywatch`, push `beta`, repoint `aw-server-rust` at the owner's fork, bump pointers.
-2. Build **locally on this machine first**. A green local build before any CI run — a fresh fork's CI
-   is the slowest possible place to discover a submodule mistake.
-3. Run the freshly built `aw-server-rust` against a **copy** of the PC's data, on a spare port, and
-   open the combined timeline. See what is actually missing before changing anything the owner uses.
-4. Decide and test the migration off the Python server's database. Nothing destructive, and the
-   existing install stays working until the replacement is proven.
-5. Only then fix `release.yml` for a fork, run it, and install the resulting `.exe` here.
+1. ~~Fork `activitywatch`, push `beta`, repoint `aw-server-rust` at the owner's fork, bump pointers.~~
+   ✅ done 2026-09-11
+2. ~~Build locally and run the Rust server against this PC's data.~~ ✅ done 2026-09-11 — 450 blocks
+3. Fix the Windows legacy-import path, with a test.
+4. Switch `aw-qt`'s default to `aw-server-rust`, after 3.
+5. Decide what to do about executable names as labels.
+6. Fix `release.yml` for a fork — GitHub-hosted runners are fine, it is the signing, notarisation,
+   winget and upload steps that expect credentials a fork does not have — then run it and install the
+   resulting `.exe` here.
 
-**What has to happen first:** nothing — this is unblocked. It does not wait on the device check for
-4.5d and 4.9, which can be reported on at any time.
 
 ## Phase 5 — Make the UI usable on a phone
 
