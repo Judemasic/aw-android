@@ -29,6 +29,9 @@ class SharedSettingsTest {
     fun sharedKeys_areMeaningNotDevice() {
         assertTrue(isSharedSettingKey("classes"))
         assertTrue(isSharedSettingKey("category_sets"))
+        // 4.4e: the owner saying which of two colliding rules wins for one app is a
+        // decision about what that app *is*, so both devices must hold the same answers.
+        assertTrue(isSharedSettingKey("category_pins"))
         assertTrue(isSharedSettingKey("startOfDay"))
         // The namespaces 05_DATA_MODEL.md section 5 reserved, for Phase 4's rules.
         assertTrue(isSharedSettingKey("category.com.google.android.youtube"))

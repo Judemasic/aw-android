@@ -25,6 +25,11 @@ internal val SHARED_SETTING_KEYS: Set<String> = setOf(
     "classes",
     "category_sets",
     "active_set_ids",
+    // Which category an activity is, when two equally deep rules both match it and the
+    // owner has said which one wins (roadmap 4.4e). An answer about what something *is*,
+    // so it means the same on every device -- and a pin that lived on only one device
+    // would make two devices categorise the same day differently.
+    "category_pins",
     // What is deliberately not counted, and what is always counted -- meaning, same as above.
     "privacy_filters",
     "always_active_pattern",

@@ -84,8 +84,24 @@
 > tree and sunburst renders combined data unchanged. Panels the combined day genuinely cannot answer
 > — titles, browser, editor, the clock, the chronological timeline — are marked **unavailable rather
 > than drawn empty**. Unanswered contention gets a banner that deep-links into that day with resolve
-> mode already on. ⚠️ **Not yet opened on a device.** What is left of the owner's two "do it from
-> Activity" requests is [4.4a](#44a--categorise-and-resolve-without-leaving-activity).
+> mode already on. ⚠️ **Not yet opened on a device.** Both of the owner's "do it from Activity"
+> requests are now built as
+> [4.4a](#44a--categorise-and-resolve-without-leaving-activity--built-2026-09-11--not-yet-seen-on-a-device).
+>
+> ⏳ **[4.4a](#44a--categorise-and-resolve-without-leaving-activity--built-2026-09-11--not-yet-seen-on-a-device),
+> [4.4c](#44c--a-staged-buckets-hostname-is-frozen-forever--fixed-2026-09-11) and
+> [4.4e](#44e--how-two-rules-that-both-match-are-resolved--built-2026-09-11--not-yet-seen-on-a-device)
+> are built (2026-09-11), none seen on a device.** **4.4a** puts both actions where the thing to act
+> on already is: an uncategorised app gets a picker that writes it into a category without a trip to
+> Settings, and an unanswered overlap opens the resolution sheet under the banner instead of handing
+> the owner to another screen to find the block again. **4.4c** makes a bucket's hostname correctable
+> after it is written — `update_bucket` all the way down from the datastore to `AccessMethod` — so a
+> device that fixes its own name fixes what its peers read, which it never could before. **4.4e**
+> answers the owner's question about two rules that both match: not `priority`, which is a property
+> of the rule and so decides every collision between them forever, but **one answer per activity
+> label**, stored, shared between devices, shown in a list, undoable, and inert if the rules stop
+> colliding. It reaches the server-side classifier as an ordinary rule with a priority nothing else
+> can reach — the first thing in the app to use `priority` at all.
 >
 > ⏳ **[4.5](#45--smoothing-and-what-counts-as-a-competitor) is built, installed on both devices and
 > measured on the S25U (2026-09-10).** A stretch of one app interrupted by an eight-second flick to
@@ -2597,7 +2613,7 @@ a hunt for the day.
 
 This is the first half of the owner's *"also somehow allow me to resolve in the activity?"*. The
 second half — answering an overlap **without leaving** Activity — is
-[4.4a](#44a--categorise-and-resolve-without-leaving-activity).
+[4.4a](#44a--categorise-and-resolve-without-leaving-activity--built-2026-09-11--not-yet-seen-on-a-device).
 
 **Check:** on a day with events from two devices, the total active time is not the sum of the two
 devices' overlapping totals, and resolving an overlap changes the numbers here.
@@ -2610,7 +2626,7 @@ Combined view landed. ⚠️ **Nothing has been opened on a device.**
 
 ---
 
-### 4.4a — Categorise and resolve without leaving Activity ⬜ ← *owner-requested 2026-09-10*
+### 4.4a — Categorise and resolve without leaving Activity ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
 
 > *"in the activity we are gonna build, we should be able to edit such a thing from the activity —
 > now the uncategorised take you to the settings categorisation to edit them."*
@@ -2634,6 +2650,37 @@ on it currently means leaving the screen.**
 Both apply to **the per-device Activity as well as the combined one**, so they are changes to the
 shared Activity components. (1) is useful today, before any of this; (2) only means anything on the
 combined page.
+
+#### What was built
+
+| Where | What it does |
+|---|---|
+| `components/InlineCategorize.vue` | **New.** The day's apps that match no rule, listed under Activity with a picker per row: append this app to an existing category, or make a new one from it. Saves immediately and reloads the day. |
+| `components/InlineResolve.vue` | **New.** The day's unanswered overlaps, listed under the banner, each opening `ResolutionSheet` in place. Posts the same decision record to the same endpoint the Combined timeline posts to. |
+| `util/devices.ts` | **New.** `deviceLabel` / `deviceRole` / `participantsOf`, moved out of `CombinedTimeline.vue` so the two screens that now name devices share one implementation. |
+| `stores/activity.ts` | `combined` keeps the day's unresolved **segments** and device tracks, not only counts — the sheet needs each block's competitors and each competitor's device, and nothing derived carries those. |
+| `views/activity/Activity.vue` | The banner's button now opens the questions in place; the jump to the Combined timeline stays as a second button. |
+
+**The app name is escaped before it is appended.** `appendClassRule` writes into a regex, so an app
+with a `.`, `+` or `(` in its name would otherwise become a pattern that matches more than itself —
+quietly widening a rule from a control whose whole promise is "this app".
+
+**Saved immediately rather than into the categories store's unsaved-changes buffer.** That buffer
+belongs to the Settings editor, which has a **Save** and a **Discard** next to it. Here there is
+neither, and an edit that looked applied but was silently pending is worse than no control at all.
+
+**No second decision format.** A decision made here is the same record, posted to the same
+`/0/combined/decisions`, as one made in the Combined timeline. Two formats would be two screens
+answering the same day differently, which is exactly what **4.4d** had to be opened to fix.
+
+**The timeline link is kept, deliberately.** The inline list answers *these* questions; the timeline
+shows the surrounding day, which is what you want when the question is *"what was I actually doing
+around then"*. Removing it would have traded one affordance for another rather than adding one.
+
+**Check:** `tsc` clean, lint clean, locale check passes, **366 tests pass** (42 suites) including a
+new `devices.test.node.ts` covering the extracted naming — that a signature never carries a nickname,
+that a raw uuid is never shown, that a heartbeat-split event does not become two identical radio
+options. ⚠️ **Nothing has been opened on a device.**
 
 > **End of 4.1–4.3 = the product the owner originally asked for.** 4.4 was added 2026-09-10 and is
 > the first thing beyond it; everything after that is convenience.
@@ -2680,7 +2727,7 @@ be tested without mounting a navbar; eight tests, including the real stopwatch c
 behaviours were preserved deliberately rather than tightened in passing: an **android** host named
 `unknown` is still listed, and a non-android one still is not.
 
-#### 4.4c — A staged bucket's hostname is frozen forever ⬜ ← *found by 4.4b, not fixed*
+#### 4.4c — A staged bucket's hostname is frozen forever ✅ FIXED (2026-09-11)
 
 The deeper bug 4.4b stopped short of. In
 [`aw-sync/src/sync.rs`](../../aw-server-rust/aw-sync/src/sync.rs), `get_or_create_sync_bucket`
@@ -2692,11 +2739,44 @@ The consequence is general, not stopwatch-specific: **a device that corrects its
 correct what it has already staged.** Every future rename or naming fix is invisible to any peer
 that already holds the old staged copy.
 
-Not fixed because it is not a one-liner: `AccessMethod` has `get_bucket` and `create_bucket` and no
-`update_bucket`, so it needs a trait method plus both implementations (`Datastore` and `AwClient`),
-and it touches the one code path where a mistake corrupts synced history. It is also **not urgent** —
-4.4b makes the visible symptom impossible — so it deserves its own step with its own tests rather
-than being bolted onto a UI fix.
+It was not a one-liner, which is why 4.4b left it alone: `AccessMethod` had `get_bucket` and
+`create_bucket` and no `update_bucket`, so it needed a trait method plus both implementations
+(`Datastore` and `AwClient`) — and neither the datastore nor the HTTP API had any way to change a
+bucket at all.
+
+#### What was built
+
+A bucket's **descriptive** metadata became writable, and nothing else did.
+
+| Where | What it does |
+|---|---|
+| `aw-datastore/src/datastore.rs` | `update_bucket` — one `UPDATE buckets SET type, client, hostname, data WHERE id`, plus the cache. |
+| `aw-datastore/src/worker.rs` | `Command::UpdateBucket`, so it goes through the same single-writer thread as everything else. |
+| `aw-server/src/endpoints/bucket.rs` | `PUT /0/buckets/<id>`, with `bucket_new`'s own `!local` resolution and whitespace-hostname rule. |
+| `aw-client-rust` | `update_bucket`, async and blocking. |
+| `aw-sync/src/accessmethod.rs` | `update_bucket` on the trait and on both implementations. |
+| `aw-sync/src/sync.rs` | The desired bucket is now derived from the source **every pass**; an existing one is refreshed only when it has actually drifted. |
+
+**Id, creation time and events are never touched.** The `UPDATE` names four columns and no others,
+and the tests assert what does *not* change — `created` and the event count — as much as what does.
+
+**An unchanged bucket costs no write.** `bucket_metadata_differs` compares only the descriptive
+fields, so a bucket that is already right is left alone rather than rewritten on every sync pass.
+
+**A refused refresh does not abort the sync.** It logs and carries on with the stale copy: the bucket
+still holds the right events under the right id, and a name is not worth failing a sync over. This is
+the one code path where a mistake corrupts synced history, so the failure mode is deliberately the
+boring one.
+
+**Check:** the whole `aw-server-rust` workspace builds and **every test passes**; two new tests in
+`aw-sync/tests/sync.rs` — one stages `aw-stopwatch` under a UUID hostname, corrects it at the source,
+pushes again and asserts the staged copy picked the correction up while keeping its creation time,
+its event and its lack of `$aw.sync.origin`; the other asserts a pulled bucket keeps its origin stamp
+across repeated pulls, since the refresh must not undo what the pull path stamps.
+
+⚠️ **Nothing has been verified on a device.** The symptom this fixes is already invisible thanks to
+4.4b's rule, so what wants checking is that a rename now propagates — see the test instructions for
+the step that installs this.
 
 ⚠️ **Do not "fix" this by editing the staged databases in the Syncthing folder by hand.** Same family
 of hazard as D25/D26: those files are replicated, and a partial write propagates.
@@ -2740,7 +2820,7 @@ clock string with no colon left the minutes `undefined` and rendered the label *
 
 ---
 
-### 4.4e — How two rules that both match are resolved ⬜ ← *owner question, 2026-09-11*
+### 4.4e — How two rules that both match are resolved ✅ BUILT (2026-09-11) — ⚠️ not yet seen on a device
 
 > *"if I want youtube to be something and youtube G to be something else, how does the app resolve
 > contradicting names?"*
@@ -2822,6 +2902,41 @@ The two mechanisms answer different questions and can coexist, with the per-app 
 names, so not unbounded. If it proves noisy, the refinement is to offer *"just this app"* versus
 *"anything matching youtube"* **at the moment the owner answers** — not to move the key back onto the
 rule.
+
+#### What was built
+
+| Where | What it does |
+|---|---|
+| `util/classes.ts` | `matchingCategories`, `tiedCategories`, `pinStatus`, `activePins`, `pinsForQuery`, `unansweredConflicts`, and a `pins` argument on `matchString`. |
+| `stores/settings.ts` | `category_pins` — the stored answers. |
+| `stores/categories.ts` | `pinLabel` / `unpinLabel`, `pins_annotated`, and pins folded into `classes_for_query`. |
+| `components/CategoryConflicts.vue` | **New.** Scans a week of the combined timeline, asks about each colliding label it finds, and lists the answers with a Remove next to each. Embedded in Settings ▸ Categorization. |
+| `SharedSettings.kt` | `category_pins` added to the shared allowlist, so both devices hold the same answers (**R18**). |
+
+**Both classifiers are given the same answer.** The webui's `matchString` and aw-transform's
+`categorize` are two separate classifiers, and **4.4d** is the standing lesson about letting two
+screens answer the same question differently. So a pin is *not* special-cased server-side: it rides
+along in `classes_for_query` as an ordinary category rule matching one exact app label
+(`^escaped label$`, `select_keys: ["app"]`) with a priority no depth can reach. `aw-query` has parsed
+`priority` on a rule since upstream [#663] — **this is the first thing in the app to send it**, and
+it needed no Rust change at all.
+
+**A pin goes inert rather than silently applying forever.** It only decides anything while its
+collision still exists: `pinStatus` requires the label to still tie *and* the pinned category to
+still be among the tied set. Edit the rules so they no longer collide and the pin stops applying but
+stays listed — an override that quietly keeps applying, or quietly vanishes, is one the owner ends up
+mistrusting the totals over. Same argument as [4.6](#46--make-something-not-count).
+
+**The scan reads `/api/0/combined/timeline`, not a per-host query.** One request, already spanning
+every synced device, and its rows carry exactly the app label a pin is keyed on. A week, because the
+question is *"what have I actually been running"* and a day is too thin a sample to ask it of.
+
+**Check:** `tsc` clean, lint clean, locale check passes in all six languages, **366 tests pass**
+including a new `categoryPins.test.node.ts` — that pinning `youtube G` to Work leaves `YouTube Morphe`
+in Fun (the exact thing `priority` gets wrong), that a pin naming a category which does not match is
+ignored rather than obeyed, that metacharacters in a label are escaped, and that a pin whose collision
+is gone sends no rule to the server. Kotlin: `:mobile:testDebugUnitTest` passes with the allowlist
+assertion added. ⚠️ **Nothing has been opened on a device.**
 
 ---
 
