@@ -8,7 +8,7 @@
 > `aw-server-rust` now has the full normalise/segment/classify/**attribute** pipeline plus a
 > separate opt-in `coalesce`, with 42 passing tests including a direct R6 invariant suite. Nothing
 > calls it yet, so there is nothing to verify on a device. The submodule pointer moved to
-> `aw-server-rust@beta` `a39f52e`, which carries only the (still unused) crate — no CI build or APK
+> `aw-server-rust@beta` `a39f52e`, which carries only the (still unusead) crate — no CI build or APK
 > needed.
 >
 > ✅ **[3.4](#34--combined-view-with-shading) is verified on both devices (2026-09-09**, CI
@@ -222,6 +222,15 @@
 > and 404 blocks each carry detail panels the view reads for one block at a time.
 > **[4.13](#413--sync-lives-in-three-places-and-two-of-them-are-wrong)** then makes sync one screen
 > instead of three.
+>
+> ✅ **The PC is on 4.11 too, through the fork's own Actions — and getting there found that
+> [every desktop build off `beta` was a *debug* build](#410f--the-desktop-was-running-a-debug-build-and-had-been-all-along).**
+> `release.yml` only set `RELEASE=true` for `master` and `v*` tags, so this fork's trunk always
+> packaged `target/debug`: **1.29s against 0.31s** for one combined day, 43.5MB against 31.7MB, and a
+> server that defaults to the *testing* data directory when launched without `--profile`. Fixed in
+> `activitywatch@62169c4`, rebuilt, and **installed through the installer** — the desktop now reports
+> the same **2 questions** the phones do, and is **4× faster than it was this morning** for reasons
+> unrelated to 4.11.
 
 [#251]: https://github.com/ActivityWatch/aw-android/pull/251
 [aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
@@ -4436,9 +4445,9 @@ was never touched, and the import only ever reads.
 3. ~~Fix the Windows legacy-import path, with a test.~~ ✅ done 2026-09-11 — see 4.10b
 4. ~~Switch `aw-qt`'s default to `aw-server-rust`, after 3.~~ ✅ done 2026-09-11 — see 4.10b
 5. Decide what to do about executable names as labels.
-6. Fix `release.yml` for a fork — GitHub-hosted runners are fine, it is the signing, notarisation,
-   winget and upload steps that expect credentials a fork does not have — then run it and install the
-   resulting `.exe` here.
+6. ~~Fix `release.yml` for a fork, then run it and install the resulting `.exe` here.~~
+   ✅ **done 2026-09-12 — see 4.10f.** The signing/notarisation/winget problems had already been
+   dealt with; what was left was that **every build off `beta` was a debug build**.
 
 #### 4.10b — The import path, the default server, and a third fork (2026-09-11)
 
@@ -4894,6 +4903,69 @@ The owner's bar is higher than "make them both work": two phones side by side sh
 thing**. That means one screen, with the folder picker being a platform detail the one screen asks
 the bridge for — not a second screen. Needs deciding before building: whether the native activity
 survives at all, or becomes a thin SAF picker the web page calls.
+
+
+#### 4.10f — The desktop was running a debug build, and had been all along ✅ FIXED + INSTALLED (2026-09-12)
+
+> *"why arent you using this? https://github.com/Judemasic/activitywatch/actions"*
+
+A fair question with a better answer than expected. The PC was being updated by hand — binaries built
+in the dev tree and copied over the install — which is both unreproducible and leaves the installer's
+own record of what is on disk wrong. Going through the fork's Actions instead found a defect that the
+hand-build had been **hiding**.
+
+#### The find
+
+The `aw-server-rust.exe` inside the CI artefact and the one built here disagreed, **given identical
+arguments**:
+
+| | CI artefact | built locally |
+|---|---|---|
+| `/api/0/info` | `testing: true`, `profile: "testing"` | `testing: false`, `profile: "default"` |
+| one combined day, same database | **1.29s** | **0.31s** |
+| size | 43.5 MB | 31.7 MB |
+
+`profile` defaults from `cfg!(debug_assertions)`, so the CI binary was a **debug build**. Cause, in
+`activitywatch/.github/workflows/release.yml`:
+
+```yaml
+RELEASE=${{ startsWith(github.ref_name, 'v') || github.ref_name == 'master' }}
+```
+
+Upstream ships only from `master` or a tag, so a branch build being unoptimised is deliberate and
+cheap there. **This fork's trunk is `beta`**, so `RELEASE=false`, the Makefile drops `--release`, and
+`package` copies out of `target/debug`. Every desktop artefact ever installed from this fork has come
+from there.
+
+The speed is the visible half. The worse half is that `debug_assertions` also picks the server's
+**default profile**, so that binary launched without an explicit `--profile` reads a *testing* data
+directory rather than the real one. `aw-qt` passes the profile, which is why nothing has gone wrong;
+nothing guarantees it keeps doing so.
+
+Fixed in `activitywatch@62169c4` — `beta` builds optimised, the trade upstream already makes for
+`master`. Confirmed from the rebuilt artefact: **31.7 MB, `profile: "default"`, 1.29s → 0.31s.**
+
+#### Installed, through the installer
+
+`activitywatch-v0.14.0b5.dev-62169c4-windows-x86_64-setup.exe`, run silently, exit code 0. Verified
+on this PC afterwards, against its **own** database:
+
+| | |
+|---|---|
+| `/api/0/info` | `v0.14.0 (rust)`, `Judes-Desktop`, `profile: default` |
+| `/` and `/api/0/buckets/` | 200 |
+| web UI bundle | `index.c8105258.js`, carrying the `/settings/sync` route fix |
+| combined day (2026-09-11) | **405 blocks, 5 shaded, 2 questions** — the same shape the phones report |
+| devices seen | `Judes-Desktop`, `jude_s_tab_s10_fe`, `jude_s_s25_ultra`, `galaxy_s22` |
+| time | **0.31s**, repeatable |
+
+So 4.11 is now live on all three devices, and the desktop is four times faster than it was this
+morning for reasons that have nothing to do with 4.11.
+
+**The lesson, written down because it nearly went the other way:** building locally and copying the
+result in would have made the PC fast *by accident*, left the debug build in CI for every future
+install, and produced no explanation for why the desktop had been slow. The artefact CI actually
+produces is the only thing worth measuring.
 
 
 ## Phase 5 — Make the UI usable on a phone
