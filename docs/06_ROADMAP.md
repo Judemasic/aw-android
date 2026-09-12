@@ -213,10 +213,15 @@
 > `/#/settings/sync` → Not Found, which was one missing word in the route matcher.
 > ⚠️ **Nobody has looked at any of it on a device yet.**
 >
-> ⬜ **[4.12](#412--the-combined-day-takes-eight-seconds-on-a-phone) is next** — the same day computes
-> in **8.0s on the phone** and **0.32s on this PC**, which is the O(n²) `segment()` has carried since
-> 3.2. **[4.13](#413--sync-lives-in-three-places-and-two-of-them-are-wrong)** then makes sync one
-> screen instead of three.
+> ⬜ **[4.12](#412--why-the-combined-day-is-slow-measured) is next, and its diagnosis is already
+> done.** The owner's *"very very very very slow"* measures at **8.0s cold / 2.9s warm on the phone**
+> against **0.31s on this PC** for the same day. The obvious suspect — the O(n²) `segment()` ① has
+> carried since 3.2 — was rewritten as a sweep line, came out **byte-for-byte identical**, and bought
+> **3% at fifteen days and nothing at one**, so it was reverted rather than kept. Per-stage timing
+> says the real cost is the **471 KB response** — ~270ms of the 622ms is `json!` and serialisation,
+> and 404 blocks each carry detail panels the view reads for one block at a time.
+> **[4.13](#413--sync-lives-in-three-places-and-two-of-them-are-wrong)** then makes sync one screen
+> instead of three.
 
 [#251]: https://github.com/ActivityWatch/aw-android/pull/251
 [aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
@@ -4781,14 +4786,84 @@ whether the sheet's new numbers make the choice obvious, are judgements only the
 PC for the same data — that is 4.12, and it is the O(n²) in `segment()` that `lib.rs` has documented
 since 3.2. And sync still lives in three places; that is 4.13.
 
-### 4.12 — The combined day takes eight seconds on a phone ⬜ ← *next*
+### 4.12 — Why the combined day is slow, measured ⬜ ← *next; the diagnosis is done, the fix is not*
 
-Measured 2026-09-12, same day and same data on both: **8.0s on the S22, 0.32s on this PC.** The
-owner: *"also very very very very slow in opwik gin displayin in making the reslove"*. `lib.rs`
-§ Scaling has said since 3.2 that `segment()` is **O(n²)** — it tests every interval against every
-boundary — and a phone's cores are where that finally shows. The fix named there is a sweep line
-that keeps a running active set instead of rescanning. It is a pure function with 149 tests around
-it, which is the best possible position from which to rewrite one.
+> *"also very very very very slow in opwik gin displayin in making the reslove"*
+
+Real, and now measured rather than guessed — including one guess that was **wrong**, which is the
+useful part of this entry.
+
+#### The numbers
+
+Same day (2026-09-11), same events, `GET /api/0/combined/timeline`:
+
+| | |
+|---|---|
+| Phone (S22), first request after launch | **8.0s** |
+| Phone, warm, repeated | **2.88s** (±0.02 over three runs) |
+| This PC, on a copy of **the phone's own database** | **0.31s** |
+
+The 8s the owner feels is a cold first load; warm it settles at 2.9s. Either way it is far too slow
+for a screen that redraws whenever the day or a filter changes. The phone/PC ratio is ~9×, which is
+about what phone-class hardware costs — there is no single pathological step, which is exactly what
+made the first hypothesis wrong.
+
+#### The hypothesis that was wrong, and how it was killed
+
+`lib.rs` § Scaling has documented since 3.2 that `segment()` is **O(n²)**: it tests every interval
+against every boundary. That is the obvious suspect and it is genuinely quadratic, so it was
+rewritten as a sweep line — an interval joins an active set at the boundary equal to its start and
+leaves at its end, which is valid because the boundary list *is* the sorted endpoints, so no endpoint
+falls strictly inside a slice.
+
+It worked, byte-for-byte, and it bought **nothing**:
+
+| range | rescan | sweep line |
+|---|---|---|
+| 1 day | 0.313s | 0.311s |
+| 7 days | 1.863s | 1.795s |
+| 15 days | 7.101s | 6.915s |
+
+Output identical (`cmp` on the full 471,679-byte response), 144 tests green, **3% at fifteen days and
+nothing at one**. The quadratic term is real and is not what anybody is waiting for at these sizes.
+**The rewrite was reverted rather than kept** — a faster-in-theory function nobody can measure is
+complexity bought with no money, and `segment()` is a step five later steps depend on. It is written
+down here so the next person does not spend the afternoon on it too.
+
+#### Where the time actually goes
+
+Instrumented per stage, one day, on this PC (release). Deltas, not cumulative:
+
+| stage | ms |
+|---|---|
+| read events out of the datastore | 5 |
+| `device_tracks` | 28 |
+| **`input.clone()`** | **36** |
+| ①-⑥ `compute_segments` | 81 |
+| ⑥ `coalesce` | 30 |
+| ⑦ `smooth` | 89 |
+| ⑧ `questions` | 46 |
+| `detail_rows` | 40 |
+| **everything after that — `json!` + serialise + HTTP** | **~270** |
+| request, end to end | **622** |
+
+So the pipeline is ~355ms and **the response itself is ~270ms, the single largest item** — and it is
+**471 KB for one day**, 404 blocks each carrying `detail`, `shares`, `background` and
+`excluded_labels`, plus a whole `details` section beside them. Scaled by the ~9× phone factor that is
+roughly 2.4s of the phone's 2.9s spent building and shipping JSON.
+
+#### What the fix therefore is
+
+Not a faster segmenter. Make the response smaller, and stop paying for it twice:
+
+1. **`input.clone()` — 36ms for nothing.** `device_tracks(&input)` borrows, then the pipeline is
+   handed a clone of every event so the borrow can end. Restructure so the events are moved once.
+2. **The payload.** `shares` and `detail` are per-block panels the view only reads for the *selected*
+   block. A day view needs them for one block at a time, not for 404. Candidates: drop them from the
+   list response and fetch on selection, or gate them behind a query parameter the detail panel sets.
+3. **Only then** revisit the quadratic, and only for the week/month ranges where it starts to matter.
+
+Nothing here is started. The measurements are the deliverable.
 
 ### 4.13 — Sync lives in three places and two of them are wrong ⬜
 
