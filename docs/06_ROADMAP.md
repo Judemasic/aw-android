@@ -4685,7 +4685,7 @@ publish its defaults over everything, which is exactly what the Rust side now re
 the rule to `SharedSettings.kt`.
 
 
-### 4.11 — One overlap is one question ✅ BUILT + MEASURED (2026-09-12) — ⚠️ not yet *looked at* on a device
+### 4.11 — One overlap is one question ✅ BUILT + INSTALLED ON BOTH DEVICES (2026-09-12) — ⚠️ not yet *looked at*
 
 > *"The resolve is so janky it asks me the same thing over and over. Like the same two apps over
 > seconds. [...] still making me do the resolve multiple time where it looks like it should auto
@@ -4778,6 +4778,11 @@ same component, so the one that would not open was not a staler copy, it was no 
 a **copy of the phone's own database** pulled over adb — which is where the 5→2 figure comes from.
 The tests are transcriptions, not inventions: the measured stretch above, and the owner's three-app
 example with their numbers.
+
+**Verified on both devices after installing CI [34703494648] / `144e803`:** the phone and the tablet
+each return **404 blocks, 5 shaded, 2 questions**, and the two question lists are *identical* — same
+windows, same cast, same order, same per-competitor seconds, and the same `combined_seconds` of
+56,208. **R18 holds across the new step.** Q1 is the four-way repeat, asked once.
 
 **Not checked:** nobody has *looked* at it. Whether one shaded stretch reads better than four, and
 whether the sheet's new numbers make the choice obvious, are judgements only the owner can make.
