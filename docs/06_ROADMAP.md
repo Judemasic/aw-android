@@ -199,6 +199,24 @@
 >
 > ⚠️ **The submodule has now moved once, so the habit matters:** whenever `aw-server-rust` changes,
 > push `aw-server-rust@beta` **first**, then the pointer in `aw-android`, then build.
+>
+> ✅ **[4.11](#411--one-overlap-is-one-question) is built and measured (2026-09-12), and it is the
+> live answer to the owner's two complaints about resolving** — *"it asks me the same thing over and
+> over, like the same two apps over seconds"* and *"can we arange them from the more to the least"*.
+> They turned out to be one cause. Measured on a copy of the phone's own database: **five shaded
+> blocks were two overlaps**, and four of the five were a single stretch of Emby against
+> ActivityWatch that a seven-second, a one-second and a fifteen-second blink in the peer's recording
+> had cut into four separate questions. A new pipeline step ⑧ groups a contended *run* into one
+> question, so the counter, the arrows and the sheet all work in overlaps rather than blocks, one
+> answer settles the whole run, and each competitor now shows **its own** running time, longest
+> first. **5 questions → 2**, nothing smoothed away, R11 intact. Also fixed in passing: the owner's
+> `/#/settings/sync` → Not Found, which was one missing word in the route matcher.
+> ⚠️ **Nobody has looked at any of it on a device yet.**
+>
+> ⬜ **[4.12](#412--the-combined-day-takes-eight-seconds-on-a-phone) is next** — the same day computes
+> in **8.0s on the phone** and **0.32s on this PC**, which is the O(n²) `segment()` has carried since
+> 3.2. **[4.13](#413--sync-lives-in-three-places-and-two-of-them-are-wrong)** then makes sync one
+> screen instead of three.
 
 [#251]: https://github.com/ActivityWatch/aw-android/pull/251
 [aw-webui#959]: https://github.com/ActivityWatch/aw-webui/issues/959
@@ -4301,7 +4319,7 @@ silently.
    badge?
 
 
-### 4.10 — Make it work on the PC ⬜ ← *owner-requested 2026-09-11; **this is the next step***
+### 4.10 — Make it work on the PC ⬜ ← *owner-requested 2026-09-11; 4.10a-d done, step 6 (release CI on a fork) still open*
 
 > *"making the app work on PC as well as it does now is more important — you can download it if you
 > want. If you need to change another submodule for this to work, fork it and publish things on the
@@ -4660,6 +4678,142 @@ watcher installed.
 are safe -- their `applied` state is populated -- but a *fresh* phone added to this folder would
 publish its defaults over everything, which is exactly what the Rust side now refuses to do. Port
 the rule to `SharedSettings.kt`.
+
+
+### 4.11 — One overlap is one question ✅ BUILT + MEASURED (2026-09-12) — ⚠️ not yet *looked at* on a device
+
+> *"The resolve is so janky it asks me the same thing over and over. Like the same two apps over
+> seconds. [...] still making me do the resolve multiple time where it looks like it should auto
+> resolve."*
+>
+> *"Can we arange them from the more to the least [...] Yotutbube from 1 to 3 game from 1 to 2.5
+> work from 1.5 to 2. So they all show in a block that from 1 to 1.5 as shaded they should be
+> ascending youtube game work from the longest to the shortest."*
+
+Two complaints, one cause. 7b69009 had already taken the owner's day from 70 questions to 42 and
+shipped, and the complaint survived it — so this was measured on the phone rather than reasoned
+about, by pulling `GET /api/0/combined/timeline` off the device with its own API key.
+
+#### What the day actually looked like
+
+Five shaded blocks on 2026-09-11. Four of them were the same overlap:
+
+```
+22:31:53 -> 22:33:30    96s  contended  UNRESOLVED  Emby  vs  ActivityWatch
+22:33:30 -> 22:33:37     7s  settled                Emby
+22:33:37 -> 22:51:53  1095s  contended  UNRESOLVED  Emby  vs  ActivityWatch
+22:51:53 -> 22:51:55     1s  settled                Emby   (peer blinked to Interpreter)
+22:51:55 -> 23:00:00   485s  contended  UNRESOLVED  Emby  vs  ActivityWatch
+23:00:00 -> 23:00:16    15s  settled                Emby
+23:00:16 -> 23:10:07   591s  contended  UNRESOLVED  Emby  vs  ActivityWatch
+```
+
+Emby on the phone against ActivityWatch on the S25U, 22:31 to 23:10 — **one** thing that happened,
+asked **four** times, because the peer's activity stopped for seven seconds, then one, then fifteen.
+Answering one left three. That is *"the same two apps over seconds"*, exactly.
+
+#### Why ⑥ and ⑦ could not fix it, and why ⑦ must not
+
+⑥ cannot join two blocks with a settled one between them without claiming the peer was running when
+it was not. ⑦'s rule **1b** — *a question is never smoothed away* — is the guarantee that no display
+setting can hide an unanswered overlap, and lifting it would break **R11** besides: during those
+seven seconds nothing was competing, so a pick must not be credited with them.
+
+So the blocks are left **exactly** as they are, and *asking* stops being per block.
+
+#### ⑧ — the question, a new step
+
+`aw-combined/src/question.rs`. Still-unanswered blocks with the **same foreground** (device + label),
+separated by no more than **60s** of settled time, are **one question** spanning the run. The
+decision's window covers the run, which is safe because ④ already settles only the sub-segments
+where the picked activity was actually running — that landed in **4.2a** for an unrelated reason and
+is precisely what this needs.
+
+- **The gap is 60s, not ⑦'s 15s**, because the two answer different questions. ⑦ asks *"is this its
+  own block on screen?"*; ⑧ asks *"is this still the same thing happening?"*. Fifteen was already too
+  small for the day above.
+- **A different provisional winner starts a new question.** Rolling those together would offer an
+  answer that was never a competitor for half the span.
+
+#### The ordering the owner asked for
+
+Competitors now carry **their own running time**, unioned across the run and counting an overlap
+once, **longest first**, with the offered winner leading. Every participant used to be handed the
+*segment's* duration — correct (a contention segment is by construction a window where the whole set
+was active) and useless, since every option in the sheet then carried the same number and the order
+was whatever `(device, bucket_id)` sorted to.
+
+The figure is each competitor's **whole originating run**, not its overlap with the window. That is
+what the owner's example says — YouTube 1→3 is the longest even though contention ends at 2.5 — and
+it is also the measure **R17** picks the winner by, so the list reads in the order the winner was
+chosen in.
+
+#### Measured, through the endpoint, on the owner's real day
+
+| | before | after |
+|---|---|---|
+| shaded blocks | 5 | 5 (unchanged — nothing was smoothed away) |
+| **questions asked** | **5** | **2** |
+| Q1 | — | `22:31:53 → 23:10:07`, **2269s answerable inside a 2293s span** |
+
+The 24s of settled slivers are **spanned and not swallowed** — the gap between those two numbers is
+R11 holding. Q0's four competitors now read 1800s / 1696s / 1641s / 1305s where they used to read
+1697s four times.
+
+#### Also fixed, because the owner named it
+
+`/#/settings/sync` returned **Not Found**, and always had. `Settings.vue` has registered a `sync`
+group since ef50db0, but `route.js` matches settings groups against an explicit alternation of names
+and `sync` was never added — so the sidebar entry pointed at a path with no route and fell through to
+the `*` catch-all. One word. The panel itself was always fine: `/sync` and `/settings/sync` are the
+same component, so the one that would not open was not a staler copy, it was no copy at all.
+
+**Checked:** `cargo test -p aw-combined` (149 across the suite, 5 new in `tests/questions.rs`),
+`cargo build -p aw-server` clean, aw-webui production build clean, and the endpoint exercised against
+a **copy of the phone's own database** pulled over adb — which is where the 5→2 figure comes from.
+The tests are transcriptions, not inventions: the measured stretch above, and the owner's three-app
+example with their numbers.
+
+**Not checked:** nobody has *looked* at it. Whether one shaded stretch reads better than four, and
+whether the sheet's new numbers make the choice obvious, are judgements only the owner can make.
+
+**Deliberately not done here:** the day takes **8.0s** to compute on the phone and **0.32s** on the
+PC for the same data — that is 4.12, and it is the O(n²) in `segment()` that `lib.rs` has documented
+since 3.2. And sync still lives in three places; that is 4.13.
+
+### 4.12 — The combined day takes eight seconds on a phone ⬜ ← *next*
+
+Measured 2026-09-12, same day and same data on both: **8.0s on the S22, 0.32s on this PC.** The
+owner: *"also very very very very slow in opwik gin displayin in making the reslove"*. `lib.rs`
+§ Scaling has said since 3.2 that `segment()` is **O(n²)** — it tests every interval against every
+boundary — and a phone's cores are where that finally shows. The fix named there is a sweep line
+that keeps a running active set instead of rescanning. It is a pure function with 149 tests around
+it, which is the best possible position from which to rewrite one.
+
+### 4.13 — Sync lives in three places and two of them are wrong ⬜
+
+> *"the sync shuould be spotless i should look at a phone take my other phone llook at it adn they
+> should be the same. right now there are like thre places with sync in them and lik eall of the
+> mare wrong."*
+
+Surveyed 2026-09-12, before anything was changed:
+
+| where | what it is | state |
+|---|---|---|
+| `/#/sync` (PC nav) | `views/Sync.vue` | works |
+| `/#/settings/sync` (PC) | the **same component**, embedded | 404 until 4.11 fixed the route |
+| Settings ▸ This device ▸ Sync Settings (phone) | native `SyncSettingsActivity` | works |
+| native drawer ▸ Sync settings (phone) | the same native screen again | works, second entrance |
+
+So it is one web screen reachable two ways and one native screen reachable two ways, and they are
+**different screens** — the native one picks a folder with SAF, the web one takes a typed path.
+That split is why `Settings.vue` hides the `sync` group on Android and `Header.vue` hides the nav
+item: *"two sync screens on one device would be two owners"*.
+
+The owner's bar is higher than "make them both work": two phones side by side should show **the same
+thing**. That means one screen, with the folder picker being a platform detail the one screen asks
+the bridge for — not a second screen. Needs deciding before building: whether the native activity
+survives at all, or becomes a thin SAF picker the web page calls.
 
 
 ## Phase 5 — Make the UI usable on a phone
